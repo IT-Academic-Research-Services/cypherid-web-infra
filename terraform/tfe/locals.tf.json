@@ -1,0 +1,13 @@
+{
+  "locals": {
+    "accounts": {}
+  },
+  "envs": {
+    "dev": {},
+    "prod": {},
+    "public": {},
+    "sandbox": {},
+    "staging": {}
+  },
+  "default_terraform_version": "1.3.6"
+}

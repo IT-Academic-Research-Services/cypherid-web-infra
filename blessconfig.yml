@@ -1,0 +1,36 @@
+# a blessclient config that encapsulates resources in this repo
+# importing it: `blessclient import-config git@github.com/chanzuckerberg/idseq-infra/blessconfig.yml`
+# blessclient install instructions https://github.com/chanzuckerberg/blessclient#install
+# make sure to install a blessclient version greater than v1.0.0
+# We now require the presensce of an SSH agent
+version: 1
+client_config:
+  role_arn: arn:aws:iam::648573913056:role/ssh-ca-client
+  oidc_client_id: 0oaw9ovnyiHt36oNm5d6
+  oidc_issuer_url: https://czi-prod.okta.com
+lambda_config:
+  role_arn: arn:aws:iam::416703108729:role/blessclient
+  function_name: shared-infra-prod-ssh-ca-prod
+  function_version: ssh
+  regions:
+    - aws_region: us-west-2
+    - aws_region: us-east-2
+ssh_config:
+  bastions:
+    - pattern: bastion.sandbox.idseq.net
+      user: idseq
+      hosts:
+        - pattern: 10.133.*
+    - pattern: bastion.dev.idseq.net
+      user: idseq
+      hosts:
+        - pattern: 10.132.*
+    - pattern: bastion.staging.idseq.net
+      user: idseq
+      hosts:
+        - pattern: 10.131.*
+    # TODO: IDSEQ-3114 - Rename this pattern back to bastion-prod.idseq.net after pointing markmonitor to idseq-prod
+    - pattern: 52.34.231.134
+      user: idseq
+      hosts:
+        - pattern: 10.78.*

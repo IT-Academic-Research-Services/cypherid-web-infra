@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+
+<!-- Adapted from Auth0 templates. -->
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>CZ ID - Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="shortcut icon" type="image/png" href="https://assets.prod.czid.org/assets/CZID_Favicon_Black.png" />
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans&display=swap" rel="stylesheet">
+
+    <style type="text/css">
+        /* IDseq custom */
+        * {
+            font-family: "Open Sans", "Helvetica Neue", Arial, Helvetica,
+                sans-serif;
+            letter-spacing: 0.3px;
+        }
+
+        .auth0-lock h1 {
+            line-height: 22px;
+            font-size: 16px !important;
+            font-weight: 600;
+            margin: 0 0 6px 0 !important;
+            color: black;
+        }
+
+        ::placeholder {
+            color: #999999;
+        }
+    </style>
+</head>
+
+<body>
+    <!--[if IE 8]>
+            <script src="//cdnjs.cloudflare.com/ajax/libs/ie8/0.2.5/ie8.js"></script>
+            <![endif]-->
+
+    <!--[if lte IE 9]>
+            <script src="https://cdn.auth0.com/js/base64.js"></script>
+            <script src="https://cdn.auth0.com/js/es5-shim.min.js"></script>
+            <![endif]-->
+
+    <script src="https://cdn.auth0.com/js/lock/11.28/lock.min.js"></script>
+    <script>
+        // Uses var, plain CSS, other elements to make it easier to support legacy browsers.
+
+        // Decode utf8 characters properly
+        var config = JSON.parse(decodeURIComponent(escape(window.atob("@@config@@"))));
+        config.extraParams = config.extraParams || {};
+        var connection = config.connection;
+        var languageDictionary;
+        var language;
+
+        if (config.dict && config.dict.signin && config.dict.signin.title) {
+            languageDictionary = { title: config.dict.signin.title };
+        } else if (typeof config.dict === "string") {
+            language = config.dict;
+        }
+
+        var loginHint = config.extraParams.login_hint;
+        var colors = config.colors || {};
+
+        // Custom IDseq strings
+        languageDictionary = Object.assign(languageDictionary, {
+            forgotPasswordAction: "Forgot Password?",
+            emailInputPlaceholder: "Email",
+            passwordInputPlaceholder: "Password",
+            blankErrorHint: "Required",
+            title: "",
+            signUpLabel: "Request Access",
+            forgotPasswordTitle: "",
+            forgotPasswordInstructions: "<br /><h1>Reset Your Password</h1>Please enter your email address. We will send you an email to reset your password.",
+            forgotPasswordSubmitLabel: "Send Email"
+        });
+
+        // Set token issuer.
+        // We named tenants czi-idseq-dev, czi-idseq-staging, czi-idseq-prod. Use the env suffix unless it's prod, as in login-dev.idseq.net, login-staging.idseq.net, and login.idseq.net.
+        token_issuer = "";
+        if (config.auth0Tenant && config.auth0Tenant.includes("-")) {
+            env = config.auth0Tenant.split("-").pop();
+            prefix = (env === "prod") ? "login" : "login-" + env;
+            token_issuer = prefix + ".czid.org";
+        }
+
+        // Set backend URL for 'forgot password' link.
+        backend_url = "https://czid.org";
+        if (config.auth0Tenant && config.auth0Tenant.includes("-")) {
+            env = config.auth0Tenant.split("-").pop();
+            if (env === "staging") backend_url = "https://staging.czid.org";
+            if (env === "dev") backend_url = "https://sandbox.czid.org";
+        }
+
+        // Available Lock configuration options: https://auth0.com/docs/libraries/lock/v11/configuration
+        var lock = new Auth0Lock(config.clientID, config.auth0Domain, {
+            allowShowPassword: true,
+            allowedConnections: connection ? [connection] : null,
+            assetsUrl: config.assetsUrl,
+            auth: {
+                redirectUrl: config.callbackURL,
+                responseType:
+                    (config.internalOptions || {}).response_type ||
+                    (config.callbackOnLocationHash ? "token" : "code"),
+                params: config.internalOptions
+            },
+            autofocus: true,
+            closable: false,
+            // configurationBaseUrl and overrides are used for custom domains.
+            configurationBaseUrl: config.clientConfigurationBaseUrl,
+            overrides: {
+                __tenant: config.auth0Tenant,
+                __token_issuer: token_issuer
+            },
+            defaultADUsernameFromEmailPrefix: false,
+            language: language,
+            languageDictionary: languageDictionary,
+            prefill: loginHint ? { email: loginHint, username: loginHint } : null,
+            signUpLink: "https://airtable.com/shrBGT42xVBR6JAVv",
+            theme: {
+                logo: "https://assets.prod.czid.org/assets/CZID_Logo_Black.png",
+                primaryColor: colors.primary ? colors.primary : "green"
+            },
+            forgotPasswordLink: backend_url + '/users/password/new'
+        });
+
+        // IDSEQ CUSTOM STYLING
+        var addedCSS = [];
+        var style = document.createElement("style");
+
+        function pushCSS(selector, rule) {
+            addedCSS.push(".auth0-lock.auth0-lock .auth0-lock-" + selector + " { " + rule + " }");
+        }
+
+        if (colors.page_background) {
+            pushCSS("overlay", "background: " + colors.page_background);
+        }
+
+        pushCSS("content-body-wrapper", "padding-top: 0px;");
+        pushCSS("content-wrapper", "display: flex; flex-direction: column");
+        pushCSS("cred-pane", "border-radius: 10px");
+        pushCSS("form .auth0-lock-alternative", "margin-top: 15px; text-align: center;");
+        pushCSS("form p", "text-align: left; color: #333333");
+        pushCSS("form", "padding: 20px 38px 38px 38px");
+        pushCSS("header-bg .auth0-lock-header-bg-blur", "display: none !important");
+        pushCSS("header-bg .auth0-lock-header-bg-solid", "display: none");
+        pushCSS("header-bg", "background: #F8F8F8");
+        pushCSS("header-logo.centered", "margin: 15px 0 0 0");
+        pushCSS("input-block", "margin-bottom: 14px");
+        pushCSS("input-wrap .auth0-lock-input", "border-radius: 4px; height: 34px; font-size: 14px;");
+        pushCSS("input-wrap", "border-color: #999999;");
+        pushCSS("input-wrap.auth0-lock-input-wrap-with-icon", "padding-left: 0");
+        pushCSS("name", "font-size: 14px; line-height: 25px; padding-top: 10px");
+        pushCSS("submit .auth0-label-submit", "height: initial; line-height: initial; text-transform: initial; font-weight: 600; font-size: 13px;");
+        pushCSS("submit", "padding: 6px; width: 120px; height: 34px; margin-left: 35%; border-radius: 17px; margin-bottom: 38px;");
+        pushCSS("tabs li a, .auth0-lock.auth0-lock .auth0-lock-tabs li span", "color: #3867fa; font-weight: 600;");
+        pushCSS("tabs li", "margin-top: -15px; margin-bottom: 5px;");
+        pushCSS("tabs li.auth0-lock-tabs-current", "display: none");
+        pushCSS("tabs", "background: #F8F8F8");
+        pushCSS("tabs-container", "margin: -20px -38px 38px -38px;");
+
+        addedCSS.push(".auth0-loading { display: none }");
+        addedCSS.push(".auth0-lock-input-show-password .auth0-lock-show-password { top: 11px }");
+        addedCSS.push(".auth0-lock.auth0-lock .auth0-global-message { text-transform: initial; font-weight: initial; color: black; font-size: 13px; padding: 10px 20px 10px 20px; }");
+        addedCSS.push(".auth0-lock.auth0-lock .auth0-global-message.auth0-global-message-error { background: #F9EBEB }");
+        addedCSS.push(".auth0-lock.auth0-lock .auth0-global-message.auth0-global-message-success { background: #EFF2FC }");
+        addedCSS.push(".auth0-lock.auth0-lock.auth0-lock-opened .auth0-lock-widget { box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.22); width: 400px }");
+
+        // Add all the styles
+        var newNode = document.createTextNode(addedCSS.join("\n"));
+        style.appendChild(newNode);
+        document.body.appendChild(style);
+
+        // Render the entire component
+        lock.show();
+    </script>
+</body>
+
+</html>

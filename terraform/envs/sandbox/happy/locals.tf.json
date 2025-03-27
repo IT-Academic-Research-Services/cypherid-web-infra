@@ -1,0 +1,14 @@
+{
+    "locals": {
+        "machine_readable": {
+            "ecr_repos": {
+                "czid": {
+                    "name": "czid-sandbox",
+                    "write_arns": [],
+                    "read_arns": []
+                }
+            },
+            "s3_buckets": {}
+        }
+    }
+}

@@ -1,0 +1,34 @@
+[
+  {
+      "name": "idseq-prd-fivetran-ssh",
+      "image": "${account_id}.dkr.ecr.${region}.amazonaws.com/idseq-fivetran-ssh:local",
+      "memory": 2048,
+      "essential": true,
+      "environment": [
+          {
+            "name": "ENV",
+            "value": "${env}"
+          },
+          {
+            "name": "AWS_REGION",
+            "value": "us-west-2"
+          },
+          {
+            "name": "AWS_PROFILE",
+            "value": "idseq-prod"
+          },
+          {
+            "name": "CHAMBER_NAMESPACE",
+            "value": "idseq-prod-fivetran-ssh"
+          }
+      ],
+      "logConfiguration": {
+      "logDriver": "awslogs",
+          "options": {
+              "awslogs-group": "${aws_cloudwatch_log_group}",
+              "awslogs-region": "${region}",
+              "awslogs-stream-prefix": "${aws_cloudwatch_log_stream_prefix}"
+          }
+      }
+  }
+]

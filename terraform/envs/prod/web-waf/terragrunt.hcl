@@ -1,0 +1,26 @@
+dependencies {
+  paths = [
+    "../access-management",
+    "../auth0",
+    "../batch",
+    "../cloud-env",
+    "../dashboards",
+    "../db",
+    "../downloads",
+    "../ecs",
+    "../eks",
+    "../elb-access-logs",
+    "../email",
+    "../fivetran-ssh",
+    "../happy",
+    "../heatmap-optimization",
+    "../individual-attr",
+    "../k8s-core",
+    "../maintenance",
+    "../redis",
+    "../resque",
+    "../web",
+    "../zendesk",
+    "../../../accounts/idseq-prod",
+  ]
+}

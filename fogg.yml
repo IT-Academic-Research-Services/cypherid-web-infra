@@ -1,0 +1,890 @@
+global: {}
+accounts:
+  idseq-dev:
+    providers:
+      aws:
+        account_id: "732052188396"
+  idseq-prod:
+    backend:
+      kind: s3
+      account_id: "745463180746"
+      bucket: idseq-prod-s3-tf-state-prod-prod-idseq-infra-prod-state
+      dynamodb_table: idseq-prod-s3-tf-state-prod-prod-idseq-infra-prod-state-lock
+      region: us-west-2
+      profile: idseq-prod
+    depends_on:
+      accounts: ["idseq-dev"]
+    providers:
+      aws:
+        account_id: "745463180746"
+defaults:
+  backend:
+    kind: s3
+    account_id: "732052188396"
+    bucket: idseq-dev-s3-tf-state-dev-dev-idseq-infra-nonprod-state
+    dynamodb_table: idseq-dev-s3-tf-state-dev-dev-idseq-infra-nonprod-state-lock
+    region: us-west-2
+    profile: idseq-dev
+  depends_on:
+    accounts: []
+  extra_vars:
+    alignment_index_date: "2021-01-22"
+    build_index_date: "2021-01-22"
+    project_v1: czid
+    s3_bucket_public_references: czid-public-references
+    s3_bucket_idseq_bench: idseq-bench
+    s3_bucket_secrets: idseq-secrets
+    s3_bucket_workflows: idseq-workflows
+  owner: biohub-tech@chanzuckerberg.com
+  project: idseq
+  providers:
+    aws:
+      account_id: "732052188396"
+      additional_regions:
+        - us-east-1
+        - us-west-2
+      profile: idseq-dev
+      region: us-west-2
+      version: 4.34.0
+  terraform_version: 1.3.6
+  tools:
+    github_actions_ci:
+      aws_iam_role_name: infraci
+      command: lint
+      enabled: true
+      providers:
+        aws:
+          disabled: true
+      ssh_key_secrets:
+        - SHARED_INFRA_DEPLOY_KEY
+      test_buckets: 20
+envs:
+  dev:
+    components:
+      # used to code generate our configuration for the s3 storing state files outisde of TFE buckets
+      # s3-tf-state:
+      #   depends_on:
+      #     components: []
+      #     accounts: []
+      #   providers:
+      #     aws:
+      #       version: ~> 4.0
+      #   module_source: git@github.com:cloudposse/terraform-aws-tfstate-backend?ref=1.4.0
+      #   variables:
+      #     - billing_mode
+      #     - terraform_version
+      #     - namespace
+      #     - name
+      #     - stage
+      #     - environment
+      #     - tags
+      #     - attributes
+      eks:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/eks-cluster-v2?ref=eks-cluster-v2-v7.3.0
+        variables:
+          - cluster_name
+          - iam_cluster_name_prefix
+          - cluster_version
+          - owner_roles
+          - node_groups
+          - authorized_github_repos
+          - addons
+        module_name: eks-cluster
+        provider_aliases:
+          aws.us-east-1: aws.us-east-1
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_regions:
+              - us-east-1
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          kubectl:
+            version: 1.14.0
+          helm:
+            version: 2.11.0
+        extra_vars:
+          eks_cluster_name: czid-dev-eks
+      k8s-core:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - eks
+            - route53
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/k8s-core?ref=k8s-core-v5.5.1
+        extra_vars:
+          ie_ops_genie_team: Core Infra Eng
+        variables:
+          - additional_addons
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          opsgenie:
+            version: 0.6.14
+      happy:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - cloud-env
+            - k8s-core
+            - eks
+        module_source: git@github.com:chanzuckerberg/happy//terraform/modules/happy-env-eks?ref=happy-env-eks-v4.12.2
+        variables:
+          - ecr_repos
+          - s3_buckets
+          - github_actions_roles
+          - additional_secrets
+          - okta_teams
+        module_name: happy
+        provider_aliases:
+          "aws.czi-si": aws.czi-si
+        providers:
+          aws:
+            version: ~> 5.14.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          opsgenie:
+            version: 0.6.14
+          okta:
+            custom_provider: true
+            version: 3.41.0
+            registry_namespace: okta
+            org_name: czi-prod
+      auth0:
+        depends_on:
+          accounts: []
+          components: []
+        providers:
+          auth0:
+            version: 0.26.0
+            domain: czi-idseq-dev.auth0.com
+      cloud-env:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-env?ref=aws-env-v4.0.0
+        providers:
+          aws:
+            version: "~> 5.31.0"
+        terraform_version: 1.3.6
+        variables:
+          - k8s_cluster_names
+        depends_on:
+          accounts:
+            - idseq-dev
+          components: []
+        extra_vars:
+          eks_cluster_name: czid-dev-eks
+      downloads:
+        depends_on:
+          accounts: []
+          components: []
+    depends_on:
+      accounts:
+        - idseq-dev
+    extra_vars:
+      s3_bucket_aegea_ecs_execute: aegea-ecs-execute-dev
+      s3_bucket_samples: idseq-samples-development
+      s3_bucket_samples_v1: czi-infectious-disease-development-samples
+  sandbox:
+    components:
+      cloud-env:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-env?ref=aws-env-v4.0.0
+        variables:
+          - single_nat_gateway
+          - k8s_cluster_names
+        depends_on:
+          accounts:
+            - idseq-dev
+          components: []
+        providers:
+          aws:
+            version: "~> 5.31.0"
+        terraform_version: 1.3.6
+      eks:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/eks-cluster-v2?ref=eks-cluster-v2-v7.3.0
+        variables:
+          - cluster_name
+          - cluster_version
+          - owner_roles
+          - node_groups
+          - authorized_github_repos
+          - addons
+        module_name: eks-cluster
+        provider_aliases:
+          aws.us-east-1: aws.us-east-1
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_regions:
+              - us-east-1
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          kubectl:
+            version: 1.14.0
+          helm:
+            version: 2.11.0
+      k8s-core:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - eks
+            - route53
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/k8s-core?ref=k8s-core-v5.5.1
+        extra_vars:
+          ie_ops_genie_team: Core Infra Eng
+        variables:
+          - additional_addons
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          opsgenie:
+            version: 0.6.14
+      happy:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - cloud-env
+            - k8s-core
+            - eks
+        module_source: git@github.com:chanzuckerberg/happy//terraform/modules/happy-env-eks?ref=happy-env-eks-v4.12.2
+        variables:
+          - ecr_repos
+          - s3_buckets
+          - github_actions_roles
+          - additional_secrets
+          - okta_teams
+        module_name: happy
+        provider_aliases:
+          "aws.czi-si": aws.czi-si
+        providers:
+          aws:
+            version: ~> 5.14.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          opsgenie:
+            version: 0.6.14
+          okta:
+            custom_provider: true
+            version: 3.41.0
+            registry_namespace: okta
+            org_name: czi-prod
+      db:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      ecs:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      elb-access-logs:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-elb-access-logs-bucket?ref=v0.420.0
+        depends_on:
+          accounts: []
+          components: []
+      maintenance:
+        depends_on:
+          accounts:
+            - idseq-dev
+          components: []
+      heatmap-optimization:
+        providers:
+          aws:
+            version: 4.34.0
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      redis:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+            - ecs
+      resque:
+        depends_on:
+          accounts: []
+          components:
+            - ecs
+            - web
+      web:
+        providers:
+          aws:
+            version: 4.61.0
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - cloud-env
+            - ecs
+            - elb-access-logs
+            - db
+            - redis
+            - heatmap-optimization
+      web-waf:
+        providers:
+          aws:
+            version: 4.44.0
+        terraform_version: 1.3.6
+    depends_on:
+      accounts:
+        - idseq-dev
+    extra_vars:
+      s3_bucket_aegea_ecs_execute: aegea-ecs-execute-sandbox
+      s3_bucket_samples: idseq-samples-sandbox
+      s3_bucket_samples_v1: czi-infectious-disease-sandbox-samples
+      eks_cluster_name: czid-sandbox-eks
+  staging:
+    components:
+      eks:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/eks-cluster-v2?ref=eks-cluster-v2-v7.3.0
+        variables:
+          - cluster_name
+          - iam_cluster_name_prefix
+          - cluster_version
+          - owner_roles
+          - node_groups
+          - authorized_github_repos
+          - addons
+        module_name: eks-cluster
+        provider_aliases:
+          aws.us-east-1: aws.us-east-1
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_regions:
+              - us-east-1
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          kubectl:
+            version: 1.14.0
+          helm:
+            version: 2.11.0
+        extra_vars:
+          eks_cluster_name: czid-staging-eks
+      fivetran-ssh-nextgen:
+        terraform_version: 1.3.6
+        depends_on:
+          accounts: []
+          components:
+            - db
+            - happy
+            - k8s-core
+      k8s-core:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - eks
+            - route53
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/k8s-core?ref=k8s-core-v5.5.1
+        extra_vars:
+          ie_ops_genie_team: Core Infra Eng
+        variables:
+          - additional_addons
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          opsgenie:
+            version: 0.6.14
+      happy:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - cloud-env
+            - k8s-core
+            - eks
+        module_source: git@github.com:chanzuckerberg/happy//terraform/modules/happy-env-eks?ref=happy-env-eks-v4.12.2
+        variables:
+          - ecr_repos
+          - s3_buckets
+          - github_actions_roles
+          - additional_secrets
+          - okta_teams
+        module_name: happy
+        provider_aliases:
+          "aws.czi-si": aws.czi-si
+        providers:
+          aws:
+            version: ~> 5.14.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          opsgenie:
+            version: 0.6.14
+          okta:
+            custom_provider: true
+            version: 3.41.0
+            registry_namespace: okta
+            org_name: czi-prod
+      access-management:
+        depends_on:
+          accounts: []
+          components: []
+      auth0:
+        providers:
+          auth0:
+            version: 0.26.0
+        depends_on:
+          accounts: []
+          components: []
+      batch:
+        depends_on:
+          accounts: []
+          components:
+            - ecs
+            - cloud-env
+      cloud-env:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-env?ref=aws-env-v4.0.0
+        providers:
+          aws:
+            version: "~> 5.31.0"
+        terraform_version: 1.3.6
+        variables:
+          - k8s_cluster_names
+        depends_on:
+          accounts:
+            - idseq-dev
+          components: []
+        extra_vars:
+          eks_cluster_name: czid-staging-eks
+      db:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      downloads:
+        depends_on:
+          accounts: []
+          components: []
+      ecs:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      elb-access-logs:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-elb-access-logs-bucket?ref=v0.420.0
+        depends_on:
+          accounts: []
+          components: []
+      heatmap-optimization:
+        providers:
+          aws:
+            version: 4.34.0
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      resque:
+        depends_on:
+          accounts: []
+          components:
+            - ecs
+            - web
+      redis:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+            - ecs
+      web:
+        providers:
+          aws:
+            version: 4.61.0
+        depends_on:
+          accounts:
+            - idseq-dev
+          components:
+            - cloud-env
+            - db
+            - ecs
+            - heatmap-optimization
+            - elb-access-logs
+            - redis
+      web-waf:
+        providers:
+          aws:
+            version: 4.44.0
+        terraform_version: 1.3.6
+    depends_on:
+      accounts:
+        - idseq-dev
+    extra_vars:
+      s3_bucket_aegea_ecs_execute: aegea-ecs-execute-staging
+      s3_bucket_samples: idseq-samples-staging
+      s3_bucket_samples_v1: czi-infectious-disease-staging-samples
+  public:
+    components:
+      web:
+        depends_on:
+          accounts:
+            - idseq-dev
+          components: []
+  prod:
+    backend:
+      kind: s3
+      account_id: "745463180746"
+      bucket: idseq-prod-s3-tf-state-prod-prod-idseq-infra-prod-state
+      dynamodb_table: idseq-prod-s3-tf-state-prod-prod-idseq-infra-prod-state-lock
+      region: us-west-2
+      profile: idseq-prod
+    depends_on:
+      accounts:
+        - idseq-prod
+    providers:
+      aws:
+        account_id: "745463180746"
+        profile: idseq-prod
+    components:
+      # used to code generate our configuration for the s3 storing state files outisde of TFE buckets
+      # s3-tf-state:
+      #   depends_on:
+      #     components: []
+      #     accounts: []
+      #   providers:
+      #     aws:
+      #       version: ~> 4.0
+      #   module_source: git@github.com:cloudposse/terraform-aws-tfstate-backend?ref=1.4.0
+      #   variables:
+      #     - billing_mode
+      #     - terraform_version
+      #     - namespace
+      #     - name
+      #     - stage
+      #     - environment
+      #     - tags
+      #     - attributes
+      eks:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/eks-cluster-v2?ref=eks-cluster-v2-v7.3.0
+        variables:
+          - cluster_name
+          - iam_cluster_name_prefix
+          - cluster_version
+          - owner_roles
+          - node_groups
+          - authorized_github_repos
+          - addons
+        module_name: eks-cluster
+        provider_aliases:
+          aws.us-east-1: aws.us-east-1
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_regions:
+              - us-east-1
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          kubectl:
+            version: 1.14.0
+          helm:
+            version: 2.11.0
+        extra_vars:
+          eks_cluster_name: czid-prod-eks
+      k8s-core:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-prod
+          components:
+            - eks
+            - route53
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/k8s-core?ref=k8s-core-v5.5.1
+        extra_vars:
+          ie_ops_genie_team: Core Infra Eng
+        variables:
+          - additional_addons
+        providers:
+          aws:
+            version: ~> 5.31.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          kubernetes:
+            enabled: true
+            version: 2.23.0
+          opsgenie:
+            version: 0.6.14
+      happy:
+        project: czid
+        terraform_version: 1.3.6
+        depends_on:
+          accounts:
+            - idseq-prod
+          components:
+            - cloud-env
+            - k8s-core
+            - eks
+        module_source: git@github.com:chanzuckerberg/happy//terraform/modules/happy-env-eks?ref=happy-env-eks-v4.12.2
+        variables:
+          - ecr_repos
+          - s3_buckets
+          - github_actions_roles
+          - additional_secrets
+          - okta_teams
+        module_name: happy
+        provider_aliases:
+          "aws.czi-si": aws.czi-si
+        providers:
+          aws:
+            version: ~> 5.14.0
+            additional_providers:
+              czi-si:
+                account_id: "626314663667"
+                region: us-west-2
+          datadog:
+            custom_provider: true
+            version: 3.20.0
+          opsgenie:
+            version: 0.6.14
+          okta:
+            custom_provider: true
+            version: 3.41.0
+            registry_namespace: okta
+            org_name: czi-prod
+      access-management:
+        depends_on:
+          accounts: []
+          components: []
+      auth0:
+        depends_on:
+          accounts: []
+          components: []
+        providers:
+          auth0:
+            version: 0.26.0
+      batch:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+            - ecs
+      cloud-env:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-env?ref=aws-env-v4.0.0
+        providers:
+          aws:
+            version: "~> 5.31.0"
+        terraform_version: 1.3.6
+        variables:
+          - k8s_cluster_names
+        depends_on:
+          accounts:
+            - idseq-prod
+          components: []
+        extra_vars:
+          eks_cluster_name: czid-prod-eks
+      db:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      dashboards:
+        depends_on:
+          accounts: []
+          components: []
+      downloads:
+        depends_on:
+          accounts: []
+          components: []
+      ecs:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      elb-access-logs:
+        module_source: git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-elb-access-logs-bucket?ref=v0.420.0
+        depends_on:
+          accounts: []
+          components: []
+      email:
+        depends_on:
+          accounts:
+            - idseq-prod
+          components: []
+      fivetran-ssh:
+        terraform_version: 1.3.6
+        depends_on:
+          accounts: []
+          components:
+            - ecs
+            - db
+            - happy
+            - k8s-core
+      individual-attr:
+        module_source: ./terraform/modules/individual-attr
+        depends_on:
+          accounts: []
+          components: []
+      heatmap-optimization:
+        providers:
+          aws:
+            version: 4.34.0
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+      maintenance:
+        depends_on:
+          accounts:
+            - idseq-prod
+          components: []
+      redis:
+        depends_on:
+          accounts: []
+          components:
+            - cloud-env
+            - ecs
+      resque:
+        depends_on:
+          accounts: []
+          components:
+            - ecs
+            - web
+      web:
+        providers:
+          aws:
+            version: 4.61.0
+        depends_on:
+          accounts:
+            - idseq-prod
+          components:
+            - cloud-env
+            - ecs
+            - elb-access-logs
+            - db
+            - redis
+            - heatmap-optimization
+      web-waf:
+        providers:
+          aws:
+            version: 4.44.0
+        terraform_version: 1.3.6
+      zendesk:
+        depends_on:
+          accounts:
+            - idseq-prod
+          components: []
+    extra_vars:
+      s3_bucket_samples: idseq-prod-samples-us-west-2
+      s3_bucket_samples_v1: czi-infectious-disease-prod-samples
+      s3_bucket_aegea_ecs_execute: idseq-prod-aegea-ecs-execute-us-west-2
+      s3_bucket_idseq_bench: idseq-bench
+      s3_bucket_pipeline_public_assets: idseq-prod-pipeline-public-assets-us-west-2
+modules:
+  config: {}
+  machine-images: {}
+  individual-attr: {}
+plugins:
+  custom_plugins:
+    tflint:
+      url: https://github.com/terraform-linters/tflint/releases/download/v0.34.1/tflint_{{.OS}}_{{.Arch}}.zip
+      format: zip
+version: 2
