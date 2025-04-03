@@ -1,0 +1,135 @@
+hub:
+  db:
+    pvc:
+      storage: 50Gi
+      storageClassName: ${storage_class_name}
+  authenticatePrometheus: false
+  command: ["sh", "-c", "pip install boto3 && jupyterhub --config /usr/local/etc/jupyterhub/jupyterhub_config.py"]
+  livenessProbe: 
+    enabled: true
+    initialDelaySeconds: 300
+  config:
+    GenericOAuthenticator:
+      oauth_callback_url: ${callback_url}
+      client_id: ${client_id}
+      client_secret: ${client_secret}
+      authorize_url: ${authorize_url}
+      token_url: ${token_url}
+      scope:
+        - openid
+        - email
+        - aws.cognito.signin.user.admin
+        - profile
+      username_claim: "email"
+      claim_groups_key: "cognito:groups"
+      admin_groups: [${admin_groups}]
+      allowed_groups: [${allowed_groups}]
+      login_service : "AWS Cognito"
+      userdata_token_method: "POST"
+    JupyterHub:
+      authenticator_class: generic-oauth
+    KubeSpawner:
+      start_timeout: 1200
+      http_timeout: 1200
+    Authenticator:
+      enable_auth_state: True
+      userdata_from_id_token: True
+  # extraEnv:
+  #   JUPYTERHUB_CRYPT_KEY: $(openssl rand -hex 32)
+  # extraConfig:
+  #   jupyterhub_config.py: |-
+  #     c.KubeSpawner.start_timeout = 1200
+  #     c.Authenticator.enable_auth_state = True
+  #     c.Authenticator.userdata_from_id_token = True
+debug:
+  enabled: true
+
+proxy:
+  https:
+    enabled: false
+    type: offload
+  service:
+    type: ClusterIP
+
+singleuser:
+  startTimeout: 1200 # 20 mins to spin up a notebook server for GPU including the image pull
+  extraAnnotations:
+    "karpenter.sh/do-not-disrupt": "true"
+  profileList:
+    - display_name: Data Engineering (CPU)
+      description: "PySpark Notebooks | Karpenter AutoScaling"
+      profile_options:
+        image:
+          display_name: "Image"
+          choices:
+            pyspark350:
+              display_name: "PySpark 3.5.0 + Python 3.11"
+              default: true
+              kubespawner_override:
+                image: jupyter/pyspark-notebook:spark-3.5.0
+            pyspark341:
+              display_name: "PySpark 3.4.1 + Python 3.11"
+              kubespawner_override:
+                image: jupyter/pyspark-notebook:spark-3.4.1
+      kubespawner_override:
+        node_selector: {'node.kubernetes.io/instance-type': 'r5.xlarge'}
+      cmd: null
+    - display_name: Data Science Environment Limit of 128 GB (CPU)
+      description: "If you want the additional bells and whistles: Python, R, and Julia."
+      kubespawner_override:
+        image: ${additional_server_image}
+        node_selector: {'node.kubernetes.io/instance-type': 'r5.4xlarge'}
+    - display_name: Data Science Environment Limit of 512 GB (CPU)
+      description: "If you want the additional bells and whistles: Python, R, and Julia."
+      kubespawner_override:
+        image: ${additional_server_image}
+        node_selector: {'node.kubernetes.io/instance-type': 'r5.16xlarge'}
+  storage:
+    type: "static"
+    static:
+      pvcName: "efs-persist"
+      subPath: "home/{username}"
+    extraVolumes:
+    - name: jupyterhub-shared
+      persistentVolumeClaim:
+        claimName: efs-persist-shared
+    extraVolumeMounts:
+    - name: jupyterhub-shared
+      mountPath: /home/shared
+      readOnly: false
+  serviceAccountName: ${jupyter_single_user_sa_name}
+  allowPrivilegeEscalation: true
+  extraPodConfig: # This is needed for Jovyan user running in every single pod, access the Service Account
+    securityContext:
+        fsGroup: 100
+  extraEnv: # Sudo needed to configure the proper permissions to start the notebook instance
+    GRANT_SUDO: "yes"
+    NOTEBOOK_ARGS: "--allow-root"
+    CHOWN_HOME: "yes"
+    CHOWN_HOME_OPTS: "-R"
+    CHOWN_EXTRA: "/home/shared"
+  uid: 0
+  fsGid: 0
+  cmd: null
+
+# Optimizations configured according to this doc https://z2jh.jupyter.org/en/latest/administrator/optimization.html
+scheduling:
+  userScheduler:
+    enabled: true
+  podPriority:
+    enabled: true
+  userPlaceholder:
+    enabled: false
+    replicas: 1
+  userPods:
+    nodeAffinity:
+      matchNodePurpose: require # This will force single-user pods to use an specific karpenter provisioner
+prePuller:
+  hook:
+    enabled: false
+  continuous:
+    # NOTE: if used with Karpenter, also add user-placeholders
+    enabled: false
+
+global:
+  safeToShowValues: false

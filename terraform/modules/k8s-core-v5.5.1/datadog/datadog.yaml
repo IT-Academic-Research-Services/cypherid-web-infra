@@ -1,0 +1,142 @@
+## Provides autodetected defaults, for kubernetes environments
+## where configuration templates are set as docker labels
+## please see datadog.yaml.example for all supported options
+
+# Autodiscovery for Kubernetes
+listeners:
+  - name: kubelet
+config_providers:
+  - name: kubelet
+    polling: true
+  # needed to support legacy docker label config templates
+  - name: docker
+    polling: true
+    poll_interval: 1s
+
+# Enable APM by setting the DD_APM_ENABLED envvar to true, or override this configuration
+apm_config:
+  enabled: false
+  apm_non_local_traffic: true
+
+# Modified from https://docs.datadoghq.com/integrations/airflow/ to incorporate
+# airflow_cluster tag, and added a catch-all match at the end.
+# dogstatsd_mapper_cache_size: 1000  # default to 1000
+dogstatsd_mapper_profiles:
+  - name: airflow
+    prefix: "airflow."
+    mappings:
+      - match: "airflow.*.*_start"
+        name: "airflow.job.start"
+        tags:
+          airflow_cluster: "$1"
+          job_name: "$2"
+      - match: "airflow.*.*_end"
+        name: "airflow.job.end"
+        tags:
+          airflow_cluster: "$1"
+          job_name: "$2"
+      - match: "airflow.*.operator_failures_*"
+        name: "airflow.operator_failures"
+        tags:
+          airflow_cluster: "$1"
+          operator_name: "$2"
+      - match: "airflow.*.operator_successes_*"
+        name: "airflow.operator_successes"
+        tags:
+          airflow_cluster: "$1"
+          operator_name: "$2"
+      - match: 'airflow\.(.*)\.dag_processing\.last_runtime\.(.*)'
+        match_type: "regex"
+        name: "airflow.dag_processing.last_runtime"
+        tags:
+          airflow_cluster: "$1"
+          dag_file: "$2"
+      - match: 'airflow\.(.*)\.dag_processing\.last_run\.seconds_ago\.(.*)'
+        match_type: "regex"
+        name: "airflow.dag_processing.last_run.seconds_ago"
+        tags:
+          airflow_cluster: "$1"
+          dag_file: "$2"
+      - match: 'airflow\.(.*)\.dag\.loading-duration\.(.*)'
+        match_type: "regex"
+        name: "airflow.dag.loading_duration"
+        tags:
+          airflow_cluster: "$1"
+          dag_file: "$2"
+      - match: "airflow.*.pool.open_slots.*"
+        name: "airflow.*.pool.open_slots"
+        tags:
+          airflow_cluster: "$1"
+          pool_name: "$2"
+      - match: "airflow.*.pool.used_slots.*"
+        name: "airflow.pool.used_slots"
+        tags:
+          airflow_cluster: "$1"
+          pool_name: "$2"
+      - match: "airflow.*.pool.starving_tasks.*"
+        name: "airflow.pool.starving_tasks"
+        tags:
+          airflow_cluster: "$1"
+          pool_name: "$2"
+      - match: 'airflow\.(.*)\.dagrun\.dependency-check\.(.*)'
+        match_type: "regex"
+        name: "airflow.dagrun.dependency_check"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+      - match: 'airflow\.(.*)\.dag\.(.*)\.([^.]*)\.duration'
+        match_type: "regex"
+        name: "airflow.dag.task.duration"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+          task_id: "$3"
+      - match: 'airflow\.(.*)\.dag_processing\.last_duration\.(.*)'
+        match_type: "regex"
+        name: "airflow.dag_processing.last_duration"
+        tags:
+          airflow_cluster: "$1"
+          dag_file: "$2"
+      - match: 'airflow\.(.*)\.dagrun\.duration\.success\.(.*)'
+        match_type: "regex"
+        name: "airflow.dagrun.duration.success"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+      - match: 'airflow\.(.*)\.dagrun\.duration\.failed\.(.*)'
+        match_type: "regex"
+        name: "airflow.dagrun.duration.failed"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+      - match: 'airflow\.(.*)\.dagrun\.schedule_delay\.(.*)'
+        match_type: "regex"
+        name: "airflow.dagrun.schedule_delay"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+      - match: 'airflow\.(.*)\.task_removed_from_dag\.(.*)'
+        match_type: "regex"
+        name: "airflow.dag.task_removed"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+      - match: 'airflow\.(.*)\.task_restored_to_dag\.(.*)'
+        match_type: "regex"
+        name: "airflow.dag.task_restored"
+        tags:
+          airflow_cluster: "$1"
+          dag_id: "$2"
+      - match: "airflow.*.task_instance_created-*"
+        name: "airflow.task.instance_created"
+        tags:
+          airflow_cluster: "$1"
+          task_class: "$2"
+      - match: 'airflow\.(.*?)\.(.*)'
+        match_type: "regex"
+        name: "airflow.$2"
+        tags:
+          airflow_cluster: "$1"
+ec2_prefer_imdsv2: true
+cloud_provider_metadata:
+  - "aws"
