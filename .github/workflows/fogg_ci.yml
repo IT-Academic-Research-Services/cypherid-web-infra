@@ -2,8 +2,9 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 on:
-  push:
-  merge_group:
+#   push:
+#   merge_group:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
