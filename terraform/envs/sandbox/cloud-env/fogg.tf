@@ -31,7 +31,7 @@ variable "TFC_PROJECT_NAME" {
 provider "aws" {
 
   region  = "us-west-2"
-  profile = "default"
+  profile = "deleteme123"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -59,7 +59,7 @@ provider "aws" {
 provider "aws" {
   alias   = "us-west-2"
   region  = "us-west-2"
-  profile = "default"
+  profile = "deleteme123"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -86,7 +86,7 @@ provider "aws" {
 provider "aws" {
   alias   = "us-east-1"
   region  = "us-east-1"
-  profile = "default"
+  profile = "deleteme123"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -121,7 +121,7 @@ terraform {
     key     = "terraform/idseq/envs/sandbox/components/cloud-env.tfstate"
     encrypt = true
     region  = "us-west-2"
-    profile = "default"
+    profile = "deleteme123"
 
 
   }
@@ -208,7 +208,7 @@ variable "component" {
 # tflint-ignore: terraform_unused_declarations
 variable "aws_profile" {
   type    = string
-  default = "default"
+  default = "deleteme123"
 }
 # tflint-ignore: terraform_unused_declarations
 variable "owner" {
@@ -293,7 +293,7 @@ data "terraform_remote_state" "global" {
 
     key     = "terraform/idseq/global.tfstate"
     region  = "us-west-2"
-    profile = "default"
+    profile = "deleteme123"
 
 
   }

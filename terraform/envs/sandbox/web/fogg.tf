@@ -31,7 +31,6 @@ variable "TFC_PROJECT_NAME" {
 provider "aws" {
 
   region  = "us-west-2"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -59,7 +58,6 @@ provider "aws" {
 provider "aws" {
   alias   = "us-west-2"
   region  = "us-west-2"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -86,7 +84,6 @@ provider "aws" {
 provider "aws" {
   alias   = "us-east-1"
   region  = "us-east-1"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -121,7 +118,6 @@ terraform {
     key     = "terraform/idseq/envs/sandbox/components/web.tfstate"
     encrypt = true
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -205,11 +201,7 @@ variable "component" {
   type    = string
   default = "web"
 }
-# tflint-ignore: terraform_unused_declarations
-variable "aws_profile" {
-  type    = string
-  default = "default"
-}
+
 # tflint-ignore: terraform_unused_declarations
 variable "owner" {
   type    = string
@@ -293,7 +285,6 @@ data "terraform_remote_state" "global" {
 
     key     = "terraform/idseq/global.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -307,7 +298,6 @@ data "terraform_remote_state" "cloud-env" {
 
     key     = "terraform/idseq/envs/sandbox/components/cloud-env.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -321,7 +311,6 @@ data "terraform_remote_state" "db" {
 
     key     = "terraform/idseq/envs/sandbox/components/db.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -335,7 +324,6 @@ data "terraform_remote_state" "ecs" {
 
     key     = "terraform/idseq/envs/sandbox/components/ecs.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -349,7 +337,6 @@ data "terraform_remote_state" "elb-access-logs" {
 
     key     = "terraform/idseq/envs/sandbox/components/elb-access-logs.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -363,7 +350,6 @@ data "terraform_remote_state" "heatmap-optimization" {
 
     key     = "terraform/idseq/envs/sandbox/components/heatmap-optimization.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -377,7 +363,6 @@ data "terraform_remote_state" "redis" {
 
     key     = "terraform/idseq/envs/sandbox/components/redis.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -391,7 +376,6 @@ data "terraform_remote_state" "idseq-dev" {
 
     key     = "terraform/idseq/accounts/idseq-dev.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }

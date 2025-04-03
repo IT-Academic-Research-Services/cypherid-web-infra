@@ -31,7 +31,6 @@ variable "TFC_PROJECT_NAME" {
 provider "aws" {
 
   region  = "us-west-2"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -59,7 +58,6 @@ provider "aws" {
 provider "aws" {
   alias   = "us-west-2"
   region  = "us-west-2"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -86,7 +84,6 @@ provider "aws" {
 provider "aws" {
   alias   = "us-east-1"
   region  = "us-east-1"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -113,7 +110,6 @@ provider "aws" {
 provider "aws" {
   alias   = "czi-si-us-west-2"
   region  = "us-west-2"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -140,7 +136,6 @@ provider "aws" {
 provider "aws" {
   alias   = "czi-si-us-east-1"
   region  = "us-east-1"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -167,7 +162,6 @@ provider "aws" {
 provider "aws" {
   alias   = "czi-si"
   region  = "us-west-2"
-  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -202,7 +196,6 @@ terraform {
     key     = "terraform/czid/envs/sandbox/components/k8s-core.tfstate"
     encrypt = true
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -307,11 +300,7 @@ variable "component" {
   type    = string
   default = "k8s-core"
 }
-# tflint-ignore: terraform_unused_declarations
-variable "aws_profile" {
-  type    = string
-  default = "default"
-}
+
 # tflint-ignore: terraform_unused_declarations
 variable "owner" {
   type    = string
@@ -400,7 +389,6 @@ data "terraform_remote_state" "global" {
 
     key     = "terraform/idseq/global.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -414,7 +402,6 @@ data "terraform_remote_state" "eks" {
 
     key     = "terraform/czid/envs/sandbox/components/eks.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
@@ -428,7 +415,6 @@ data "terraform_remote_state" "idseq-dev" {
 
     key     = "terraform/idseq/accounts/idseq-dev.tfstate"
     region  = "us-west-2"
-    profile = "default"
 
 
   }
