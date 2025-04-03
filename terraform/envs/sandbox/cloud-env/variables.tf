@@ -10,7 +10,7 @@ locals {
   region                = var.region
   service               = var.component
 
-  zone_id            = data.terraform_remote_state.idseq-dev.outputs.sandbox_idseq_net_zone_id
+  #zone_id            = data.terraform_remote_state.idseq-dev.outputs.sandbox_idseq_net_zone_id
   single_nat_gateway = true
 
   k8s_cluster_names = [var.eks_cluster_name]
