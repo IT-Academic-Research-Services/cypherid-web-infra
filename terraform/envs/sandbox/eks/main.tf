@@ -13,7 +13,6 @@ module "eks-cluster" {
   tags                    = local.tags
   vpc_id                  = local.vpc_id
 
-
   providers = {
     aws.us-east-1 = aws.us-east-1
   }

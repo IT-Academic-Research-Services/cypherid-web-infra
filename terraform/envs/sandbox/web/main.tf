@@ -189,9 +189,9 @@ resource "aws_iam_role_policy" "idseq-web" {
   policy = data.aws_iam_policy_document.idseq-web.json
 }
 
-data "aws_iam_role" "poweruser" {
-  name = "poweruser"
-}
+# data "aws_iam_role" "poweruser" {
+#   name = "poweruser"
+# }
 
 data "aws_iam_policy_document" "idseq-upload-assume-role" {
   statement {
@@ -204,16 +204,16 @@ data "aws_iam_policy_document" "idseq-upload-assume-role" {
       identifiers = [aws_iam_role.idseq-web.arn]
     }
   }
-  statement {
-    actions = ["sts:AssumeRole"]
-    effect  = "Allow"
-    sid     = "PowerUserAssumeRoleForDevEnvironments"
+#   statement {
+#     actions = ["sts:AssumeRole"]
+#     effect  = "Allow"
+#     sid     = "PowerUserAssumeRoleForDevEnvironments"
 
-    principals {
-      type        = "AWS"
-      identifiers = [data.aws_iam_role.poweruser.arn]
-    }
-  }
+#     principals {
+#       type        = "AWS"
+#       identifiers = [data.aws_iam_role.poweruser.arn]
+#     }
+#   }
 }
 
 resource "aws_iam_role" "idseq-upload" {
@@ -273,7 +273,8 @@ module "web-service-params" {
     SAMPLES_BUCKET_NAME           = data.terraform_remote_state.db.outputs.samples_bucket
     SAMPLES_BUCKET_NAME_V1        = data.terraform_remote_state.db.outputs.samples_bucket_v1
     ALIGNMENT_CONFIG_DEFAULT_NAME = var.alignment_index_date
-    ES_ADDRESS                    = "https://${data.terraform_remote_state.heatmap-optimization.outputs.elastic_search_endpoint}"
+    //ES_ADDRESS                    = "https://${data.terraform_remote_state.heatmap-optimization.outputs.elastic_search_endpoint}"
+    //TODO - comemnt out for now
     CLOUDFRONT_ENDPOINT           = "assets.${var.env}.idseq.net"
     CZID_CLOUDFRONT_ENDPOINT      = local.czid_full_domain
     S3_DATABASE_BUCKET            = var.s3_bucket_public_references

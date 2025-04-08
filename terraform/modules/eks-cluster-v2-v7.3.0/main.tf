@@ -134,25 +134,25 @@ locals {
   }
 }
 
-module "cloud-init" {
-  source = "../instance-cloud-init-script"
+# module "cloud-init" {
+#   source = "../instance-cloud-init-script"
 
 
-  user_script = ""
+#   user_script = ""
 
-  // terraform-aws-modules/eks/aws does this for us
-  base64_encode = "false"
-  gzip          = "false"
+#   // terraform-aws-modules/eks/aws does this for us
+#   base64_encode = "false"
+#   gzip          = "false"
 
-  users = var.ssh_users
+#   users = var.ssh_users
 
-  project = var.tags.project
-  owner   = var.tags.owner
-  env     = var.tags.env
-  service = var.tags.service
+#   project = var.tags.project
+#   owner   = var.tags.owner
+#   env     = var.tags.env
+#   service = var.tags.service
 
-  datadog_api_key = var.datadog_api_key
-}
+#   datadog_api_key = var.datadog_api_key
+# }
 
 resource "aws_kms_key" "secrets" {
   description = "Key used to encrypt Kubernetes secrets for ${local.cluster_name}"
@@ -175,10 +175,10 @@ resource "aws_iam_role_policy" "secrets" {
   policy = data.aws_iam_policy_document.secrets.json
 }
 
-module "orgwide-secrets" {
-  source    = "../aws-iam-policy-orgwide-secrets"
-  role_name = aws_iam_role.node.id
-}
+# module "orgwide-secrets" {
+#   source    = "../aws-iam-policy-orgwide-secrets"
+#   role_name = aws_iam_role.node.id
+# }
 
 module "cluster" {
   source  = "terraform-aws-modules/eks/aws"
@@ -208,11 +208,8 @@ module "cluster" {
   iam_role_arn    = aws_iam_role.cluster.arn
 
   # if the user configures a Github Action role, add it to the system:masters group
-  aws_auth_roles = concat(var.map_roles, [for r in module.gh_actions_role : {
-    rolearn  = r.role.arn
-    username = r.role.name
-    groups   = ["system:masters"]
-    }], [{
+  //TODO - Removed GH actions roles
+  aws_auth_roles = concat(var.map_roles, [{
     rolearn  = module.eks_blueprints_addons.karpenter.node_iam_role_arn
     username = "system:node:{{EC2PrivateDNSName}}"
     groups = [

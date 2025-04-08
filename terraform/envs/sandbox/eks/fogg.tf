@@ -31,6 +31,7 @@ variable "TFC_PROJECT_NAME" {
 provider "aws" {
 
   region  = "us-west-2"
+  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -58,6 +59,7 @@ provider "aws" {
 provider "aws" {
   alias   = "us-east-1"
   region  = "us-east-1"
+  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -84,6 +86,7 @@ provider "aws" {
 provider "aws" {
   alias   = "czi-si-us-east-1"
   region  = "us-east-1"
+  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -110,6 +113,7 @@ provider "aws" {
 provider "aws" {
   alias   = "czi-si"
   region  = "us-west-2"
+  profile = "default"
 
   # this is the new way of injecting AWS tags to all AWS resources
   # var.tags should be considered deprecated
@@ -144,6 +148,7 @@ terraform {
     key     = "terraform/czid/envs/sandbox/components/eks.tfstate"
     encrypt = true
     region  = "us-west-2"
+    profile = "default"
 
 
   }
@@ -248,7 +253,11 @@ variable "component" {
   type    = string
   default = "eks"
 }
-
+# tflint-ignore: terraform_unused_declarations
+variable "aws_profile" {
+  type    = string
+  default = "default"
+}
 # tflint-ignore: terraform_unused_declarations
 variable "owner" {
   type    = string
@@ -290,7 +299,7 @@ variable "project_v1" {
 # tflint-ignore: terraform_unused_declarations
 variable "s3_bucket_aegea_ecs_execute" {
   type    = string
-  default = "aegea-ecs-execute-sandbox"
+  default = "aegea-ecs-execute-sandbox-941377154785"
 }
 # tflint-ignore: terraform_unused_declarations
 variable "s3_bucket_idseq_bench" {
@@ -305,12 +314,12 @@ variable "s3_bucket_public_references" {
 # tflint-ignore: terraform_unused_declarations
 variable "s3_bucket_samples" {
   type    = string
-  default = "idseq-samples-sandbox"
+  default = "idseq-samples-sandbox-941377154785"
 }
 # tflint-ignore: terraform_unused_declarations
 variable "s3_bucket_samples_v1" {
   type    = string
-  default = "czi-infectious-disease-sandbox-samples"
+  default = "czi-infectious-disease-sandbox-samples-941377154785"
 }
 # tflint-ignore: terraform_unused_declarations
 variable "s3_bucket_secrets" {
@@ -332,6 +341,7 @@ data "terraform_remote_state" "global" {
 
     key     = "terraform/idseq/global.tfstate"
     region  = "us-west-2"
+    profile = "default"
 
 
   }
@@ -345,6 +355,7 @@ data "terraform_remote_state" "cloud-env" {
 
     key     = "terraform/idseq/envs/sandbox/components/cloud-env.tfstate"
     region  = "us-west-2"
+    profile = "default"
 
 
   }

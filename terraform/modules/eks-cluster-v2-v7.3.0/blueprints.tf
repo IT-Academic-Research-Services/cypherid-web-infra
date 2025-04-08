@@ -37,7 +37,7 @@ module "eks_blueprints_addons" {
   source  = "aws-ia/eks-blueprints-addons/aws"
   version = "1.19.0"
 
-  observability_tag = null // Do not deploy observability clooudformation stack
+  observability_tag = null // Do not deploy observability cloudformation stack
 
   cluster_name      = module.cluster.cluster_name
   cluster_endpoint  = module.cluster.cluster_endpoint
@@ -147,7 +147,8 @@ module "eks_blueprints_addons" {
   karpenter_node = {
     iam_role_additional_policies = {
       AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-      OrgwideSecretsReader         = module.orgwide-secrets.orgwide_secrets_policy_arn
+      //TODO - Removed as should not be needed for UCSF implementation
+      //OrgwideSecretsReader         = module.orgwide-secrets.orgwide_secrets_policy_arn
     }
     create_iam_role          = true
     iam_role_use_name_prefix = false

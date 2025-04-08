@@ -1,5 +1,5 @@
 locals {
-  bucket_name = "${var.project}-${var.env}-${var.service}"
+  bucket_name = "${var.project}-${var.env}-${var.service}-941377154785"
 
   # account numbers source: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html#access-logging-bucket-permissions
   aws_elb_accounts = {

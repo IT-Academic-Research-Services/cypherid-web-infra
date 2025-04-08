@@ -45,7 +45,7 @@ defaults:
         - us-west-2
       profile: default
       region: us-west-2
-      version: 4.34.0
+      version: 5.94.0
   tools:
     github_actions_ci:
       aws_iam_role_name: infraci
@@ -333,6 +333,7 @@ envs:
             - cloud-env
       elb-access-logs:
         module_source: terraform/modules/aws-elb-access-logs-bucket-v0.420.0
+        module_name: aws-elb-access-logs-bucket
         depends_on:
           accounts: []
           components: []
@@ -362,9 +363,6 @@ envs:
             - ecs
             - web
       web:
-        providers:
-          aws:
-            version: 4.61.0
         depends_on:
           accounts:
             - idseq-dev
@@ -374,7 +372,7 @@ envs:
             - elb-access-logs
             - db
             - redis
-            - heatmap-optimization
+            # - heatmap-optimization
       web-waf:
         providers:
           aws:
@@ -383,9 +381,9 @@ envs:
       accounts:
         - idseq-dev
     extra_vars:
-      s3_bucket_aegea_ecs_execute: aegea-ecs-execute-sandbox
-      s3_bucket_samples: idseq-samples-sandbox
-      s3_bucket_samples_v1: czi-infectious-disease-sandbox-samples
+      s3_bucket_aegea_ecs_execute: aegea-ecs-execute-sandbox-941377154785
+      s3_bucket_samples: idseq-samples-sandbox-941377154785
+      s3_bucket_samples_v1: czi-infectious-disease-sandbox-samples-941377154785
       eks_cluster_name: czid-sandbox-eks
   staging:
     components:

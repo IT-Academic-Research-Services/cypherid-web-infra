@@ -50,10 +50,6 @@ variable "datadog_api_key" {
   description = "A datadog api key to enable the datadog agent on the instance"
 }
 
-variable "ssh_key_name" {
-  type = string
-}
-
 variable "allowed_cidr_blocks" {
   type    = list(string)
   default = ["0.0.0.0/0"]
@@ -134,4 +130,16 @@ variable "log_retention_in_days" {
   type        = number
   description = "N of days you want to retain log events. Possible values are: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653, and 0."
   default     = 0
+}
+
+variable "off_hour_utc" {
+  type        = number
+  description = "The UTC hour of the day when the cluster should be scaled down"
+  default     = 3
+}
+
+variable "on_hour_utc" {
+  type        = number
+  description = "The UTC hour of the day when the cluster should be scaled up"
+  default     = 13
 }

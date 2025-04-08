@@ -1,5 +1,5 @@
 module "alb" {
-  source = "../alb-http"
+  source = "../alb-http-v0.484.6"
 
   project               = var.project
   env                   = var.env

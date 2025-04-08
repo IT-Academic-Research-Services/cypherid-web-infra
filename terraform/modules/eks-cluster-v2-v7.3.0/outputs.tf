@@ -63,10 +63,10 @@ output "secrets_key_arn" {
   value       = coalescelist(aws_kms_key.secrets[*].arn, [null])[0]
 }
 
-output "gh_action_role" {
-  description = "The roles created for GitHub Actions to interact with this cluster."
-  value       = one(module.gh_actions_role[*].role)
-}
+# output "gh_action_role" {
+#   description = "The roles created for GitHub Actions to interact with this cluster."
+#   value       = one(module.gh_actions_role[*].role)
+# }
 
 output "cluster_certificate_authority_data" {
   description = "The base64 encoded certificate data required to communicate with the EKS cluster."

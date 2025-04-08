@@ -1,6 +1,6 @@
 locals {
   name = var.ecs_cluster_name == "" ? "${var.project}-${var.env}-${var.service}" : var.ecs_cluster_name
-  ami  = var.ami == "" ? format("%s", module.images.czi_amazon2_ecs) : var.ami
+  ami  = var.ami
 
   max_servers = max(var.max_servers, var.min_servers + 1)
 
@@ -40,9 +40,9 @@ resource "aws_ecs_cluster" "cluster" {
   tags = local.tags
 }
 
-module "images" {
-  source = "../machine-images"
-}
+# module "images" {
+#   source = "../machine-images"
+# }
 
 module "logs" {
   source            = "github.com/chanzuckerberg/cztack//aws-cloudwatch-log-group?ref=v0.43.1"
@@ -53,10 +53,10 @@ module "logs" {
   retention_in_days = var.log_retention_in_days
 }
 
-module "orgwide-secrets" {
-  source    = "../aws-iam-policy-orgwide-secrets"
-  role_name = module.profile.role_name
-}
+# module "orgwide-secrets" {
+#   source    = "../aws-iam-policy-orgwide-secrets"
+#   role_name = module.profile.role_name
+# }
 
 resource "aws_autoscaling_lifecycle_hook" "graceful_shutdown_asg_hook" {
   name                   = local.name
@@ -159,7 +159,6 @@ resource "aws_launch_template" "ecs" {
   name_prefix   = local.name
   image_id      = local.ami
   instance_type = var.instance_type
-  key_name      = var.ssh_key_name
 
   monitoring {
     enabled = true
@@ -181,7 +180,7 @@ resource "aws_launch_template" "ecs" {
     }
   }
 
-  user_data = module.user_data.script
+  //user_data = module.user_data.script
 
   lifecycle {
     create_before_destroy = true
@@ -274,6 +273,29 @@ resource "aws_autoscaling_schedule" "ecs-down" {
   recurrence = "${local.rolling_end_hour_offset} */${var.cluster_asg_rolling_interval_hours} * * *"
 }
 
+//Scaling for lower environments to shut down off hours and resume on hours
+resource "aws_autoscaling_schedule" "ecs-offhours" {
+  count                  = var.cluster_asg_rolling_interval_hours == "0" ? 1 : 0
+  scheduled_action_name  = "${local.name}-offhours"
+  desired_capacity       = 0
+  min_size               = 0
+  max_size               = 0
+  autoscaling_group_name = aws_autoscaling_group.ecs.name
+
+  recurrence = "0 ${var.off_hour_utc} * * 2-6" # Monday - Friday at 8PM Pacific (Tue - Sat 3AM UTC)
+}
+
+resource "aws_autoscaling_schedule" "ecs-onhours" {
+  count                  = var.cluster_asg_rolling_interval_hours == "0" ? 1 : 0
+  scheduled_action_name  = "${local.name}-onhours"
+  desired_capacity       = var.min_servers
+  min_size               = var.min_servers
+  max_size               = local.max_servers
+  autoscaling_group_name = aws_autoscaling_group.ecs.name
+
+  recurrence = "0 ${var.on_hour_utc} * * 1-5" # Monday - Friday at 6AM Pacific (Mon - Fri 3PM UTC)
+}
+
 module "sg" {
   source      = "terraform-aws-modules/security-group/aws"
   version     = "4.3.0"
@@ -304,15 +326,15 @@ data "template_file" "user_data" {
   }
 }
 
-module "user_data" {
-  source          = "../instance-cloud-init-script"
-  user_script     = data.template_file.user_data.rendered
-  user_boothook   = data.template_file.boothook.rendered
-  users           = var.ssh_users
-  datadog_api_key = var.datadog_api_key
+# module "user_data" {
+#   source          = "../instance-cloud-init-script"
+#   user_script     = data.template_file.user_data.rendered
+#   user_boothook   = data.template_file.boothook.rendered
+#   users           = var.ssh_users
+#   datadog_api_key = var.datadog_api_key
 
-  project = var.project
-  env     = var.env
-  service = var.service
-  owner   = var.owner
-}
+#   project = var.project
+#   env     = var.env
+#   service = var.service
+#   owner   = var.owner
+# }
