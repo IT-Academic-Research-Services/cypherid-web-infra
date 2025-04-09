@@ -51,11 +51,6 @@ output "cluster_version" {
   sensitive = false
 }
 
-# output "gh_action_role" {
-#   value     = module.eks-cluster.gh_action_role
-#   sensitive = false
-# }
-
 output "oidc_provider_arn" {
   value     = module.eks-cluster.oidc_provider_arn
   sensitive = false

@@ -180,17 +180,17 @@ locals {
   }
 }
 
-module "monitored_service" {
-  source              = "../../monitored_service"
-  dd_service          = "${var.eks_cluster_id} K8s Core"
-  opsgenie_dd_service = "${var.eks_cluster_id} K8s Core"
-  alerts              = local.alerts
-  mute_dd_alerts      = var.mute_dd_alerts
-  opsgenie_tags       = local.opsgenie_tags
+# module "monitored_service" {
+#   source              = "../../monitored_service"
+#   dd_service          = "${var.eks_cluster_id} K8s Core"
+#   opsgenie_dd_service = "${var.eks_cluster_id} K8s Core"
+#   alerts              = local.alerts
+#   mute_dd_alerts      = var.mute_dd_alerts
+#   opsgenie_tags       = local.opsgenie_tags
 
-  ops_genie_owner_team = var.ops_genie_owner_team
+#   ops_genie_owner_team = var.ops_genie_owner_team
 
-  env     = var.tags.env
-  project = var.tags.project
-  service = var.tags.service
-}
+#   env     = var.tags.env
+#   project = var.tags.project
+#   service = var.tags.service
+# }

@@ -14,14 +14,15 @@ terraform {
     tls = {
       source = "hashicorp/tls"
     }
-    rancher2 = {
-      source  = "rancher/rancher2"
-      version = "3.1.1"
-    }
+    //TODO - Will we be using rancher?
+    # rancher2 = {
+    #   source  = "rancher/rancher2"
+    #   version = "3.1.1"
+    # }
   }
   required_version = ">= 1.3"
 }
 
-provider "rancher2" {
-  timeout = "30m"
-}
+# provider "rancher2" {
+#   timeout = "30m"
+# }

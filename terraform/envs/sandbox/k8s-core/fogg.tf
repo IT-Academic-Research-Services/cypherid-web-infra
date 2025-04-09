@@ -110,85 +110,85 @@ provider "aws" {
 }
 
 
-provider "aws" {
-  alias   = "czi-si-us-west-2"
-  region  = "us-west-2"
-  profile = "default"
+# provider "aws" {
+#   alias   = "czi-si-us-west-2"
+#   region  = "us-west-2"
+#   profile = "default"
 
-  # this is the new way of injecting AWS tags to all AWS resources
-  # var.tags should be considered deprecated
-  default_tags {
-    tags = {
-      TFC_RUN_ID                               = coalesce(var.TFC_RUN_ID, "unknown")
-      TFC_WORKSPACE_NAME                       = coalesce(var.TFC_WORKSPACE_NAME, "unknown")
-      TFC_WORKSPACE_SLUG                       = coalesce(var.TFC_WORKSPACE_SLUG, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_BRANCH     = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_BRANCH, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_TAG        = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_TAG, "unknown")
-      TFC_PROJECT_NAME                         = coalesce(var.TFC_PROJECT_NAME, "unknown")
-      project                                  = coalesce(var.tags.project, "unknown")
-      env                                      = coalesce(var.tags.env, "unknown")
-      service                                  = coalesce(var.tags.service, "unknown")
-      owner                                    = coalesce(var.tags.owner, "unknown")
-      managedBy                                = "terraform"
-    }
-  }
-  allowed_account_ids = ["626314663667"]
-}
-
-
-provider "aws" {
-  alias   = "czi-si-us-east-1"
-  region  = "us-east-1"
-  profile = "default"
-
-  # this is the new way of injecting AWS tags to all AWS resources
-  # var.tags should be considered deprecated
-  default_tags {
-    tags = {
-      TFC_RUN_ID                               = coalesce(var.TFC_RUN_ID, "unknown")
-      TFC_WORKSPACE_NAME                       = coalesce(var.TFC_WORKSPACE_NAME, "unknown")
-      TFC_WORKSPACE_SLUG                       = coalesce(var.TFC_WORKSPACE_SLUG, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_BRANCH     = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_BRANCH, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_TAG        = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_TAG, "unknown")
-      TFC_PROJECT_NAME                         = coalesce(var.TFC_PROJECT_NAME, "unknown")
-      project                                  = coalesce(var.tags.project, "unknown")
-      env                                      = coalesce(var.tags.env, "unknown")
-      service                                  = coalesce(var.tags.service, "unknown")
-      owner                                    = coalesce(var.tags.owner, "unknown")
-      managedBy                                = "terraform"
-    }
-  }
-  allowed_account_ids = ["626314663667"]
-}
+#   # this is the new way of injecting AWS tags to all AWS resources
+#   # var.tags should be considered deprecated
+#   default_tags {
+#     tags = {
+#       TFC_RUN_ID                               = coalesce(var.TFC_RUN_ID, "unknown")
+#       TFC_WORKSPACE_NAME                       = coalesce(var.TFC_WORKSPACE_NAME, "unknown")
+#       TFC_WORKSPACE_SLUG                       = coalesce(var.TFC_WORKSPACE_SLUG, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_BRANCH     = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_BRANCH, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_TAG        = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_TAG, "unknown")
+#       TFC_PROJECT_NAME                         = coalesce(var.TFC_PROJECT_NAME, "unknown")
+#       project                                  = coalesce(var.tags.project, "unknown")
+#       env                                      = coalesce(var.tags.env, "unknown")
+#       service                                  = coalesce(var.tags.service, "unknown")
+#       owner                                    = coalesce(var.tags.owner, "unknown")
+#       managedBy                                = "terraform"
+#     }
+#   }
+#   allowed_account_ids = ["626314663667"]
+# }
 
 
-provider "aws" {
-  alias   = "czi-si"
-  region  = "us-west-2"
-  profile = "default"
+# provider "aws" {
+#   alias   = "czi-si-us-east-1"
+#   region  = "us-east-1"
+#   profile = "default"
 
-  # this is the new way of injecting AWS tags to all AWS resources
-  # var.tags should be considered deprecated
-  default_tags {
-    tags = {
-      TFC_RUN_ID                               = coalesce(var.TFC_RUN_ID, "unknown")
-      TFC_WORKSPACE_NAME                       = coalesce(var.TFC_WORKSPACE_NAME, "unknown")
-      TFC_WORKSPACE_SLUG                       = coalesce(var.TFC_WORKSPACE_SLUG, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_BRANCH     = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_BRANCH, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA, "unknown")
-      TFC_CONFIGURATION_VERSION_GIT_TAG        = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_TAG, "unknown")
-      TFC_PROJECT_NAME                         = coalesce(var.TFC_PROJECT_NAME, "unknown")
-      project                                  = coalesce(var.tags.project, "unknown")
-      env                                      = coalesce(var.tags.env, "unknown")
-      service                                  = coalesce(var.tags.service, "unknown")
-      owner                                    = coalesce(var.tags.owner, "unknown")
-      managedBy                                = "terraform"
-    }
-  }
-  allowed_account_ids = ["626314663667"]
-}
+#   # this is the new way of injecting AWS tags to all AWS resources
+#   # var.tags should be considered deprecated
+#   default_tags {
+#     tags = {
+#       TFC_RUN_ID                               = coalesce(var.TFC_RUN_ID, "unknown")
+#       TFC_WORKSPACE_NAME                       = coalesce(var.TFC_WORKSPACE_NAME, "unknown")
+#       TFC_WORKSPACE_SLUG                       = coalesce(var.TFC_WORKSPACE_SLUG, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_BRANCH     = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_BRANCH, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_TAG        = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_TAG, "unknown")
+#       TFC_PROJECT_NAME                         = coalesce(var.TFC_PROJECT_NAME, "unknown")
+#       project                                  = coalesce(var.tags.project, "unknown")
+#       env                                      = coalesce(var.tags.env, "unknown")
+#       service                                  = coalesce(var.tags.service, "unknown")
+#       owner                                    = coalesce(var.tags.owner, "unknown")
+#       managedBy                                = "terraform"
+#     }
+#   }
+#   allowed_account_ids = ["626314663667"]
+# }
+
+
+# provider "aws" {
+#   alias   = "czi-si"
+#   region  = "us-west-2"
+#   profile = "default"
+
+#   # this is the new way of injecting AWS tags to all AWS resources
+#   # var.tags should be considered deprecated
+#   default_tags {
+#     tags = {
+#       TFC_RUN_ID                               = coalesce(var.TFC_RUN_ID, "unknown")
+#       TFC_WORKSPACE_NAME                       = coalesce(var.TFC_WORKSPACE_NAME, "unknown")
+#       TFC_WORKSPACE_SLUG                       = coalesce(var.TFC_WORKSPACE_SLUG, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_BRANCH     = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_BRANCH, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_COMMIT_SHA, "unknown")
+#       TFC_CONFIGURATION_VERSION_GIT_TAG        = coalesce(var.TFC_CONFIGURATION_VERSION_GIT_TAG, "unknown")
+#       TFC_PROJECT_NAME                         = coalesce(var.TFC_PROJECT_NAME, "unknown")
+#       project                                  = coalesce(var.tags.project, "unknown")
+#       env                                      = coalesce(var.tags.env, "unknown")
+#       service                                  = coalesce(var.tags.service, "unknown")
+#       owner                                    = coalesce(var.tags.owner, "unknown")
+#       managedBy                                = "terraform"
+#     }
+#   }
+#   allowed_account_ids = ["626314663667"]
+# }
 
 
 provider "assert" {}

@@ -266,6 +266,7 @@ envs:
             - eks
             - route53
         module_source: terraform/modules/k8s-core-v5.5.1
+        module_name: k8s-core
         extra_vars:
           ie_ops_genie_team: Core Infra Eng
         variables:
