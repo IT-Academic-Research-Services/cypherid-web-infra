@@ -1,6 +1,6 @@
-locals {
-  zone_id = data.terraform_remote_state.idseq-dev.outputs.sandbox_idseq_net_zone_id
-}
+# locals {
+#   zone_id = data.terraform_remote_state.idseq-dev.outputs.sandbox_idseq_net_zone_id
+# }
 
 data "aws_iam_policy_document" "idseq-web-assume-role" {
   statement {
@@ -24,10 +24,10 @@ resource "aws_iam_role" "idseq-web" {
 # access to it.
 # https://github.com/chanzuckerberg/SSRFs-Up
 data "aws_caller_identity" "current" {}
-resource "aws_iam_role_policy_attachment" "ssrfs-invoke" {
-  role       = aws_iam_role.idseq-web.name
-  policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/ssrfs-up-invoke"
-}
+# resource "aws_iam_role_policy_attachment" "ssrfs-invoke" {
+#   role       = aws_iam_role.idseq-web.name
+#   policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/ssrfs-up-invoke"
+# }
 
 data "aws_iam_policy_document" "idseq-web" {
   statement {

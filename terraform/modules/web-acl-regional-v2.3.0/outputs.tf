@@ -13,18 +13,18 @@ output "scope" {
   description = "The ACL scope. It can be REGIONAL or CLOUDFRONT"
 }
 
-output "panther-role" {
-  value = var.enable_panther_ingest ? {
-    "arn" : module.panther-s3[0].role.arn,
-    "name" : module.panther-s3[0].role.name,
-    "kms_key_id" : module.panther-s3[0].kms_id,
-    } : {
-    "arn" : "not configured",
-    "name" : "not configured",
-    "kms_key_id" : "not configured",
-  }
-  description = "This role helps CZI's SecEng Team measure the effectiveness of the ACL. Ask #help-infosec in CZI Slack if you have questions."
-}
+# output "panther-role" {
+#   value = var.enable_panther_ingest ? {
+#     "arn" : module.panther-s3[0].role.arn,
+#     "name" : module.panther-s3[0].role.name,
+#     "kms_key_id" : module.panther-s3[0].kms_id,
+#     } : {
+#     "arn" : "not configured",
+#     "name" : "not configured",
+#     "kms_key_id" : "not configured",
+#   }
+#   description = "This role helps CZI's SecEng Team measure the effectiveness of the ACL. Ask #help-infosec in CZI Slack if you have questions."
+# }
 
 output "web_acl_log_bucket" {
   value = {

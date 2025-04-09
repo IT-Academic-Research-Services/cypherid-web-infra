@@ -1,6 +1,6 @@
 locals {
   czid_subdomain     = "assets"
-  czid_domain        = "${var.env}.czid.org"
+  czid_domain        = "${var.env}.ucsf.czid.org"
   czid_full_domain   = "${local.czid_subdomain}.${local.czid_domain}"
   czid_origin_domain = local.czid_domain
 

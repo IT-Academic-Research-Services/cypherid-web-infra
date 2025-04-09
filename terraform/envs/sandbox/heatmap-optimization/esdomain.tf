@@ -27,7 +27,7 @@ resource "aws_cloudwatch_log_resource_policy" "elasticsearch-log-publishing-poli
 
 
 module "elasticsearch" {
-  source = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-elasticsearch?ref=v0.199.1"
+  source = "../../../modules/aws-elasticsearch-v0.199.1"
 
   project = "czid"
   env     = var.env

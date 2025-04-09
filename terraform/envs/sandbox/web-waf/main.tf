@@ -1,5 +1,5 @@
 module "web-service-waf" {
-  source = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/web-acl-regional?ref=web-acl-regional-v2.3.0"
+  source = "../../../modules/web-acl-regional-v2.3.0"
   tags = {
     project   = var.project
     env       = var.env
@@ -53,18 +53,18 @@ module "web-service-waf" {
   }
 }
 
-module "snowflake-ingest" {
-  source        = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/snowflake-stage-s3-role?ref=v0.420.0"
-  project       = var.project
-  env           = var.env
-  service       = var.component
-  owner         = var.owner
-  bucket_name   = module.web-service-waf.web_acl_log_bucket.bucket
-  bucket_prefix = "/AWSLogs"
+# module "snowflake-ingest" {
+#   source        = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/snowflake-stage-s3-role?ref=v0.420.0"
+#   project       = var.project
+#   env           = var.env
+#   service       = var.component
+#   owner         = var.owner
+#   bucket_name   = module.web-service-waf.web_acl_log_bucket.bucket
+#   bucket_prefix = "/AWSLogs"
 
-  aws_iam_principal = var.snowflake_iam_principal // Defined in Terraform Workplace settings in TFE
-  external_ids      = var.snowflake_external_ids
-}
+#   aws_iam_principal = var.snowflake_iam_principal // Defined in Terraform Workplace settings in TFE
+#   external_ids      = var.snowflake_external_ids
+# }
 
 resource "aws_wafv2_web_acl_association" "web" {
   resource_arn = local.alb_arn

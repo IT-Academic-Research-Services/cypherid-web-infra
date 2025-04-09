@@ -295,7 +295,7 @@ envs:
             - cloud-env
             - k8s-core
             - eks
-        module_source: git@github.com:chanzuckerberg/happy//terraform/modules/happy-env-eks?ref=happy-env-eks-v4.12.2
+        module_source: terraform/modules/happy-env-eks-v4.12.2
         variables:
           - ecr_repos
           - s3_buckets
@@ -303,25 +303,9 @@ envs:
           - additional_secrets
           - okta_teams
         module_name: happy
-        provider_aliases:
-          "aws.czi-si": aws.czi-si
         providers:
           aws:
             version: ~> 5.14.0
-            additional_providers:
-              czi-si:
-                account_id: "626314663667"
-                region: us-west-2
-          datadog:
-            custom_provider: true
-            version: 3.20.0
-          opsgenie:
-            version: 0.6.14
-          okta:
-            custom_provider: true
-            version: 3.41.0
-            registry_namespace: okta
-            org_name: czi-prod
       db:
         depends_on:
           accounts: []
@@ -344,9 +328,6 @@ envs:
             - idseq-dev
           components: []
       heatmap-optimization:
-        providers:
-          aws:
-            version: 4.34.0
         depends_on:
           accounts: []
           components:
@@ -375,9 +356,9 @@ envs:
             - redis
             # - heatmap-optimization
       web-waf:
-        providers:
-          aws:
-            version: 4.44.0
+        depends_on:
+          accounts: []
+          components: []
     depends_on:
       accounts:
         - idseq-dev
