@@ -180,7 +180,7 @@ resource "aws_launch_template" "ecs" {
     }
   }
 
-  //user_data = module.user_data.script
+  user_data = module.user_data.script
 
   lifecycle {
     create_before_destroy = true
@@ -201,6 +201,8 @@ resource "aws_launch_template" "ecs" {
     http_tokens                 = "required"
     http_put_response_hop_limit = 2
   }
+
+  update_default_version = true
 }
 
 resource "aws_autoscaling_group" "ecs" {
@@ -326,15 +328,15 @@ data "template_file" "user_data" {
   }
 }
 
-# module "user_data" {
-#   source          = "../instance-cloud-init-script"
-#   user_script     = data.template_file.user_data.rendered
-#   user_boothook   = data.template_file.boothook.rendered
-#   users           = var.ssh_users
-#   datadog_api_key = var.datadog_api_key
+module "user_data" {
+  source          = "../instance-cloud-init-script-v0.484.6"
+  user_script     = data.template_file.user_data.rendered
+  user_boothook   = data.template_file.boothook.rendered
+  //users           = var.ssh_users
+  datadog_api_key = "" //var.datadog_api_key
 
-#   project = var.project
-#   env     = var.env
-#   service = var.service
-#   owner   = var.owner
-# }
+  project = var.project
+  env     = var.env
+  service = var.service
+  owner   = var.owner
+}

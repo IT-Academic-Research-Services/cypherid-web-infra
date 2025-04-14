@@ -19,6 +19,15 @@ resource "aws_iam_role" "idseq-web" {
   assume_role_policy = data.aws_iam_policy_document.idseq-web-assume-role.json
 }
 
+resource "aws_ecr_repository" "web-repository" {
+  name                 = "idseq-web"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 # Attaching these permissions for the SSRF protections provided by ssrfs-up.
 # The policy "ssrfs-up-invoke" is added to the baseline so all accounts have
 # access to it.
