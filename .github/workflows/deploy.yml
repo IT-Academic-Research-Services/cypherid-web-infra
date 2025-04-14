@@ -18,6 +18,7 @@ on:
 env:
   AWS_REGION : us-west-2
   DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+  TF_CLI_ARGS_apply: "--auto-approve"
 
 permissions:
   id-token: write
@@ -32,7 +33,7 @@ jobs:
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::941377154785:role/gha-seqtoid
+          role-to-assume: arn:aws:iam::941377154785:role/gha-seqtoid #TODO - Parameterize AWS account ID based on deploy environment
           role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Profile
@@ -47,11 +48,49 @@ jobs:
           aws sts get-caller-identity
       - name: Set up runner
         run: source scripts/init_cd_runner.sh
-      - name: Terraform Init
+      - name: Terraform Init and Apply account templates
+        run: |
+          cd terraform/accounts/idseq-dev
+          terraform init
+          terraform apply
+      - name: Terraform Init and Apply environment templates
         run: |
           cd terraform/envs/${{ env.DEPLOYMENT_ENVIRONMENT }}
           terraform -chdir=cloud-env init
-      - name: Terraform Plan
-        run: |
-          cd terraform/envs/${{ env.DEPLOYMENT_ENVIRONMENT }}
-          terraform -chdir=cloud-env plan
+          terraform -chdir=cloud-env apply
+
+          terraform -chdir=elb-access-logs init
+          terraform -chdir=elb-access-logs apply
+
+          terraform -chdir=maintenance init
+          terraform -chdir=maintenance apply
+
+          terraform -chdir=heatmap-optimization init
+          terraform -chdir=heatmap-optimization apply
+
+          terraform -chdir=db init
+          terraform -chdir=db apply
+
+          terraform -chdir=ecs init
+          terraform -chdir=ecs apply
+
+          terraform -chdir=redis init
+          terraform -chdir=redis apply
+
+          terraform -chdir=web init
+          terraform -chdir=web apply
+
+          terraform -chdir=web-waf init
+          terraform -chdir=web-waf apply
+
+          terraform -chdir=resque init
+          terraform -chdir=resque apply
+
+          terraform -chdir=eks init
+          terraform -chdir=eks apply
+
+          terraform -chdir=k8s-core init
+          terraform -chdir=k8s-core apply
+
+          terraform -chdir=happy init
+          terraform -chdir=happy apply
