@@ -12,8 +12,8 @@ module "ecs-cluster" {
   env     = var.env
   ami     = "ami-0010b929226fe8eba" //TODO - pull dynamically - aws ssm get-parameters --names /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended --region us-east-1
 
-  min_servers                        = 4
-  max_servers                        = 20
+  min_servers                        = 2
+  max_servers                        = 3
   cluster_asg_rolling_interval_hours = 0
 
   off_hour_utc = local.off_hour_utc
