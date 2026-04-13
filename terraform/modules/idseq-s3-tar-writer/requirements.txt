@@ -1,0 +1,18 @@
+# You should not edit this file directly.  Instead, you should edit requirements.txt.in.
+awscli==1.16.263
+boto3==1.9.253
+botocore==1.12.253
+colorama==0.4.1
+docutils==0.15.2
+jmespath==0.9.4
+pyasn1==0.4.7
+pycryptodome==3.11.0
+python-dateutil==2.8.0
+PyYAML==5.1.2
+rsa==3.4.2
+s3transfer==0.2.1
+six==1.12.0
+smart-open==5.1.0
+stream-unzip==0.0.65
+urllib3==1.25.6
+zipstream==1.1.4

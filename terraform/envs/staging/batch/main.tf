@@ -1,13 +1,3 @@
-locals {
-  tags = {
-    project   = var.project
-    env       = var.env
-    service   = var.component
-    owner     = var.owner
-    managedBy = "terraform"
-  }
-}
-
 data "aws_region" "current" {}
 
 resource "aws_batch_job_queue" "idseq-himem" {
@@ -25,7 +15,7 @@ resource "aws_batch_job_queue" "idseq-lomem" {
 }
 
 module "idseq-batch" {
-  source      = "github.com/chanzuckerberg/cztack//aws-iam-instance-profile?ref=v0.41.0"
+  source      = "github.com/chanzuckerberg/cztack//aws-iam-instance-profile?ref=v0.104.2"
   name_prefix = "idseq-batch-${var.env}"
 }
 
@@ -60,10 +50,7 @@ data "aws_iam_policy_document" "idseq-batch" {
       "arn:aws:s3:::${var.s3_bucket_public_references}",
       "arn:aws:s3:::${var.s3_bucket_samples}",
       # We use staging batch to process samples in development
-      "arn:aws:s3:::idseq-samples-development",
-      # IDSEQ-2933 - Giving access to both buckets so migration will not causing disruption during the switch
-      #              The following line can be removed after public references are fully migrated:
-      "arn:aws:s3:::idseq-database",
+      # "arn:aws:s3:::idseq-samples-development",
     ]
   }
 
@@ -77,10 +64,7 @@ data "aws_iam_policy_document" "idseq-batch" {
       "arn:aws:s3:::${var.s3_bucket_samples}/*",
       "arn:aws:s3:::${var.s3_bucket_secrets}/*",
       # We use staging batch to process samples in development
-      "arn:aws:s3:::idseq-samples-development/*",
-      # IDSEQ-2933 - Giving access to both buckets so migration will not causing disruption during the switch
-      #              The following line can be removed after public references are fully migrated:
-      "arn:aws:s3:::idseq-database/*",
+      # "arn:aws:s3:::idseq-samples-development/*",
     ]
   }
 
@@ -93,7 +77,7 @@ data "aws_iam_policy_document" "idseq-batch" {
     resources = [
       "arn:aws:s3:::${var.s3_bucket_samples}/*",
       # We use staging batch to process samples in development
-      "arn:aws:s3:::idseq-samples-development/*",
+      # "arn:aws:s3:::idseq-samples-development/*",
     ]
   }
 }
@@ -120,10 +104,10 @@ resource "aws_iam_role" "aws_batch_service_role" {
   assume_role_policy = data.aws_iam_policy_document.aws_batch_service_role.json
 }
 
-module "orgwide-secrets" {
-  source    = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-iam-policy-orgwide-secrets?ref=v0.66.0"
-  role_name = aws_iam_role.aws_batch_service_role.name
-}
+# module "orgwide-secrets" {
+#   source    = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-iam-policy-orgwide-secrets?ref=v0.66.0"
+#   role_name = aws_iam_role.aws_batch_service_role.name
+# }
 
 resource "aws_iam_role_policy_attachment" "aws_batch_service_role" {
   role       = aws_iam_role.aws_batch_service_role.name
@@ -151,20 +135,20 @@ resource "aws_batch_compute_environment" "idseq_244GB_32CPU" {
       "r5d.8xlarge",
     ]
 
-    ec2_key_pair       = "idseq-${var.env}"
+    # ec2_key_pair       = "idseq-${var.env}"
     max_vcpus          = 1024
     min_vcpus          = 0
     security_group_ids = [random_id.batch.keepers.security_group_id]
     subnets            = data.terraform_remote_state.cloud-env.outputs.private_subnets
     type               = "EC2"
+    tags               = var.tags
 
     # image_id           =  random_id.batch.keepers.image_id
-    tags = local.tags
   }
 
   service_role = aws_iam_role.aws_batch_service_role.arn
   type         = "MANAGED"
-  depends_on   = ["aws_iam_role_policy_attachment.aws_batch_service_role"]
+  depends_on   = [aws_iam_role_policy_attachment.aws_batch_service_role]
 
   lifecycle {
     ignore_changes = [
@@ -183,7 +167,7 @@ resource "aws_batch_compute_environment" "idseq_122GB_16CPU" {
       "r5d.4xlarge",
     ]
 
-    ec2_key_pair       = "idseq-${var.env}"
+    # ec2_key_pair       = "idseq-${var.env}"
     max_vcpus          = 1024
     min_vcpus          = 0
     security_group_ids = [random_id.batch.keepers.security_group_id]
@@ -195,7 +179,7 @@ resource "aws_batch_compute_environment" "idseq_122GB_16CPU" {
 
   service_role = aws_iam_role.aws_batch_service_role.arn
   type         = "MANAGED"
-  depends_on   = ["aws_iam_role_policy_attachment.aws_batch_service_role"]
+  depends_on   = [aws_iam_role_policy_attachment.aws_batch_service_role]
 
   lifecycle {
     ignore_changes = [

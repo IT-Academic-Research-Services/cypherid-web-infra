@@ -52,34 +52,66 @@ variable "additional_addons" {
   type = object({
     kiam : optional(bool, false)
     nginx_ingress : optional(object({
-      enabled   = optional(bool, false)
-      namespace = optional(string, "nginx-encrypted-ingress")
-      version   = optional(string, "4.7.0")
+      enabled                    = optional(bool, false)
+      namespace                  = optional(string, "nginx-encrypted-ingress")
+      version                    = optional(string, "4.12.1")
+      enable_metrics             = optional(bool, false)
+      enable_prometheus_scraping = optional(bool, false)
+      enable_autoscaling         = optional(bool, true)
+      min_replicas               = optional(number, 3)
+      max_replicas               = optional(number, 10)
+      enable_proxy_protocol_v2   = optional(bool, false)
+      extra_config_settings      = optional(map(string), {})
+      extra_args                 = optional(map(string), {})
+      replicas                   = optional(number, 3)
+      enable_geo_ip_config       = optional(bool, false)
+      external_traffic_policy    = optional(string, "Cluster")
+      cluster_geo_restriction = optional(object({
+        allow   = list(string)
+        deny    = list(string)
+        default = string
+        }), {
+        allow   = []
+        deny    = ["KP", "CU", "IR", "UA"]
+        default = "allow"
+      })
+      maxmind_license_key = optional(string, null)
+      proxy_body_size     = optional(string, "10M")
+      linkerd_annotations = optional(object({
+        proxy_wait_before_exit_seconds = optional(string, "45")
+        linkerd_inject                 = optional(string, "enabled")
+      }), {})
     }), {})
     linkerd : optional(object({ // How to configure: https://czi.atlassian.net/wiki/spaces/SECENG/pages/2743631992/Linkerd+End+to+End+Encryption+and+Service+Level+Authorization+for+Happy+EKS+services
       enabled                     = optional(bool, false)
-      crd_version                 = optional(string, "1.6.1")
-      control_plane_version       = optional(string, "1.12.7")
+      crd_version                 = optional(string, "2024.11.8")
+      control_plane_version       = optional(string, "2024.11.8")
       tls_private_cert_param_path = optional(string, "")
       tls_private_key_param_path  = optional(string, "")
     }), {})
+
+    # DEPRECATED: [JH] This variable no longer will be used to create datadog or opsgenie alerts
+    # Those terraform resources have been removed from this module. The variable remains
+    # for backwards compatibility.
     datadog : optional(object({
-      api_key              = string
-      agent_tag            = optional(string, "7.53.0")
-      mute                 = optional(bool, false)
-      ops_genie_owner_team = string
-      }), {
-      api_key              = ""
-      mute                 = true
-      ops_genie_owner_team = ""
+      api_key              = optional(string, "")       # DEPRECATED
+      agent_tag            = optional(string, "7.53.0") # DEPRECATED
+      mute                 = optional(bool, false)      # DEPRECATED
+      ops_genie_owner_team = optional(string, "")       # DEPRECATED
+      }), {                                             # DEPRECATED
+      api_key              = ""                         # DEPRECATED
+      mute                 = true                       # DEPRECATED
+      ops_genie_owner_team = ""                         # DEPRECATED
     })
-    rancher : optional(object(
-      {
-        enabled           = optional(bool, true)
-        provisioner_image = optional(string, "rancher/hyperkube:v1.26.4-rancher2")
-        cluster_monitoring = optional(object({
-          enabled       = optional(bool, true)
-          chart_version = optional(string, "102.0.3+up40.1.2")
+    # DEPRECATED: [AL] This variable no longer will be used to create rancher integrations.
+    # Those terraform resources have been removed from this module. The variable remains
+    # for backwards compatibility.
+    rancher : optional(object(                                 # DEPRECATED
+      {                                                        # DEPRECATED
+        enabled = optional(bool, false)                        # DEPRECATED
+        cluster_monitoring = optional(object({                 # DEPRECATED
+          enabled       = optional(bool, false)                # DEPRECATED
+          chart_version = optional(string, "102.0.3+up40.1.2") # DEPRECATED
         }), {})
       }
     ), {})

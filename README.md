@@ -1,3 +1,110 @@
+Instructions:
+
+# Setup credentials
+
+* Edit file `~/.aws/credentials`
+  * Add sections with credentials for `[idseq-<env>]`
+  * Acquire values from: https://d-92674c9b78.awsapps.com/start/#/?tab=accounts
+```ini
+[idseq-staging]
+aws_access_key_id=<access_key>
+aws_secret_access_key=<secret>
+aws_session_token=<token>
+```
+
+* Login via SSO (why do we need both? Don't ask)
+  * You need both sandbox _and_ <env> as the root DNS is housed in idseq-sandbox
+  * ***TODO: We REALLY need to move this into PROD, or some global account!***
+```bash
+aws configure sso --profile idseq-sandbox
+aws configure sso --profile idseq-<env>
+```
+
+* Set environmental variable(s)
+```bash
+export AWS_DEFAULT_PROFILE=idseq-<env>
+```
+
+# Initialize Fogg and Terraform executables (one-time setup)
+```bash
+make setup
+```
+
+# Run Fogg
+```bash
+./fogg/bin/fogg apply
+```
+
+# Create remote Statefile (one-time setup, per environment):
+```bash
+cd terraform/accounts/idseq-<env>/
+make apply
+cd -
+```
+
+Deploy Terraform components
+```bash
+cd terraform/envs/<env>/route53
+make apply
+
+cd ../params-secrets
+make apply
+
+cd ../auth0
+make apply
+
+cd ../cloud-env
+make apply
+
+cd ../elb-access-logs
+make apply
+
+cd ../maintenance
+make apply
+
+cd ../heatmap-optimization
+make apply
+
+cd ../db
+make apply
+
+cd ../downloads
+make apply
+
+cd ../ecs
+make apply
+
+cd ../redis
+make apply
+
+cd ../web
+make apply
+
+cd ../web-waf
+make apply
+
+cd ../resque
+make apply
+
+cd ../eks
+make apply
+
+cd ../k8s-core
+make apply
+
+cd ../happy
+make apply
+
+cd ../access-management
+make apply
+
+cd ../batch
+make apply
+
+cd -
+```
+
+
 <!-- START -->
 ----
 

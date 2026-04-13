@@ -2,18 +2,10 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 
-export TERRAFORM_VERSION := 1.11.3
+export TERRAFORM_VERSION := 1.14.8
 export TFLINT_ENABLED := 0
 export TF_PLUGIN_CACHE_DIR := ../..//.terraform.d/plugin-cache
-export TF_BACKEND_KIND := s3
-
-export AWS_BACKEND_PROFILE := default
-
-
-export AWS_PROVIDER_PROFILE := default
-
-
-
+export TF_BACKEND_KIND := 
 
 include ../..//scripts/component.mk
 

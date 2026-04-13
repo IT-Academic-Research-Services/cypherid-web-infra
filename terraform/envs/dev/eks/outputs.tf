@@ -51,8 +51,23 @@ output "cluster_version" {
   sensitive = false
 }
 
+output "gh_action_role" {
+  value     = module.eks-cluster.gh_action_role
+  sensitive = false
+}
+
 output "oidc_provider_arn" {
   value     = module.eks-cluster.oidc_provider_arn
+  sensitive = false
+}
+
+output "s3_csi_role_arn" {
+  value     = module.eks-cluster.s3_csi_role_arn
+  sensitive = false
+}
+
+output "s3_csi_role_name" {
+  value     = module.eks-cluster.s3_csi_role_name
   sensitive = false
 }
 

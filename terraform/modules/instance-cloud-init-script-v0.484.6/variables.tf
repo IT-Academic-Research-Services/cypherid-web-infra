@@ -1,8 +1,8 @@
-# variable "users" {
-#   description = "A list of unix users to create on the instance. Created user defaults to sudo enabled."
-#   type        = list(object({ username : string, sudo_enabled : bool }))
-#   default     = []
-# }
+variable "users" {
+  description = "A list of unix users to create on the instance. Created user defaults to sudo enabled."
+  type        = list(object({ username : string, sudo_enabled : bool }))
+  default     = []
+}
 
 variable "user_script" {
   type        = string

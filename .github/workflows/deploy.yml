@@ -7,13 +7,13 @@ on:
       environment:
         description: 'The environment to which to deploy'
         required: true
-        type: string
-        default: 'sandbox'
-      profile-name:
-        description: 'The profile name to use for AWS CLI'
-        required: true
-        type: string
-        default: 'default'
+        type: environment
+        default: 'debug'
+#      profile-name:
+#        description: 'The profile name to use for AWS CLI'
+#        required: true
+#        type: string
+#        default: 'idseq-dev'
 
 env:
   AWS_REGION : us-west-2
@@ -29,68 +29,76 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Git clone the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
-          role-to-assume: arn:aws:iam::941377154785:role/gha-seqtoid #TODO - Parameterize AWS account ID based on deploy environment
-          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          role-to-assume: arn:aws:iam::${{ var.AWS_ACCOUNT_ID }}:role/czid-${{ inputs.environment }}-gh-actions-executor
+          #role-session-name: GitHub_to_AWS_via_FederatedOIDC
           aws-region: ${{ env.AWS_REGION }}
-      - name: Setup Profile
-        shell: bash
-        run: |
-              aws configure set region us-west-2 --profile ${{ inputs.profile-name }}
-              aws configure set aws_access_key_id ${{ env.AWS_ACCESS_KEY_ID }} --profile ${{ inputs.profile-name }}
-              aws configure set aws_secret_access_key ${{ env.AWS_SECRET_ACCESS_KEY }} --profile ${{ inputs.profile-name }}
-              aws configure set aws_session_token ${{ env.AWS_SESSION_TOKEN }} --profile ${{ inputs.profile-name }}
       - name: Sts GetCallerIdentity
         run: |
           aws sts get-caller-identity
-      - name: Set up runner
-        run: source scripts/init_cd_runner.sh
-      - name: Terraform Init and Apply account templates
-        run: |
-          cd terraform/accounts/idseq-dev
-          terraform init
-          terraform apply
       - name: Terraform Init and Apply environment templates
         run: |
-          cd terraform/envs/${{ env.DEPLOYMENT_ENVIRONMENT }}
-          terraform -chdir=cloud-env init
-          terraform -chdir=cloud-env apply
-
-          terraform -chdir=elb-access-logs init
-          terraform -chdir=elb-access-logs apply
-
-          terraform -chdir=maintenance init
-          terraform -chdir=maintenance apply
-
-          terraform -chdir=heatmap-optimization init
-          terraform -chdir=heatmap-optimization apply
-
-          terraform -chdir=db init
-          terraform -chdir=db apply
-
-          terraform -chdir=ecs init
-          terraform -chdir=ecs apply
-
-          terraform -chdir=redis init
-          terraform -chdir=redis apply
-
-          terraform -chdir=web init
-          terraform -chdir=web apply
-
-          terraform -chdir=web-waf init
-          terraform -chdir=web-waf apply
-
-          terraform -chdir=resque init
-          terraform -chdir=resque apply
-
-          terraform -chdir=eks init
-          terraform -chdir=eks apply
-
-          terraform -chdir=k8s-core init
-          terraform -chdir=k8s-core apply
-
-          terraform -chdir=happy init
-          terraform -chdir=happy apply
+          cd terraform/envs/${{ env.DEPLOYMENT_ENVIRONMENT }}/iam-password-policy/
+          make check-plan
+          cd -
+#      - name: Setup Profile
+#        shell: bash
+#        run: |
+#              aws configure set region us-west-2 --profile ${{ inputs.profile-name }}
+#              aws configure set aws_access_key_id ${{ env.AWS_ACCESS_KEY_ID }} --profile ${{ inputs.profile-name }}
+#              aws configure set aws_secret_access_key ${{ env.AWS_SECRET_ACCESS_KEY }} --profile ${{ inputs.profile-name }}
+#              aws configure set aws_session_token ${{ env.AWS_SESSION_TOKEN }} --profile ${{ inputs.profile-name }}
+#      - name: Sts GetCallerIdentity
+#        run: |
+#          aws sts get-caller-identity
+#      - name: Set up runner
+#        run: source scripts/init_cd_runner.sh
+#      - name: Terraform Init and Apply account templates
+#        run: |
+#          cd terraform/accounts/idseq-dev
+#          terraform init
+#          terraform apply
+#      - name: Terraform Init and Apply environment templates
+#        run: |
+#          cd terraform/envs/${{ env.DEPLOYMENT_ENVIRONMENT }}
+#          terraform -chdir=cloud-env init
+#          terraform -chdir=cloud-env apply
+#
+#          terraform -chdir=elb-access-logs init
+#          terraform -chdir=elb-access-logs apply
+#
+#          terraform -chdir=maintenance init
+#          terraform -chdir=maintenance apply
+#
+#          terraform -chdir=heatmap-optimization init
+#          terraform -chdir=heatmap-optimization apply
+#
+#          terraform -chdir=db init
+#          terraform -chdir=db apply
+#
+#          terraform -chdir=ecs init
+#          terraform -chdir=ecs apply
+#
+#          terraform -chdir=redis init
+#          terraform -chdir=redis apply
+#
+#          terraform -chdir=web init
+#          terraform -chdir=web apply
+#
+#          terraform -chdir=web-waf init
+#          terraform -chdir=web-waf apply
+#
+#          terraform -chdir=resque init
+#          terraform -chdir=resque apply
+#
+#          terraform -chdir=eks init
+#          terraform -chdir=eks apply
+#
+#          terraform -chdir=k8s-core init
+#          terraform -chdir=k8s-core apply
+#
+#          terraform -chdir=happy init
+#          terraform -chdir=happy apply

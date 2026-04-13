@@ -88,7 +88,7 @@ resource "aws_ecs_service" "job" {
     container_port   = var.container_port
   }
 
-  depends_on = ["module.alb"]
+  depends_on = [module.alb]
 }
 
 resource "aws_ecs_service" "unmanaged-job" {
@@ -110,7 +110,7 @@ resource "aws_ecs_service" "unmanaged-job" {
     ignore_changes = [task_definition]
   }
 
-  depends_on = ["module.alb"]
+  depends_on = [module.alb]
 }
 
 resource "aws_service_discovery_private_dns_namespace" "discovery" {
@@ -160,7 +160,7 @@ resource "aws_ecs_service" "fargate-job" {
     container_port   = var.container_port
   }
 
-  depends_on = ["module.alb"]
+  depends_on = [module.alb]
 }
 
 resource "aws_ecs_service" "unmanaged-fargate-job" {
@@ -188,7 +188,7 @@ resource "aws_ecs_service" "unmanaged-fargate-job" {
     ignore_changes = [task_definition]
   }
 
-  depends_on = ["module.alb"]
+  depends_on = [module.alb]
 }
 
 resource "aws_ecs_service" "fargate-discovery-job" {
@@ -216,7 +216,7 @@ resource "aws_ecs_service" "fargate-discovery-job" {
     registry_arn = element(aws_service_discovery_service.discovery.*.arn, 0)
   }
 
-  depends_on = ["module.alb"]
+  depends_on = [module.alb]
 }
 
 resource "aws_ecs_service" "unmanaged-fargate-discovery-job" {
@@ -248,7 +248,7 @@ resource "aws_ecs_service" "unmanaged-fargate-discovery-job" {
     registry_arn = element(aws_service_discovery_service.discovery.*.arn, 0)
   }
 
-  depends_on = ["module.alb"]
+  depends_on = [module.alb]
 }
 
 # Default container definition if no task_definition is provided.
@@ -264,7 +264,7 @@ data "template_file" "task" {
     "name": "${local.container_name}",
     "image": "library/busybox:1.29",
     "command": ["sh", "-c", "while true; do { echo -e 'HTTP/1.1 200 OK\r\n\nRunning stub server'; date; } | nc -l -p ${var.container_port}; done"],
-    "memoryReservation": 4,
+    "memoryReservation": 8,
     "portMappings": [
       {
         "containerPort": ${var.container_port},

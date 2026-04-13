@@ -2,14 +2,13 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 module "happy" {
-  source               = "git@github.com:chanzuckerberg/happy//terraform/modules/happy-env-eks?ref=happy-env-eks-v4.12.2"
+  source               = "../../../modules/happy-env-eks"
   additional_secrets   = local.additional_secrets
   base_zone_id         = local.base_zone_id
   cloud-env            = local.cloud-env
   ecr_repos            = local.ecr_repos
   eks-cluster          = local.eks-cluster
   github_actions_roles = local.github_actions_roles
-  okta_teams           = local.okta_teams
   s3_buckets           = local.s3_buckets
   tags                 = local.tags
 

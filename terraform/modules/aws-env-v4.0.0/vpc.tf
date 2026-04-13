@@ -60,7 +60,7 @@ data "assert_test" "azs_length_check_2" {
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.0.0"
+  version = "5.21.0"
 
   name = local.name
 
@@ -108,9 +108,9 @@ resource "aws_default_security_group" "default" {
 locals {
   split   = split("/", var.vpc_cidr)
   address = local.split[0]
-  prefix  = local.split[1]
+  # prefix  = local.split[1]
 
-  address_list = split(".", local.address)
+  # address_list = split(".", local.address)
 
   # We have to spell these out because there is no map-over-list function in terraform interpolations.
   # And we have to do the '0 +' thing in order to coerce the values into integers.

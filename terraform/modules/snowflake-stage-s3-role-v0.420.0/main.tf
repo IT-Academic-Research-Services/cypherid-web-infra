@@ -37,7 +37,7 @@ resource "aws_iam_role" "snowflake" {
 }
 
 module "aws-iam-policy-s3-reader" {
-  source = "../aws-iam-policy-s3-reader"
+  source = "../aws-iam-policy-s3-reader-v0.420.0"
 
   role_name     = aws_iam_role.snowflake.name
   bucket_name   = var.bucket_name

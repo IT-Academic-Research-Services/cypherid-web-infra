@@ -1,12 +1,6 @@
 module "web-service-waf" {
-  source = "../../../modules/web-acl-regional-v2.3.0"
-  tags = {
-    project   = var.project
-    env       = var.env
-    service   = "web"
-    owner     = var.owner
-    managedBy = var.owner
-  }
+  source                = "../../../modules/web-acl-regional-v3.3.1"
+  tags                  = var.tags # TODO: var.tags is deprecated
   enable_panther_ingest = false
   czi_baseline_count_rules = {
     CommonRuleSet = [

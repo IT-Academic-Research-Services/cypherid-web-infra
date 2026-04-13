@@ -9,8 +9,7 @@ locals {
   //     coerces both branches in a ternary to have the same type.
   //     Therefore something like a == "" ? "some string" : false
   //     gets yamlencoded as "false" (!!string) instead of false (!!bool)
-  //TODO - Removed users for now.
-  users         = {} //concat(local.default_ssh_users, var.users)
+  users         = concat(local.default_ssh_users, var.users)
   users_sudo    = [for user in local.users : user if tobool(lookup(user, "sudo_enabled", true)) == true]
   users_no_sudo = [for user in local.users : user if tobool(lookup(user, "sudo_enabled", true)) == false]
   cloudinit_users_sudo = [for user in local.users_sudo :

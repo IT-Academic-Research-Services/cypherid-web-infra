@@ -1,10 +1,14 @@
-variable "project" {}
+variable "project" {
+  type = string
+}
 
 variable "env" {
   type = string
 }
 
-variable "service" {}
+variable "service" {
+  type = string
+}
 
 variable "subnets" {
   description = "List of subnets for the ALB."
@@ -51,7 +55,9 @@ variable "idle_timeout" {
   default = 60
 }
 
-variable "owner" {}
+variable "owner" {
+  type = string
+}
 
 variable "internal" {
   type    = bool
@@ -77,5 +83,6 @@ variable "create_security_group" {
 
 variable "access_logs_bucket" {
   description = "S3 bucket to write alb access logs to."
+  type        = string
   default     = ""
 }

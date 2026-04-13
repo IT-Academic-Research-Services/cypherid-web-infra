@@ -22,7 +22,7 @@ addition to multi-AZ VPC with public and private subnets, it also includes an ss
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_vpc"></a> [vpc](#module\_vpc) | terraform-aws-modules/vpc/aws | 5.0.0 |
+| <a name="module_vpc"></a> [vpc](#module\_vpc) | terraform-aws-modules/vpc/aws | 5.21.0 |
 
 ## Resources
 
@@ -45,7 +45,6 @@ addition to multi-AZ VPC with public and private subnets, it also includes an ss
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_azs"></a> [azs](#input\_azs) | EC2 availability zones for the VPC. | `list(string)` | n/a | yes |
-| <a name="input_bastion_config"></a> [bastion\_config](#input\_bastion\_config) | Grouping the bastion-specific configuration variables in one variable instead of disjoint. <br>  Here's an example one to copy-paste:<pre>{<br>    zone_id = <from route53><br>    subdomain = "bastion"<br>    ssh_users = []<br>    instance_type = "t3.medium"<br>    allowed_cidr_blocks = {<br>      ingress: ["0.0.0.0/0"], <br>      egress: ["0.0.0.0/0"]<br>    }<br>    ebs_volume_type = "gp3"<br>    ssh_key_name = "infra-tools"<br>    czi_security_update = true<br>  }</pre> | <pre>object({<br>    zone_id             = string<br>    subdomain           = string<br>    ssh_users           = list(object({ username : string, sudo_enabled : bool }))<br>    instance_type       = string<br>    allowed_cidr_blocks = object({ ingress : list(string), egress : list(string) })<br>    ebs_volume_type     = string<br>    czi_security_update = bool<br>    ssh_key_name        = string<br>  })</pre> | `null` | no |
 | <a name="input_create_database_subnet_route_table"></a> [create\_database\_subnet\_route\_table](#input\_create\_database\_subnet\_route\_table) | Controls if separate route table for database should be created. | `bool` | `false` | no |
 | <a name="input_database_subnet_cidrs"></a> [database\_subnet\_cidrs](#input\_database\_subnet\_cidrs) | List of IP ranges for the database subnets. Must be same length as var.azs. | `list(string)` | n/a | yes |
 | <a name="input_datadog_api_key"></a> [datadog\_api\_key](#input\_datadog\_api\_key) | A datadog api key to enable the datadog agent on bastions. | `string` | `""` | no |
@@ -69,7 +68,7 @@ addition to multi-AZ VPC with public and private subnets, it also includes an ss
 | Name | Description |
 |------|-------------|
 | <a name="output_azs"></a> [azs](#output\_azs) | EC2 availability zones for the VPC. |
-| <a name="output_bastion_configuration"></a> [bastion\_configuration](#output\_bastion\_configuration) | If configured, return the bastion info here |
+| <a name="output_bastion_configuration"></a> [bastion\_configuration](#output\_bastion\_configuration) | No longer used, but Fogg auto-generates it no matter what. |
 | <a name="output_database_route_table_ids"></a> [database\_route\_table\_ids](#output\_database\_route\_table\_ids) | database route table ids |
 | <a name="output_database_subnet_group"></a> [database\_subnet\_group](#output\_database\_subnet\_group) | ID of database subnet group |
 | <a name="output_database_subnets"></a> [database\_subnets](#output\_database\_subnets) | List of IDs of database subnets |

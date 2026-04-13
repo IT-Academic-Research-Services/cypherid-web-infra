@@ -4,7 +4,7 @@ locals {
 }
 
 module "ecs-cluster" {
-  source = "../../../modules/ecs-cluster-v2.2.1"
+  source = "../../../modules/ecs-cluster-v2.4.0"
 
   region  = var.region
   project = var.project
@@ -19,8 +19,8 @@ module "ecs-cluster" {
   off_hour_utc = local.off_hour_utc
   on_hour_utc  = local.on_hour_utc
 
-  instance_type       = "c6a.xlarge" 
-  vpc_id              = data.terraform_remote_state.cloud-env.outputs.vpc_id
+  instance_type = "c6a.xlarge"
+  vpc_id        = data.terraform_remote_state.cloud-env.outputs.vpc_id
   //ssh_key_name        = "idseq-${var.env}"
   subnets             = data.terraform_remote_state.cloud-env.outputs.private_subnets
   allowed_cidr_blocks = [data.terraform_remote_state.cloud-env.outputs.vpc_cidr_block]
@@ -70,7 +70,7 @@ resource "aws_autoscaling_policy" "scale-down" {
 # }
 
 resource "aws_cloudwatch_metric_alarm" "memory-res-high" {
-  alarm_name  = "mem-res-high-ecs-${var.env}"
+  alarm_name          = "mem-res-high-ecs-${var.env}"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = "2"
   threshold           = "80"
@@ -123,7 +123,7 @@ resource "aws_cloudwatch_metric_alarm" "memory-res-high" {
 # }
 
 resource "aws_cloudwatch_metric_alarm" "memory-res-low" {
-  alarm_name  = "mem-res-low-ecs-${var.env}"
+  alarm_name          = "mem-res-low-ecs-${var.env}"
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = "2"
   threshold           = "60"

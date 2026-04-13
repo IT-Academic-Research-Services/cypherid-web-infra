@@ -1,7 +1,18 @@
-variable "project" {}
-variable "service" {}
-variable "env" {}
-variable "owner" {}
+variable "project" {
+  type = string
+}
+
+variable "service" {
+  type = string
+}
+
+variable "env" {
+  type = string
+}
+
+variable "owner" {
+  type = string
+}
 
 variable "domain_name" {
   type = string
@@ -14,6 +25,7 @@ variable "elasticsearch_version" {
 }
 
 variable "instance_count" {
+  type    = number
   default = 2
 }
 

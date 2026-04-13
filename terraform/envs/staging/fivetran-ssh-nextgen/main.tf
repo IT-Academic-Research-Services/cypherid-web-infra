@@ -54,7 +54,7 @@ resource "kubernetes_deployment_v1" "fivetran_ssh" {
 
           env {
             name  = "FIVETRAN_SSH_SERVER"
-            value = "35.235.101.244"
+            value = "34.48.124.245"
           }
 
           volume_mount {
@@ -84,7 +84,7 @@ resource "kubernetes_deployment_v1" "fivetran_ssh" {
 
           env {
             name  = "FIVETRAN_SSH_SERVER"
-            value = "35.235.101.244"
+            value = "34.48.124.245"
           }
 
           volume_mount {
@@ -114,7 +114,7 @@ resource "kubernetes_deployment_v1" "fivetran_ssh" {
 
           env {
             name  = "FIVETRAN_SSH_SERVER"
-            value = "35.235.101.244"
+            value = "34.48.124.245"
           }
 
           volume_mount {
@@ -146,5 +146,5 @@ module "parameters" {
   aws_ssm_iam_role_name = data.terraform_remote_state.k8s-core.outputs.aws_ssm_iam_role_name
 
   namespace   = data.terraform_remote_state.happy.outputs.namespace
-  secret_name = "fivetran-private-key"
+  secret_name = "fivetran-private-key-new"
 }

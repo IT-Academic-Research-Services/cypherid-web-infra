@@ -1,0 +1,26 @@
+serviceAccount:
+  annotations:
+    "eks.amazonaws.com/role-arn": ${role_arn}
+controller:
+  maxmindLicenseKey: ""
+  extraArgs:
+    maxmind-edition-ids: GeoLite2-Country
+  extraVolumeMounts:
+    - name: geoip
+      mountPath: /etc/ingress-controller/geoip
+  extraVolumes:
+    - name: geoip
+      emptyDir: {}
+  extraInitContainers:
+    - command:
+        - sh
+        - -c
+        - |
+          set -e
+          mkdir -p /etc/ingress-controller/geoip
+          aws s3 cp s3://argus-maxminddb/GeoLite2-Country.mmdb /etc/ingress-controller/geoip/GeoLite2-Country.mmdb
+      image: 533267185808.dkr.ecr.us-west-2.amazonaws.com/docker.io/central/amazon/aws-cli:2.31.28
+      name: geoip-downloader
+      volumeMounts:
+        - mountPath: /etc/ingress-controller/geoip
+          name: geoip

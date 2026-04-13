@@ -15,7 +15,7 @@
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_aws-iam-policy-s3-reader"></a> [aws-iam-policy-s3-reader](#module\_aws-iam-policy-s3-reader) | ../aws-iam-policy-s3-reader | n/a |
+| <a name="module_aws-iam-policy-s3-reader"></a> [aws-iam-policy-s3-reader](#module\_aws-iam-policy-s3-reader) | ../aws-iam-policy-s3-reader-v0.420.0 | n/a |
 
 ## Resources
 

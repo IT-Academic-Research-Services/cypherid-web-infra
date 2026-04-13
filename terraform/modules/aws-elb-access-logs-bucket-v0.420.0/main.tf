@@ -1,5 +1,5 @@
 locals {
-  bucket_name = "${var.project}-${var.env}-${var.service}-941377154785"
+  bucket_name = "${var.project}-${var.env}-${var.service}-${data.aws_caller_identity.current_account.account_id}"
 
   # account numbers source: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html#access-logging-bucket-permissions
   aws_elb_accounts = {
@@ -24,7 +24,7 @@ locals {
 }
 
 module "aws-bucket" {
-  source = "github.com/chanzuckerberg/cztack//aws-s3-private-bucket?ref=v0.60.1"
+  source = "github.com/chanzuckerberg/cztack//aws-s3-private-bucket?ref=v0.104.2"
 
   bucket_name   = local.bucket_name
   bucket_policy = data.aws_iam_policy_document.bucket_policy.json
@@ -32,6 +32,7 @@ module "aws-bucket" {
   env           = var.env
   service       = var.service
   owner         = var.owner
+  force_destroy = true
 }
 
 data "aws_iam_policy_document" "bucket_policy" {
@@ -50,3 +51,5 @@ data "aws_iam_policy_document" "bucket_policy" {
     effect = "Allow"
   }
 }
+
+data "aws_caller_identity" "current_account" {}

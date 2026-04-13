@@ -2,17 +2,12 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 output "additional_addons" {
-  value     = module.k8s-core-v5.5.1.additional_addons
+  value     = module.k8s-core.additional_addons
   sensitive = true
 }
 
-output "datadog_agent_hostname" {
-  value     = module.k8s-core-v5.5.1.datadog_agent_hostname
-  sensitive = false
-}
-
 output "default_namespace" {
-  value     = module.k8s-core-v5.5.1.default_namespace
+  value     = module.k8s-core.default_namespace
   sensitive = false
 }
 

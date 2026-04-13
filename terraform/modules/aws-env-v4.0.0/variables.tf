@@ -40,38 +40,38 @@ variable "database_subnet_cidrs" {
   type        = list(string)
 }
 
-variable "bastion_config" {
-  description = <<EOF
-  Grouping the bastion-specific configuration variables in one variable instead of disjoint. 
-  Here's an example one to copy-paste:
-  ```
-  {
-    zone_id = <from route53>
-    subdomain = "bastion"
-    ssh_users = []
-    instance_type = "t3.medium"
-    allowed_cidr_blocks = {
-      ingress: ["0.0.0.0/0"], 
-      egress: ["0.0.0.0/0"]
-    }
-    ebs_volume_type = "gp3"
-    ssh_key_name = "infra-tools"
-    czi_security_update = true
-  }
-  ```
-  EOF
-  type = object({
-    zone_id             = string
-    subdomain           = string
-    ssh_users           = list(object({ username : string, sudo_enabled : bool }))
-    instance_type       = string
-    allowed_cidr_blocks = object({ ingress : list(string), egress : list(string) })
-    ebs_volume_type     = string
-    czi_security_update = bool
-    ssh_key_name        = string
-  })
-  default = null
-}
+# variable "bastion_config" {
+#   description = <<EOF
+#   Grouping the bastion-specific configuration variables in one variable instead of disjoint.
+#   Here's an example one to copy-paste:
+#   ```
+#   {
+#     zone_id = <from route53>
+#     subdomain = "bastion"
+#     ssh_users = []
+#     instance_type = "t3.medium"
+#     allowed_cidr_blocks = {
+#       ingress: ["0.0.0.0/0"],
+#       egress: ["0.0.0.0/0"]
+#     }
+#     ebs_volume_type = "gp3"
+#     ssh_key_name = "infra-tools"
+#     czi_security_update = true
+#   }
+#   ```
+#   EOF
+#   type = object({
+#     zone_id             = string
+#     subdomain           = string
+#     ssh_users           = list(object({ username : string, sudo_enabled : bool }))
+#     instance_type       = string
+#     allowed_cidr_blocks = object({ ingress : list(string), egress : list(string) })
+#     ebs_volume_type     = string
+#     czi_security_update = bool
+#     ssh_key_name        = string
+#   })
+#   default = null
+# }
 
 variable "create_database_subnet_route_table" {
   type        = bool

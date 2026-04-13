@@ -163,7 +163,7 @@ resolvable from within the VPC; it is not publicly resolvable.
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_alb"></a> [alb](#module\_alb) | ../alb-http | n/a |
+| <a name="module_alb"></a> [alb](#module\_alb) | ../alb-http-v0.484.6 | n/a |
 | <a name="module_alb-sg"></a> [alb-sg](#module\_alb-sg) | terraform-aws-modules/security-group/aws | 4.3.0 |
 | <a name="module_container-sg"></a> [container-sg](#module\_container-sg) | terraform-aws-modules/security-group/aws | 4.3.0 |
 

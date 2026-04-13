@@ -1,14 +1,33 @@
+locals {
+  account_id          = var.aws_accounts.idseq-staging
+  s3_bucket_workflows = data.terraform_remote_state.web.outputs.s3_bucket_workflows
+}
 
 module "czid_web_private_gh_actions_executor" {
-  source = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-iam-role-github-action?ref=v0.199.1"
+  source = "github.com/chanzuckerberg/cztack//aws-iam-role-github-action?ref=v0.104.2"
 
-  tags = var.tags
+  tags = var.tags # TODO: var.tags is deprecated
 
   role = {
     name = "czid-${var.env}-gh-actions-executor"
   }
   authorized_github_repos = {
-    chanzuckerberg : ["czid-web-private", "idseq"]
+    # chanzuckerberg : ["czid-web-private", "idseq"]
+    # TODO: Remove this fork
+    "jsims-slower" : [
+      "cypherid-web-infra",
+      "cypherid-workflow-infra",
+      "seqtoid-graphql-federation-server",
+      "seqtoid-web",
+      "seqtoid-workflows"
+    ],
+    "IT-Academic-Research-Services" : [
+      "cypherid-web-infra",
+      "cypherid-workflow-infra",
+      "seqtoid-graphql-federation-server",
+      "seqtoid-web",
+      "seqtoid-workflows"
+    ]
   }
 }
 
@@ -60,17 +79,15 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:s3:::idseq-public-references",
-      "arn:aws:s3:::idseq-public-references/*",
+      "arn:aws:s3:::${var.s3_bucket_public_references}",
+      "arn:aws:s3:::${var.s3_bucket_public_references}/*",
       "arn:aws:s3:::czid-public-references",
       "arn:aws:s3:::czid-public-references/*",
-      "arn:aws:s3:::idseq-database",
-      "arn:aws:s3:::idseq-database/*",
-      "arn:aws:s3:::aegea-batch-jobs-${var.aws_accounts["idseq-dev"]}",
-      "arn:aws:s3:::aegea-batch-jobs-${var.aws_accounts["idseq-dev"]}/*",
+      "arn:aws:s3:::aegea-batch-jobs-${local.account_id}",
+      "arn:aws:s3:::aegea-batch-jobs-${local.account_id}/*",
       "arn:aws:s3:::idseq-${var.env}-*",
-      "arn:aws:s3:::idseq-bench",
-      "arn:aws:s3:::idseq-bench/*"
+      "arn:aws:s3:::${var.s3_bucket_idseq_bench}",
+      "arn:aws:s3:::${var.s3_bucket_idseq_bench}/*",
     ]
   }
 
@@ -82,16 +99,12 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:s3:::idseq-samples-development",
-      "arn:aws:s3:::idseq-samples-development/*",
-      "arn:aws:s3:::idseq-samples-staging",
-      "arn:aws:s3:::idseq-samples-staging/*",
-      "arn:aws:s3:::idseq-workflows",
-      "arn:aws:s3:::idseq-workflows/*",
-      "arn:aws:s3:::tfstate-${var.aws_accounts["idseq-dev"]}",
-      "arn:aws:s3:::tfstate-${var.aws_accounts["idseq-dev"]}/*",
-      "arn:aws:s3:::idseq-dev-heatmap",
-      "arn:aws:s3:::idseq-dev-heatmap/*",
+      "arn:aws:s3:::${var.s3_bucket_samples}",   # TODO: Is this necessary?
+      "arn:aws:s3:::${var.s3_bucket_samples}/*", # TODO: Is this necessary?
+      "arn:aws:s3:::${local.s3_bucket_workflows}",
+      "arn:aws:s3:::${local.s3_bucket_workflows}/*",
+      "arn:aws:s3:::tfstate-${local.account_id}",
+      "arn:aws:s3:::tfstate-${local.account_id}/*",
       "arn:aws:s3:::idseq-${var.env}-heatmap",
       "arn:aws:s3:::idseq-${var.env}-heatmap/*"
     ]
@@ -111,15 +124,15 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     actions = ["lambda:*"]
 
     resources = [
-      "arn:aws:lambda:*:${var.aws_accounts["idseq-dev"]}:function:idseq-*",
-      "arn:aws:lambda:*:${var.aws_accounts["idseq-dev"]}:function:cloudwatch-alerting-*"
+      "arn:aws:lambda:*:${local.account_id}:function:idseq-*",
+      "arn:aws:lambda:*:${local.account_id}:function:cloudwatch-alerting-*"
     ]
   }
   statement {
     actions = ["secretsmanager:*"]
 
     resources = [
-    "arn:aws:secretsmanager:*:${var.aws_accounts["idseq-dev"]}:secret:idseq/*"]
+    "arn:aws:secretsmanager:*:${local.account_id}:secret:idseq/*"]
   }
   statement {
     actions = [
@@ -127,11 +140,9 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:iam::${var.aws_accounts["idseq-dev"]}:role/idseq-dev-*",
-      "arn:aws:iam::${var.aws_accounts["idseq-dev"]}:role/idseq-${var.env}-*",
-      "arn:aws:iam::${var.aws_accounts["idseq-dev"]}:role/idseq-swipe-dev-*",
-      "arn:aws:iam::${var.aws_accounts["idseq-dev"]}:role/idseq-swipe-${var.env}-*",
-      "arn:aws:iam::${var.aws_accounts["idseq-dev"]}:role/idseq-web-*"
+      "arn:aws:iam::${local.account_id}:role/idseq-${var.env}-*",
+      "arn:aws:iam::${local.account_id}:role/idseq-swipe-${var.env}-*",
+      "arn:aws:iam::${local.account_id}:role/idseq-web-*"
     ]
   }
 
@@ -192,9 +203,8 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     actions = ["sqs:*"]
 
     resources = [
-      "arn:aws:sqs:*:${var.aws_accounts["idseq-dev"]}:idseq-dev-*",
-      "arn:aws:sqs:*:${var.aws_accounts["idseq-dev"]}:idseq-${var.env}-*",
-      "arn:aws:sqs:*:${var.aws_accounts["idseq-dev"]}:idseq-swipe-*"
+      "arn:aws:sqs:*:${local.account_id}:idseq-${var.env}-*",
+      "arn:aws:sqs:*:${local.account_id}:idseq-swipe-*"
     ]
   }
 
@@ -217,8 +227,7 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:ssm:*:${var.aws_accounts["idseq-dev"]}:parameter/idseq-dev-*",
-      "arn:aws:ssm:*:${var.aws_accounts["idseq-dev"]}:parameter/idseq-${var.env}-*"
+      "arn:aws:ssm:*:${local.account_id}:parameter/idseq-${var.env}-*"
     ]
   }
   statement {
@@ -230,15 +239,11 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:service/staging/*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:service/idseq-sandbox-ecs/*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:service/idseq-prod-ecs/*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:task-definition/idseq-sandbox-web:*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:task-definition/idseq-staging-web:*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:task-definition/idseq-prod-web:*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:task/idseq-sandbox-ecs/*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:task/staging/*",
-      "arn:aws:ecs:*:${var.aws_accounts["idseq-dev"]}:task/idseq-prod-ecs/*"
+      "arn:aws:ecs:*:${local.account_id}:service/${var.env}/*",
+      "arn:aws:ecs:*:${local.account_id}:service/idseq-${var.env}-ecs/*",
+      "arn:aws:ecs:*:${local.account_id}:task-definition/idseq-${var.env}-web:*",
+      "arn:aws:ecs:*:${local.account_id}:task/idseq-${var.env}-ecs/*",
+      "arn:aws:ecs:*:${local.account_id}:task/${var.env}/*",
     ]
   }
 

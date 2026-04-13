@@ -3,9 +3,10 @@ set -e
 apt-get update
 apt-get install -y wget zip
 
+SSM_PREFIX="${SSM_PREFIX:-${cluster_name}/linkerd}"
 
-key="/$cluster_name/linkerd/ca.key"
-cert="/$cluster_name/linkerd/ca.crt"
+key="/${SSM_PREFIX}/ca.key"
+cert="/${SSM_PREFIX}/ca.crt"
 echo
 echo working on $(uname -m)
 echo
@@ -17,7 +18,7 @@ unzip aws*zip
 if [ "$(uname -m)" == "x86_64" ]; then
   wget https://github.com/smallstep/cli/releases/download/v0.24.4/step_linux_0.24.4_amd64.tar.gz
 else
-  wget https://github.com/smallstep/cli/releases/download/v0.24.4/step_linux_0.24.4_arm64.tar.gz 
+  wget https://github.com/smallstep/cli/releases/download/v0.24.4/step_linux_0.24.4_arm64.tar.gz
 fi
 
 tar -xvzf step_linux*.tar.gz

@@ -41,14 +41,14 @@
 | <a name="input_ebs_volume_type"></a> [ebs\_volume\_type](#input\_ebs\_volume\_type) | The type of EBS volumes attached to data nodes. | `string` | `"gp2"` | no |
 | <a name="input_egress_cidrs"></a> [egress\_cidrs](#input\_egress\_cidrs) | n/a | `string` | `"0.0.0.0/0"` | no |
 | <a name="input_elasticsearch_version"></a> [elasticsearch\_version](#input\_elasticsearch\_version) | Supported AWS versions can be found at: https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/what-is-amazon-elasticsearch-service.html#aes-choosing-version | `string` | `"7.10"` | no |
-| <a name="input_env"></a> [env](#input\_env) | n/a | `any` | n/a | yes |
+| <a name="input_env"></a> [env](#input\_env) | n/a | `string` | n/a | yes |
 | <a name="input_ingress_cidrs"></a> [ingress\_cidrs](#input\_ingress\_cidrs) | n/a | `string` | `"0.0.0.0/0"` | no |
 | <a name="input_instance_count"></a> [instance\_count](#input\_instance\_count) | n/a | `number` | `2` | no |
 | <a name="input_instance_type"></a> [instance\_type](#input\_instance\_type) | n/a | `string` | `"m4.large.elasticsearch"` | no |
 | <a name="input_log_publishing_options"></a> [log\_publishing\_options](#input\_log\_publishing\_options) | List of maps containing configuration of log publishing options. | <pre>object({<br>    cloudwatch_log_group : string<br>  })</pre> | n/a | yes |
-| <a name="input_owner"></a> [owner](#input\_owner) | n/a | `any` | n/a | yes |
-| <a name="input_project"></a> [project](#input\_project) | n/a | `any` | n/a | yes |
-| <a name="input_service"></a> [service](#input\_service) | n/a | `any` | n/a | yes |
+| <a name="input_owner"></a> [owner](#input\_owner) | n/a | `string` | n/a | yes |
+| <a name="input_project"></a> [project](#input\_project) | n/a | `string` | n/a | yes |
+| <a name="input_service"></a> [service](#input\_service) | n/a | `string` | n/a | yes |
 | <a name="input_vpc_id"></a> [vpc\_id](#input\_vpc\_id) | n/a | `string` | n/a | yes |
 | <a name="input_vpc_subnet_ids"></a> [vpc\_subnet\_ids](#input\_vpc\_subnet\_ids) | n/a | `list(any)` | n/a | yes |
 

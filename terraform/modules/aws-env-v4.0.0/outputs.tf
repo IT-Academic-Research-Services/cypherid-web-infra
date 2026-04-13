@@ -138,6 +138,6 @@ output "redshift_route_table_ids" {
 }
 
 output "bastion_configuration" {
-  value       = var.bastion_config
-  description = "If configured, return the bastion info here"
+  value       = ""
+  description = "No longer used, but Fogg auto-generates it no matter what."
 }

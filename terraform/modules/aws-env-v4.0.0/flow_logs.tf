@@ -16,6 +16,7 @@ resource "aws_flow_log" "vpc_flow_logs" {
 }
 
 # This VPC flow log is sending to CZI-owned S3 bucket.
+# TODO: This is still a hack, and we probably just need to create our own bucket for flow logs
 # resource "aws_flow_log" "s3_vpc_flow_logs" {
 #   log_destination      = local.s3_vpc_flow_collection_bucket
 #   log_destination_type = "s3"

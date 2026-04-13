@@ -18,9 +18,9 @@
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_autocreated_ecr_writer_policy"></a> [autocreated\_ecr\_writer\_policy](#module\_autocreated\_ecr\_writer\_policy) | git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-iam-policy-ecr-writer | v0.125.0 |
-| <a name="module_dynamodb_writer"></a> [dynamodb\_writer](#module\_dynamodb\_writer) | git@github.com:chanzuckerberg/cztack//aws-iam-policy-dynamodb-rw | v0.55.1 |
-| <a name="module_ecr_writer_policy"></a> [ecr\_writer\_policy](#module\_ecr\_writer\_policy) | git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-iam-policy-ecr-writer | v0.125.0 |
+| <a name="module_autocreated_ecr_writer_policy"></a> [autocreated\_ecr\_writer\_policy](#module\_autocreated\_ecr\_writer\_policy) | github.com/chanzuckerberg/cztack//aws-iam-policy-ecr-writer | v0.104.2 |
+| <a name="module_dynamodb_writer"></a> [dynamodb\_writer](#module\_dynamodb\_writer) | git@github.com:chanzuckerberg/cztack//aws-iam-policy-dynamodb-rw | v0.104.2 |
+| <a name="module_ecr_writer_policy"></a> [ecr\_writer\_policy](#module\_ecr\_writer\_policy) | github.com/chanzuckerberg/cztack//aws-iam-policy-ecr-writer | v0.104.2 |
 | <a name="module_ecs_cluster_permissions"></a> [ecs\_cluster\_permissions](#module\_ecs\_cluster\_permissions) | ../happy-github-ci-role-ecs | n/a |
 | <a name="module_eks_cluster_permissions"></a> [eks\_cluster\_permissions](#module\_eks\_cluster\_permissions) | ../happy-github-ci-role-eks | n/a |
 
@@ -28,16 +28,18 @@
 
 | Name | Type |
 |------|------|
-| [aws_iam_policy.ecr-scanner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_policy) | resource |
-| [aws_iam_role_policy_attachment.ecr-scanner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy_attachment) | resource |
+| [aws_iam_role_policy.ecr_scanner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
+| [aws_iam_role_policy.pull_through_cache](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
 | [random_pet.this](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/pet) | resource |
 | [aws_caller_identity.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
-| [aws_iam_policy_document.ecr-scanner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.ecr_scanner](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
+| [aws_iam_policy_document.pull_through_cache](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_aws_account_id"></a> [aws\_account\_id](#input\_aws\_account\_id) | The account ID of the ECR you want to grant access to | `string` | `""` | no |
 | <a name="input_dynamodb_table_arn"></a> [dynamodb\_table\_arn](#input\_dynamodb\_table\_arn) | The ARN of the dynamodb table that the role should have permissions to | `string` | n/a | yes |
 | <a name="input_ecrs"></a> [ecrs](#input\_ecrs) | The ECRs that the role should have permissions to | <pre>map(object({<br>    repository_arn : string,<br>  }))</pre> | `{}` | no |
 | <a name="input_ecs"></a> [ecs](#input\_ecs) | The ARN and happy app name of the ECS cluster that the role should have permissions to | <pre>object({<br>    arn            = string<br>    happy_app_name = string<br>  })</pre> | <pre>{<br>  "arn": "",<br>  "happy_app_name": ""<br>}</pre> | no |

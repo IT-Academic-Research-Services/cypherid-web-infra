@@ -40,10 +40,10 @@
 | <a name="input_idle_timeout"></a> [idle\_timeout](#input\_idle\_timeout) | n/a | `number` | `60` | no |
 | <a name="input_ingress_cidrs"></a> [ingress\_cidrs](#input\_ingress\_cidrs) | CIDRs that the load balancer is allowed to accept inbound traffic from. Ignored if create\_security\_group is false. | `list(string)` | <pre>[<br>  "0.0.0.0/0"<br>]</pre> | no |
 | <a name="input_internal"></a> [internal](#input\_internal) | n/a | `bool` | `false` | no |
-| <a name="input_owner"></a> [owner](#input\_owner) | n/a | `any` | n/a | yes |
-| <a name="input_project"></a> [project](#input\_project) | n/a | `any` | n/a | yes |
+| <a name="input_owner"></a> [owner](#input\_owner) | n/a | `string` | n/a | yes |
+| <a name="input_project"></a> [project](#input\_project) | n/a | `string` | n/a | yes |
 | <a name="input_security_group_ids"></a> [security\_group\_ids](#input\_security\_group\_ids) | List of security group IDs for the ALB. | `list(string)` | `[]` | no |
-| <a name="input_service"></a> [service](#input\_service) | n/a | `any` | n/a | yes |
+| <a name="input_service"></a> [service](#input\_service) | n/a | `string` | n/a | yes |
 | <a name="input_ssl_policy"></a> [ssl\_policy](#input\_ssl\_policy) | Probably don't touch this. | `string` | `"ELBSecurityPolicy-TLS-1-2-Ext-2018-06"` | no |
 | <a name="input_subnets"></a> [subnets](#input\_subnets) | List of subnets for the ALB. | `list(string)` | n/a | yes |
 | <a name="input_target_group_arn"></a> [target\_group\_arn](#input\_target\_group\_arn) | n/a | `string` | `""` | no |

@@ -14,7 +14,7 @@ deploymentStrategy:
 # -- add PodAntiAffinity to each control plane workload
 enablePodAntiAffinity: true
 
-# nodeAffinity: 
+# nodeAffinity:
 
 # proxy configuration
 proxy:
@@ -22,8 +22,8 @@ proxy:
     cpu:
       request: 100m
     memory:
-      limit: 250Mi
-      request: 20Mi
+      limit: 1Gi
+      request: 512Mi
 
 # controller configuration
 controllerReplicas: 3
@@ -32,7 +32,7 @@ controllerResources: &controller_resources
     limit: ""
     request: 100m
   memory:
-    limit: 250Mi
+    limit: 1Gi
     request: 50Mi
 destinationResources: *controller_resources
 

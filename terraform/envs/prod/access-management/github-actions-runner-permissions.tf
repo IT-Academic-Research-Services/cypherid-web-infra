@@ -1,11 +1,12 @@
 locals {
-  account_id = var.aws_accounts["idseq-prod"]
+  account_id          = var.aws_accounts.idseq-prod
+  s3_bucket_workflows = data.terraform_remote_state.web.outputs.s3_bucket_workflows
 }
 
 module "czid_web_private_gh_actions_executor" {
-  source = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-iam-role-github-action?ref=v0.199.1"
+  source = "github.com/chanzuckerberg/cztack//aws-iam-role-github-action?ref=v0.104.2"
 
-  tags = var.tags
+  tags = var.tags # TODO: var.tags is deprecated
 
   role = {
     name = "czid-${var.env}-gh-actions-executor"
@@ -63,17 +64,15 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:s3:::idseq-public-references",
-      "arn:aws:s3:::idseq-public-references/*",
+      "arn:aws:s3:::${var.s3_bucket_public_references}",
+      "arn:aws:s3:::${var.s3_bucket_public_references}/*",
       "arn:aws:s3:::czid-public-references",
       "arn:aws:s3:::czid-public-references/*",
-      "arn:aws:s3:::idseq-database",
-      "arn:aws:s3:::idseq-database/*",
       "arn:aws:s3:::aegea-batch-jobs-${local.account_id}",
       "arn:aws:s3:::aegea-batch-jobs-${local.account_id}/*",
       "arn:aws:s3:::idseq-${var.env}-*",
-      "arn:aws:s3:::idseq-bench",
-      "arn:aws:s3:::idseq-bench/*"
+      "arn:aws:s3:::${var.s3_bucket_idseq_bench}",
+      "arn:aws:s3:::${var.s3_bucket_idseq_bench}/*",
     ]
   }
 
@@ -85,8 +84,10 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:s3:::idseq-workflows",
-      "arn:aws:s3:::idseq-workflows/*",
+      "arn:aws:s3:::${var.s3_bucket_samples}",   # TODO: Is this necessary?
+      "arn:aws:s3:::${var.s3_bucket_samples}/*", # TODO: Is this necessary?
+      "arn:aws:s3:::${local.s3_bucket_workflows}",
+      "arn:aws:s3:::${local.s3_bucket_workflows}/*",
       "arn:aws:s3:::tfstate-${local.account_id}",
       "arn:aws:s3:::tfstate-${local.account_id}/*",
       "arn:aws:s3:::idseq-${var.env}-heatmap",
@@ -223,9 +224,11 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     ]
 
     resources = [
-      "arn:aws:ecs:*:${local.account_id}:service/idseq-prod-ecs/*",
-      "arn:aws:ecs:*:${local.account_id}:task-definition/idseq-prod-web:*",
-      "arn:aws:ecs:*:${local.account_id}:task/idseq-prod-ecs/*"
+      "arn:aws:ecs:*:${local.account_id}:service/${var.env}/*",
+      "arn:aws:ecs:*:${local.account_id}:service/idseq-${var.env}-ecs/*",
+      "arn:aws:ecs:*:${local.account_id}:task-definition/idseq-${var.env}-web:*",
+      "arn:aws:ecs:*:${local.account_id}:task/idseq-${var.env}-ecs/*",
+      "arn:aws:ecs:*:${local.account_id}:task/${var.env}/*",
     ]
   }
 

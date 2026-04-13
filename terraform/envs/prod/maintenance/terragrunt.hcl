@@ -1,5 +1,5 @@
 dependencies {
   paths = [
-    "../../../accounts/idseq-prod",
+    "../route53",
   ]
 }

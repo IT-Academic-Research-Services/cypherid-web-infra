@@ -14,15 +14,11 @@ terraform {
     tls = {
       source = "hashicorp/tls"
     }
-    //TODO - Will we be using rancher?
-    # rancher2 = {
-    #   source  = "rancher/rancher2"
-    #   version = "3.1.1"
-    # }
+
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.14.0"
+    }
   }
   required_version = ">= 1.3"
 }
-
-# provider "rancher2" {
-#   timeout = "30m"
-# }

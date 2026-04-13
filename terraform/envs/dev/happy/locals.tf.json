@@ -3,7 +3,7 @@
         "machine_readable": {
             "ecr_repos": {
                 "czid": {
-                    "name": "czid-dev",
+                    "name": "seqtoid-dev",
                     "write_arns": [],
                     "read_arns": []
                 }

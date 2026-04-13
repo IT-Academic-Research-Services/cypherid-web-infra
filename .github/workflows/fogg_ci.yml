@@ -2,9 +2,8 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 on:
-#   push:
-#   merge_group:
-  workflow_dispatch:
+  push:
+  merge_group:
 
 concurrency:
   group: ${{ github.ref }}
@@ -13,30 +12,36 @@ jobs:
   fogg-apply:
     runs-on: ubuntu-latest
     steps:
-    #   - name: Generate token
-    #     id: generate_token
-    #     uses: tibdex/github-app-token@v2
-    #     with:
-    #       app_id: ${{ secrets.CZI_GITHUB_HELPER_APP_ID }}
-    #       private_key: ${{ secrets.CZI_GITHUB_HELPER_PK }}
-      - uses: actions/checkout@v4
-        # with:
-        #   token: ${{ steps.generate_token.outputs.token }}
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+      - name: Get Git refs hash
+        id: git-refs-hash
+        run: |
+          hash=$(scripts/get-git-refs-hash.sh)
+          echo "hash=$hash" >> $GITHUB_OUTPUT
       - name: Cache Fogg
         id: cache-fogg
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: ~/.fogg/cache
-          key: fogg-cache-${{ hashFiles('**/.fogg-version') }}
+          key: fogg-cache-${{ hashFiles('**/.fogg-version') }}-${{ steps.git-refs-hash.outputs.hash }}
       - run: make setup
-    #   - run: |
-    #       mkdir -p ~/.ssh/
-    #       ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-    #   - name: Install SSH key
-    #     uses: webfactory/ssh-agent@v0.4.1
-    #     with:
-    #       ssh-private-key: |
-    #         ${{ secrets.SHARED_INFRA_DEPLOY_KEY }}
+      - run: |
+          mkdir -p ~/.ssh/
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+          ssh-private-key: |
+            ${{ secrets.SHARED_INFRA_DEPLOY_KEY }}
             
       - run: .fogg/bin/fogg apply
       - uses: EndBug/add-and-commit@v9
@@ -49,8 +54,8 @@ jobs:
     outputs:
       allChanges: ${{ steps.changedDirs.outputs.allChanges }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v2.10.2
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           initial-fetch-depth: '1'
@@ -58,7 +63,7 @@ jobs:
           filters: |
             changed:
               - added|modified: 'terraform/**'
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@v8
         id: changedDirs
         with:
           script: |
@@ -82,15 +87,16 @@ jobs:
         tfmodule: ${{ fromJson(needs.find-changed-dirs.outputs.allChanges) }}
     if: ${{ needs.find-changed-dirs.outputs.allChanges != '[]' }}
     steps:
-    #   - name: Generate token
-    #     id: generate_token
-    #     uses: tibdex/github-app-token@v2
-    #     with:
-    #       app_id: ${{ secrets.CZI_GITHUB_HELPER_APP_ID }}
-    #       private_key: ${{ secrets.CZI_GITHUB_HELPER_PK }}
-      - uses: actions/checkout@v4
-        # with:
-        #   token: ${{ steps.generate_token.outputs.token }}
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private-key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+          owner: ${{ github.repository_owner }}
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
       - name: fix terraform docs
         uses: terraform-docs/gh-actions@v1.0.0
         if: contains(matrix.tfmodule, 'modules') # only need to make docs on the modules

@@ -15,12 +15,13 @@
 
 | Name | Source | Version |
 |------|--------|---------|
-| <a name="module_aws-bucket"></a> [aws-bucket](#module\_aws-bucket) | github.com/chanzuckerberg/cztack//aws-s3-private-bucket | v0.60.1 |
+| <a name="module_aws-bucket"></a> [aws-bucket](#module\_aws-bucket) | github.com/chanzuckerberg/cztack//aws-s3-private-bucket | v0.104.2 |
 
 ## Resources
 
 | Name | Type |
 |------|------|
+| [aws_caller_identity.current_account](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity) | data source |
 | [aws_iam_policy_document.bucket_policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 
 ## Inputs

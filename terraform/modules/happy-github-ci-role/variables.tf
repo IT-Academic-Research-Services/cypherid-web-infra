@@ -9,10 +9,10 @@ variable "tags" {
   })
 }
 
-# variable "dynamodb_table_arn" {
-#   description = "The ARN of the dynamodb table that the role should have permissions to"
-#   type        = string
-# }
+variable "dynamodb_table_arn" {
+  description = "The ARN of the dynamodb table that the role should have permissions to"
+  type        = string
+}
 
 variable "gh_actions_role_name" {
   description = "The name of the role to attach happy permissions to."
@@ -40,4 +40,10 @@ variable "ecs" {
     happy_app_name = string
   })
   default = { arn = "", happy_app_name = "" }
+}
+
+variable "aws_account_id" {
+  description = "The account ID of the ECR you want to grant access to"
+  type        = string
+  default     = ""
 }
