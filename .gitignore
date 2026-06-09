@@ -36,3 +36,4 @@ buildevents.plan
 check-plan.output
 
 venv
+.terraform.lock.hcl
