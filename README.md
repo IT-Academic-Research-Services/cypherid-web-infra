@@ -1,3 +1,117 @@
+Instructions:
+
+# Setup credentials
+
+## Login via SSO (why do we need both? Don't ask)
+You should only have to do this once
+```bash
+aws configure sso --profile idseq-<env>
+```
+
+You will have to do this every day or so, to re-authenticate
+```bash
+aws sso login --profile idseq-<env>
+```
+
+## Set environmental variable(s).
+This may be optional.
+```bash
+export AWS_DEFAULT_PROFILE=idseq-<env>
+```
+
+# Initialize Fogg and Terraform executables (one-time setup)
+This should be done once, unless you want to install a new version of fogg
+```bash
+make setup
+```
+
+# Run Fogg
+Do this every time you change fogg.yml
+```bash
+./fogg/bin/fogg apply
+```
+
+# Create remote Statefile (one-time setup, per environment):
+```bash
+cd terraform/accounts/idseq-<env>/
+make apply
+cd -
+```
+
+Deploy Terraform components
+```bash
+cd terraform/envs/<env>/iam-password-policy
+make apply
+
+cd ../params-secrets
+make apply
+
+cd ../route53
+make apply
+
+cd ../czid-services-private-key
+make apply
+
+cd ../cloud-env
+make apply
+
+cd ../idseq-s3-tar-writer
+make apply
+
+cd ../elb-access-logs
+make apply
+
+cd ../maintenance
+make apply
+
+cd ../heatmap-optimization
+make apply
+
+cd ../db
+make apply
+
+cd ../downloads
+make apply
+
+cd ../ecs
+make apply
+
+cd ../batch
+make apply
+
+cd ../redis
+make apply
+
+cd ../web
+make apply
+
+cd ../web-waf
+make apply
+
+cd ../auth0
+make apply
+
+cd ../resque
+make apply
+
+cd ../access-management
+make apply
+
+cd ../eks
+make apply
+
+cd ../k8s-core
+make apply
+
+cd ../happy
+make apply
+
+cd ../sentry
+make apply
+
+cd -
+```
+
 <!-- START -->
 ----
 

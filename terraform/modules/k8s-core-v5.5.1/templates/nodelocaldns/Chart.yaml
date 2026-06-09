@@ -1,0 +1,7 @@
+apiVersion: v2
+name: nodelocaldns
+version: 0.0.1
+appVersion: v0.0.1
+description: DNS cache per pod https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/
+engine: gotpl
+kubeVersion: ">=1.15.0-0"

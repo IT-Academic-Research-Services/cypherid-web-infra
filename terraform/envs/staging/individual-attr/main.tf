@@ -2,8 +2,11 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 module "individual-attr" {
-  source            = "../../../modules/individual-attr"
-  aws_account_id    = local.aws_account_id
-  s3_bucket_samples = local.s3_bucket_samples
+  source                      = "../../../modules/individual-attr"
+  aws_account_id              = local.aws_account_id
+  s3_bucket_public_references = local.s3_bucket_public_references
+  s3_bucket_samples           = local.s3_bucket_samples
+
+
 
 }

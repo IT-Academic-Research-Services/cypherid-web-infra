@@ -1,4 +1,5 @@
 dependencies {
   paths = [
+    "../cloud-env",
   ]
 }

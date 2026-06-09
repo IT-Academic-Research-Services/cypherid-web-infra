@@ -1,12 +1,12 @@
-locals {
-  zone_id = data.terraform_remote_state.idseq-dev.outputs.sandbox_idseq_net_zone_id
-}
+# locals {
+#   zone_id = data.terraform_remote_state.idseq-dev.outputs.sandbox_idseq_net_zone_id
+# }
 
 data "aws_iam_policy_document" "idseq-web-assume-role" {
   statement {
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+      identifiers = ["ecs-tasks.amazonaws.com", "ec2.amazonaws.com"]
     }
 
     actions = ["sts:AssumeRole"]
@@ -19,15 +19,24 @@ resource "aws_iam_role" "idseq-web" {
   assume_role_policy = data.aws_iam_policy_document.idseq-web-assume-role.json
 }
 
+resource "aws_ecr_repository" "web-repository" {
+  name                 = "idseq-web"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 # Attaching these permissions for the SSRF protections provided by ssrfs-up.
 # The policy "ssrfs-up-invoke" is added to the baseline so all accounts have
 # access to it.
 # https://github.com/chanzuckerberg/SSRFs-Up
 data "aws_caller_identity" "current" {}
-resource "aws_iam_role_policy_attachment" "ssrfs-invoke" {
-  role       = aws_iam_role.idseq-web.name
-  policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/ssrfs-up-invoke"
-}
+# resource "aws_iam_role_policy_attachment" "ssrfs-invoke" {
+#   role       = aws_iam_role.idseq-web.name
+#   policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/ssrfs-up-invoke"
+# }
 
 data "aws_iam_policy_document" "idseq-web" {
   statement {
@@ -92,9 +101,6 @@ data "aws_iam_policy_document" "idseq-web" {
       "arn:aws:s3:::${var.s3_bucket_idseq_bench}",
       "arn:aws:s3:::${var.s3_bucket_aegea_ecs_execute}",
       "arn:aws:s3:::${var.s3_bucket_workflows}",
-      # IDSEQ-2933 - Giving access to both buckets so migration will not causing disruption during the switch
-      #              The following line can be removed after public references are fully migrated:
-      "arn:aws:s3:::idseq-database",
     ]
   }
 
@@ -110,9 +116,6 @@ data "aws_iam_policy_document" "idseq-web" {
       "arn:aws:s3:::${var.s3_bucket_idseq_bench}/*",
       "arn:aws:s3:::${var.s3_bucket_aegea_ecs_execute}/*",
       "arn:aws:s3:::${var.s3_bucket_workflows}/*",
-      # IDSEQ-2933 - Giving access to both buckets so migration will not causing disruption during the switch
-      #              The following line can be removed after public references are fully migrated:
-      "arn:aws:s3:::idseq-database/*",
     ]
   }
 
@@ -189,9 +192,9 @@ resource "aws_iam_role_policy" "idseq-web" {
   policy = data.aws_iam_policy_document.idseq-web.json
 }
 
-data "aws_iam_role" "poweruser" {
-  name = "poweruser"
-}
+# data "aws_iam_role" "poweruser" {
+#   name = "poweruser"
+# }
 
 data "aws_iam_policy_document" "idseq-upload-assume-role" {
   statement {
@@ -204,16 +207,16 @@ data "aws_iam_policy_document" "idseq-upload-assume-role" {
       identifiers = [aws_iam_role.idseq-web.arn]
     }
   }
-  statement {
-    actions = ["sts:AssumeRole"]
-    effect  = "Allow"
-    sid     = "PowerUserAssumeRoleForDevEnvironments"
+  #statement {
+  #  actions = ["sts:AssumeRole"]
+  #  effect  = "Allow"
+  #  sid     = "PowerUserAssumeRoleForDevEnvironments"
 
-    principals {
-      type        = "AWS"
-      identifiers = [data.aws_iam_role.poweruser.arn]
-    }
-  }
+  #  principals {
+  #    type        = "AWS"
+  #    identifiers = [data.aws_iam_role.poweruser.arn]
+  #  }
+  #}
 }
 
 resource "aws_iam_role" "idseq-upload" {
@@ -237,7 +240,7 @@ data "aws_iam_policy_document" "idseq-upload" {
     resources = [
       "arn:aws:s3:::${var.s3_bucket_samples}/samples/*",
       // allows sandbox role to write to dev bucket for uploads
-      "arn:aws:s3:::idseq-samples-development/samples/*",
+      # "arn:aws:s3:::idseq-samples-development/samples/*",
     ]
   }
 }
@@ -273,10 +276,10 @@ module "web-service-params" {
     SAMPLES_BUCKET_NAME           = data.terraform_remote_state.db.outputs.samples_bucket
     SAMPLES_BUCKET_NAME_V1        = data.terraform_remote_state.db.outputs.samples_bucket_v1
     ALIGNMENT_CONFIG_DEFAULT_NAME = var.alignment_index_date
-    ES_ADDRESS                    = "https://${data.terraform_remote_state.heatmap-optimization.outputs.elastic_search_endpoint}"
-    CLOUDFRONT_ENDPOINT           = "assets.${var.env}.idseq.net"
-    CZID_CLOUDFRONT_ENDPOINT      = local.czid_full_domain
-    S3_DATABASE_BUCKET            = var.s3_bucket_public_references
-    CLI_UPLOAD_ROLE_ARN           = aws_iam_role.idseq-upload.arn
+    # ES_ADDRESS                    = "https://${data.terraform_remote_state.heatmap-optimization.outputs.elastic_search_endpoint}"
+    CLOUDFRONT_ENDPOINT      = "assets.${var.env}.seqtoid.org"
+    CZID_CLOUDFRONT_ENDPOINT = local.czid_assets_fqdn
+    S3_DATABASE_BUCKET       = var.s3_bucket_public_references
+    CLI_UPLOAD_ROLE_ARN      = aws_iam_role.idseq-upload.arn
   }
 }

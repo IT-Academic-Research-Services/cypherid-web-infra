@@ -5,6 +5,6 @@ data "aws_lb" "czid_web_service" {
 }
 
 locals {
-  web_service_alb_name = "${var.project_v1}-${var.env}-web"
+  web_service_alb_name = "${var.project}-${var.env}-web"
   alb_arn              = data.aws_lb.czid_web_service.arn
 }

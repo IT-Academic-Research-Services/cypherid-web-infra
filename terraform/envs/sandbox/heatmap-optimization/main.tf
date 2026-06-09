@@ -1,8 +1,8 @@
 locals {
   service     = "es"
   name        = "${var.project}-${var.env}-${local.service}"
-  bucket_name = "idseq-${var.env}-heatmap-batch-jobs"
-  account_id  = var.aws_accounts["idseq-dev"]
+  bucket_name = "idseq-${var.env}-heatmap-batch-jobs-${local.account_id}"
+  account_id  = var.aws_accounts.idseq-sandbox
   tags = {
     managedBy = "terraform"
     Name      = local.name
@@ -47,7 +47,7 @@ resource "aws_security_group_rule" "sec_group_outbound_czid" {
 }
 
 module "idseq-heatmap-es-param" {
-  source  = "github.com/chanzuckerberg/cztack//aws-ssm-params-writer?ref=v0.43.3"
+  source  = "github.com/chanzuckerberg/cztack//aws-ssm-params-writer?ref=v0.104.2"
   project = var.project
   env     = var.env
   service = "web"
@@ -121,7 +121,7 @@ resource "aws_iam_role_policy_attachment" "glue-service-role-policy" {
 }
 
 module "aws-s3-batch-taxon-indexing-private-bucket" {
-  source      = "github.com/chanzuckerberg/cztack//aws-s3-private-bucket?ref=v0.73.0"
+  source      = "github.com/chanzuckerberg/cztack//aws-s3-private-bucket?ref=v0.104.2"
   bucket_name = local.bucket_name
   env         = var.env
   owner       = var.owner

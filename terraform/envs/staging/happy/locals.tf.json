@@ -3,7 +3,7 @@
         "machine_readable": {
             "ecr_repos": {
                 "czid": {
-                    "name": "czid-staging",
+                    "name": "seqtoid-staging",
                     "write_arns": [],
                     "read_arns": []
                 }

@@ -77,7 +77,7 @@
         });
 
         // Set token issuer.
-        // We named tenants czi-idseq-dev, czi-idseq-staging, czi-idseq-prod. Use the env suffix unless it's prod, as in login-dev.idseq.net, login-staging.idseq.net, and login.idseq.net.
+        // We named tenants czi-idseq-dev, czi-idseq-staging, czi-idseq-prod. Use the env suffix unless it's prod, as in login-dev.seqtoid.org, login-staging.seqtoid.org, and login.seqtoid.org.
         token_issuer = "";
         if (config.auth0Tenant && config.auth0Tenant.includes("-")) {
             env = config.auth0Tenant.split("-").pop();

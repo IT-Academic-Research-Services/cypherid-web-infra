@@ -6,16 +6,6 @@ output "additional_addons" {
   sensitive = true
 }
 
-output "aws_ssm_iam_role_name" {
-  value     = module.k8s-core.aws_ssm_iam_role_name
-  sensitive = false
-}
-
-output "datadog_agent_hostname" {
-  value     = module.k8s-core.datadog_agent_hostname
-  sensitive = false
-}
-
 output "default_namespace" {
   value     = module.k8s-core.default_namespace
   sensitive = false
