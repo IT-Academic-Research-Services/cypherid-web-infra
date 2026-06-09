@@ -80,29 +80,9 @@ resource "auth0_tenant" "env_tenant" {
   # }
 
   flags {
-    # allow_legacy_delegation_grant_types=false
-    # allow_legacy_ro_grant_types=false
-    # allow_legacy_tokeninfo_endpoint =false
-    # dashboard_insights_view
-    # dashboard_log_streams_next =false
-    # disable_clickjack_protection_headers   = false
-    # disable_fields_map_fix                 = false
-    # disable_management_api_sms_obfuscation = false
-    # enable_adfs_waad_email_verification (Boolean) If enabled, users will be presented with an email verification prompt during their first login when using Azure AD or ADFS connections.
-    # enable_apis_section (Boolean) Indicates whether the APIs section is enabled for the tenant.
-    # enable_client_connections (Boolean) Indicates whether all current connections should be enabled when a new client is created.
-    enable_custom_domain_in_emails     = true
-    enable_dynamic_client_registration = false
-    # enable_idtoken_api2 (Boolean) Whether ID tokens can be used to authorize some types of requests to API v2 (true) or not (false).
-    # enable_legacy_logs_search_v2 (Boolean) Indicates whether to use the older v2 legacy logs search.
-    # enable_legacy_profile (Boolean) Whether ID tokens and the userinfo endpoint includes a complete user profile (true) or only OpenID Connect claims (false).
-    # enable_pipeline2 (Boolean) Indicates whether advanced API Authorization scenarios are enabled.
-    enable_public_signup_user_exists_error = true
-    # mfa_show_factor_list_on_enrollment (Boolean) Used to allow users to pick which factor to enroll with from the list of available MFA factors.
-    # no_disclose_enterprise_connections = true
-    # remove_alg_from_jwks (Boolean) Remove alg from jwks(JSON Web Key Sets).
-    # revoke_refresh_token_grant (Boolean) Delete underlying grant when a refresh token is revoked via the Authentication API.
-    # use_scope_descriptions_for_consent = true
+    # enable_custom_domain_in_emails         = true
+    # enable_dynamic_client_registration     = false
+    # enable_public_signup_user_exists_error = true
   }
 
   session_cookie {
@@ -170,12 +150,6 @@ resource "auth0_client" "idseq_web" {
   #   expiration_type = "non-expiring"
   # }
 }
-
-# Create a Resource Server
-# resource "auth0_resource_server" "idseq_web" {
-#   name       = "IDSeq Web ${var.env}"
-#   identifier = local.env_seqtoid_org_url
-# }
 
 resource "auth0_client_grant" "idseq_web_grant" {
   client_id    = auth0_client.idseq_web.id
@@ -333,9 +307,9 @@ module "auth0-ssm-params" {
     AUTH0_CLIENT_ID                = auth0_client.idseq_web.client_id
     AUTH0_CLIENT_SECRET            = data.auth0_client.idseq_web.client_secret
     AUTH0_CONNECTION               = auth0_connection.username_password_authentication.name
-    AUTH0_DOMAIN                   = data.auth0_tenant.env_tenant.domain # aws_route53_record.auth_env_cname.fqdn
+    AUTH0_DOMAIN                   = data.auth0_tenant.env_tenant.domain
     AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
     AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
-    AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain # aws_route53_record.auth_env_cname.fqdn # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
+    AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
   }
 }

@@ -7,7 +7,7 @@ locals {
     # "gha-seqtoid", // Role used by GH Actions for applying terraform (cypherid-infra & cypherid-web-infra)
     # TODO: Where are these created, and are they necessary? Appear to be deployed via terraform from 'shared-infra'.
     #       For now, we manually created a 'poweruser' IAM role that matches what is in the CZI dev account. (this needs verification)
-    # "poweruser",
+    "poweruser",
     # "okta-czi-admin",
     # "tfe-si",
   ]
