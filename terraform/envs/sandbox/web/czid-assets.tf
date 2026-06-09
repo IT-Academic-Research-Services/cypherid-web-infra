@@ -1,19 +1,21 @@
 locals {
-  czid_subdomain     = "assets"
-  czid_domain        = "${var.env}.czid.org"
-  czid_full_domain   = "${local.czid_subdomain}.${local.czid_domain}"
-  czid_origin_domain = local.czid_domain
+  # czid_subdomain     = "assets"
+  # czid_domain        = "${var.env}.seqtoid.org"
+  # czid_full_domain   = "${local.czid_subdomain}.${local.czid_domain}"
+  # czid_origin_domain = local.czid_domain
+  #
+  czid_assets_fqdn = "assets.${local.czid_domain}"
 
   czid_aliases = {
-    "www.${local.czid_full_domain}" = local.czid_zone_id
+    "www.${local.czid_assets_fqdn}" = data.aws_route53_zone.czid_zone.id
   }
 }
 
 module "czid-assets-cert" {
   source = "github.com/chanzuckerberg/cztack//aws-acm-certificate?ref=v0.41.0"
 
-  cert_domain_name               = local.czid_full_domain
-  aws_route53_zone_id            = local.czid_zone_id
+  cert_domain_name               = local.czid_assets_fqdn
+  aws_route53_zone_id            = data.aws_route53_zone.czid_zone.id
   cert_subject_alternative_names = local.czid_aliases
   tags                           = var.tags
 
@@ -28,12 +30,12 @@ resource "aws_cloudfront_distribution" "czid-assets-distribution" {
   enabled = true
   comment = "Caches Rails web server static assets in Amazon's edge servers"
 
-  aliases = [local.czid_full_domain]
+  aliases = [local.czid_assets_fqdn]
 
   # Rails web server
   origin {
-    domain_name = local.czid_origin_domain
-    origin_id   = local.czid_origin_domain
+    domain_name = local.czid_domain
+    origin_id   = local.czid_domain
 
     custom_origin_config {
       http_port              = "80"
@@ -48,7 +50,7 @@ resource "aws_cloudfront_distribution" "czid-assets-distribution" {
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = local.czid_origin_domain
+    target_origin_id       = local.czid_domain
     viewer_protocol_policy = "redirect-to-https"
 
     default_ttl = 0
@@ -68,7 +70,7 @@ resource "aws_cloudfront_distribution" "czid-assets-distribution" {
     path_pattern           = "/assets/*"
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = local.czid_origin_domain
+    target_origin_id       = local.czid_domain
     viewer_protocol_policy = "redirect-to-https"
     # Time-to-live is set to 1 year. Rails puts a hash in the filename of
     # static assets, so changes to assets will result in new files, which
@@ -112,8 +114,8 @@ resource "aws_cloudfront_distribution" "czid-assets-distribution" {
 }
 
 resource "aws_route53_record" "czid-assets" {
-  zone_id = local.czid_zone_id
-  name    = local.czid_full_domain
+  zone_id = data.aws_route53_zone.czid_zone.id
+  name    = local.czid_assets_fqdn
   type    = "A"
 
   alias {

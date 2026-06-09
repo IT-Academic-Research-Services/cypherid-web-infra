@@ -3,14 +3,14 @@
 
 include scripts/common.mk
 
-ENVS=dev prod public sandbox staging
-MODULES=config individual-attr machine-images
-ACCOUNTS=idseq-dev idseq-prod
+ENVS=dev prod sandbox staging
+MODULES=alb-http-v0.484.6 aws-elasticsearch-v0.199.1 aws-elb-access-logs-bucket-v0.420.0 aws-env-v4.0.0 aws-iam-policy-s3-reader-v0.420.0 aws-iam-policy-s3-writer-v0.66.0 config czid-services-private-key ecs-cluster-v2.4.0 ecs-service-with-alb-v0.421.0 happy-env-eks happy-github-ci-role happy-github-ci-role-ecs happy-github-ci-role-eks idseq-s3-tar-writer individual-attr instance-cloud-init-script-v0.484.6 k8s-core-v5.5.1 kubernetes-aws-ssm-k8s-core-v5 kubernetes-secret-from-aws-param-v0.395.0 machine-images panther-s3-ingest-v2.0.1 snowflake-stage-s3-role-v0.420.0 waf-georestriction-main web-acl-regional-v3.3.1
+ACCOUNTS=idseq-dev idseq-prod idseq-staging idseq-support
 
 all: check
 
 setup: ## set up working directory by installing dependencies
-	curl -s https://raw.githubusercontent.com/chanzuckerberg/fogg/v0.89.5/download.sh | bash -s -- -b .fogg/bin v0.89.5
+	curl -s https://raw.githubusercontent.com/chanzuckerberg/fogg/v0.92.46/download.sh | bash -s -- -b .fogg/bin v0.92.46
 	.fogg/bin/fogg setup
 .PHONY: setup
 

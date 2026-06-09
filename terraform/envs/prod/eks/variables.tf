@@ -11,14 +11,14 @@ locals {
   tags            = var.tags
   vpc_id          = data.terraform_remote_state.cloud-env.outputs.vpc_id
   subnet_ids      = data.terraform_remote_state.cloud-env.outputs.private_subnets
-  cluster_version = "1.30"
+  cluster_version = "1.35"
 
   node_groups = {
     "arm" = {
       max_servers   = 20
       capacity_type = "ON_DEMAND"
       architecture = {
-        ami_type       = "AL2_ARM_64"
+        ami_type       = "AL2023_ARM_64_STANDARD"
         instance_types = ["t4g.xlarge"]
       }
     },
@@ -27,7 +27,7 @@ locals {
       max_servers   = 10
       capacity_type = "ON_DEMAND"
       architecture = {
-        ami_type       = "AL2_x86_64"
+        ami_type       = "AL2023_x86_64_STANDARD"
         instance_types = ["t3.xlarge"]
       }
     }

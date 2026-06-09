@@ -2,18 +2,21 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 module "aws-env" {
-  source                = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-env?ref=aws-env-v4.0.0"
-  azs                   = local.azs
-  database_subnet_cidrs = local.database_subnet_cidrs
-  env                   = local.env
-  k8s_cluster_names     = local.k8s_cluster_names
-  owner                 = local.owner
-  private_subnet_cidrs  = local.private_subnet_cidrs
-  project               = local.project
-  public_subnet_cidrs   = local.public_subnet_cidrs
-  region                = local.region
-  service               = local.service
-  vpc_cidr              = local.vpc_cidr
+  source                                 = "../../../modules/aws-env-v4.0.0"
+  azs                                    = local.azs
+  create_database_internet_gateway_route = local.create_database_internet_gateway_route
+  create_database_subnet_route_table     = local.create_database_subnet_route_table
+  database_subnet_cidrs                  = local.database_subnet_cidrs
+  env                                    = local.env
+  k8s_cluster_names                      = local.k8s_cluster_names
+  owner                                  = local.owner
+  private_subnet_cidrs                   = local.private_subnet_cidrs
+  project                                = local.project
+  public_subnet_cidrs                    = local.public_subnet_cidrs
+  region                                 = local.region
+  service                                = local.service
+  single_nat_gateway                     = local.single_nat_gateway
+  vpc_cidr                               = local.vpc_cidr
 
 
 

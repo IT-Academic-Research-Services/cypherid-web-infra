@@ -1,11 +1,10 @@
 locals {
-  name                    = "${var.tags.project}-${var.tags.env}-${var.tags.service}"
-  fivetran_ssh_server     = "35.235.101.244"
-  rds_high_port_workflows = "25433"
-  rds_high_port_entities  = "25432"
-  rds_port                = "5432"
-  image_arn               = "745463180746.dkr.ecr.us-west-2.amazonaws.com/czid-fivetran-ssh:latest"
-  mount_path              = "/var/secrets"
+  name                = "${var.tags.project}-${var.tags.env}-${var.tags.service}"
+  fivetran_ssh_server = "34.48.124.245"
+  rds_high_port       = "13306"
+  rds_port            = "3306"
+  image_arn           = "${var.aws_accounts.idseq-prod}.dkr.ecr.us-west-2.amazonaws.com/czid-fivetran-ssh:latest"
+  mount_path          = "/var/secrets"
 }
 
 resource "kubernetes_deployment_v1" "fivetran_ssh" {
@@ -40,7 +39,7 @@ resource "kubernetes_deployment_v1" "fivetran_ssh" {
 
         # workflows db
         container {
-          name  = "${local.name}-workflows"
+          name  = local.name
           image = local.image_arn
 
           port {
@@ -50,12 +49,17 @@ resource "kubernetes_deployment_v1" "fivetran_ssh" {
           # only difference between this container and the entities container is the high port
           env {
             name  = "SSH_HIGH_PORT"
-            value = local.rds_high_port_workflows
+            value = local.rds_high_port
           }
 
           env {
             name  = "RDS_PORT"
             value = local.rds_port
+          }
+
+          env {
+            name  = "RDS_ADDRESS"
+            value = "idseq-prod-0.cpamsctm1mg0.us-west-2.rds.amazonaws.com"
           }
 
           env {
@@ -69,35 +73,6 @@ resource "kubernetes_deployment_v1" "fivetran_ssh" {
           }
         }
 
-        # entities db
-        container {
-          name  = "${local.name}-entities"
-          image = local.image_arn
-
-          port {
-            container_port = 80
-          }
-
-          env {
-            name  = "SSH_HIGH_PORT"
-            value = local.rds_high_port_entities
-          }
-
-          env {
-            name  = "RDS_PORT"
-            value = local.rds_port
-          }
-
-          env {
-            name  = "FIVETRAN_SSH_SERVER"
-            value = local.fivetran_ssh_server
-          }
-
-          volume_mount {
-            name       = "fivetran-private-key"
-            mount_path = local.mount_path
-          }
-        }
         volume {
           name = "fivetran-private-key"
 

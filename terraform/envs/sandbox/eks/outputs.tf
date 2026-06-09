@@ -61,6 +61,16 @@ output "oidc_provider_arn" {
   sensitive = false
 }
 
+output "s3_csi_role_arn" {
+  value     = module.eks-cluster.s3_csi_role_arn
+  sensitive = false
+}
+
+output "s3_csi_role_name" {
+  value     = module.eks-cluster.s3_csi_role_name
+  sensitive = false
+}
+
 output "secrets_key_arn" {
   value     = module.eks-cluster.secrets_key_arn
   sensitive = false

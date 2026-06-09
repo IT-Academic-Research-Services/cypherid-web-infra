@@ -105,7 +105,7 @@ resource "aws_batch_job_queue" "idseq-lomem" {
 }
 
 module "idseq-batch" {
-  source      = "github.com/chanzuckerberg/cztack//aws-iam-instance-profile?ref=v0.41.0"
+  source      = "github.com/chanzuckerberg/cztack//aws-iam-instance-profile?ref=v0.104.2"
   name_prefix = "idseq-batch-${var.env}"
 }
 
@@ -141,9 +141,6 @@ data "aws_iam_policy_document" "idseq-batch" {
     resources = [
       "arn:aws:s3:::${var.s3_bucket_public_references}",
       "arn:aws:s3:::${var.s3_bucket_samples}",
-      # IDSEQ-2933 - Giving access to both buckets so migration will not cause disruptions during the switch
-      #              The following line can be removed after public references are fully migrated:
-      "arn:aws:s3:::idseq-database",
     ]
   }
 
@@ -155,9 +152,6 @@ data "aws_iam_policy_document" "idseq-batch" {
     resources = [
       "arn:aws:s3:::${var.s3_bucket_public_references}/*",
       "arn:aws:s3:::${var.s3_bucket_samples}/*",
-      # IDSEQ-2933 - Giving access to both buckets so migration will not cause disruptions during the switch
-      #              The following line can be removed after public references are fully migrated:
-      "arn:aws:s3:::idseq-database/*",
     ]
   }
 
@@ -235,7 +229,7 @@ resource "aws_batch_compute_environment" "idseq_244GB_32CPU" {
 
   service_role = aws_iam_role.aws_batch_service_role.arn
   type         = "MANAGED"
-  depends_on   = ["aws_iam_role_policy_attachment.aws_batch_service_role"]
+  depends_on   = [aws_iam_role_policy_attachment.aws_batch_service_role]
 
   lifecycle {
     ignore_changes = [
@@ -261,13 +255,14 @@ resource "aws_batch_compute_environment" "idseq_122GB_16CPU" {
     security_group_ids = [random_id.batch.keepers.security_group_id]
     subnets            = data.terraform_remote_state.cloud-env.outputs.private_subnets
     type               = "EC2"
+    tags               = local.tags
 
     # image_id           =  random_id.batch.keepers.image_id
   }
 
   service_role = aws_iam_role.aws_batch_service_role.arn
   type         = "MANAGED"
-  depends_on   = ["aws_iam_role_policy_attachment.aws_batch_service_role"]
+  depends_on   = [aws_iam_role_policy_attachment.aws_batch_service_role]
 
   lifecycle {
     ignore_changes = [

@@ -1,8 +1,8 @@
 locals {
   subdomain   = "maintenance"
-  domain      = "${var.env}.czid.org"
+  domain      = "${var.env}.seqtoid.org"
   full_domain = "${local.subdomain}.${local.domain}"
-  zone_id     = data.terraform_remote_state.idseq-dev.outputs.sandbox_czid_org_zone_id
+  zone_id     = data.terraform_remote_state.idseq-newdev.outputs.sandbox_czid_org_zone_id
 
   aliases = {
     "www.${local.full_domain}" = local.zone_id

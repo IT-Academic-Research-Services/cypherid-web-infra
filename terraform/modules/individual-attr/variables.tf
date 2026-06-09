@@ -3,6 +3,11 @@ variable "s3_bucket_samples" {
   type        = string
 }
 
+variable "s3_bucket_public_references" {
+  description = "Name of the bucket containing public Taxon data"
+  type        = string
+}
+
 variable "aws_account_id" {
   description = "AWS Account ID"
   type        = string

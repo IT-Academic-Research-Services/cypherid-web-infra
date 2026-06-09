@@ -7,13 +7,16 @@ Also creates an instance profile to be used by packer managed instances when mak
 <!-- START -->
 ## Requirements
 
-No requirements.
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.14.8 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.100.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | n/a |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 5.100.0 |
 
 ## Modules
 
@@ -46,6 +49,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_aws_account_id"></a> [aws\_account\_id](#input\_aws\_account\_id) | AWS Account ID | `string` | n/a | yes |
+| <a name="input_s3_bucket_public_references"></a> [s3\_bucket\_public\_references](#input\_s3\_bucket\_public\_references) | Name of the bucket containing public Taxon data | `string` | n/a | yes |
 | <a name="input_s3_bucket_samples"></a> [s3\_bucket\_samples](#input\_s3\_bucket\_samples) | Name of the samples bucket containing PGI | `string` | n/a | yes |
 
 ## Outputs

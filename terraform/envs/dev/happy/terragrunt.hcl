@@ -3,6 +3,6 @@ dependencies {
     "../cloud-env",
     "../eks",
     "../k8s-core",
-    "../../../accounts/idseq-dev",
+    "../route53",
   ]
 }

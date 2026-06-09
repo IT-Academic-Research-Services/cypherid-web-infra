@@ -1,47 +1,142 @@
-resource "auth0_client" "global" {
-  name                 = "All Applications"
-  custom_login_page    = file("${path.module}/pages/login.html")
-  custom_login_page_on = true
+# NOTE: The following ENV Variables MUST be set, and must point to the machine-to-machine (m2m) Auth0 Application
+#     AUTH0_CLIENT_ID
+#     AUTH0_CLIENT_SECRET
+#     AUTH0_DOMAIN (optional)
 
-  refresh_token {
-    rotation_type   = "non-rotating"
-    expiration_type = "non-expiring"
+# resource "auth0_client" "global" {
+#   name                 = "All Applications"
+#   custom_login_page    = file("${path.module}/pages/login.html")
+#   custom_login_page_on = true
+#
+#   refresh_token {
+#     rotation_type   = "non-rotating"
+#     expiration_type = "non-expiring"
+#   }
+# }
+
+locals {
+  env_seqtoid_org_fqdn      = data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn
+  env_seqtoid_org_url       = "https://${local.env_seqtoid_org_fqdn}"
+  env_seqtoid_org_zone_id   = data.terraform_remote_state.route53.outputs.env_seqtoid_org_zone_id
+  auth_env_seqtoid_org_fqdn = "auth.${local.env_seqtoid_org_fqdn}"
+  # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
+  assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
+  assets_url  = "https://${local.assets_fqdn}"
+}
+
+resource "auth0_custom_domain" "auth_env_seqtoid_org" {
+  domain     = local.auth_env_seqtoid_org_fqdn
+  type       = "auth0_managed_certs"
+  tls_policy = "recommended"
+  # domain_metadata = {}
+}
+
+# Map the CNAME verification record required by Auth0
+resource "aws_route53_record" "auth_env_cname" {
+  zone_id = local.env_seqtoid_org_zone_id
+  name    = auth0_custom_domain.auth_env_seqtoid_org.verification[0].methods[0].domain
+  type    = auth0_custom_domain.auth_env_seqtoid_org.verification[0].methods[0].name
+  ttl     = 300
+
+  records = [
+    auth0_custom_domain.auth_env_seqtoid_org.verification[0].methods[0].record
+  ]
+}
+
+resource "auth0_custom_domain_verification" "auth_env_cname" {
+  custom_domain_id = auth0_custom_domain.auth_env_seqtoid_org.id
+
+  depends_on = [aws_route53_record.auth_env_cname]
+}
+
+resource "auth0_custom_domain_default" "auth_env_seqtoid_org" {
+  domain = auth0_custom_domain.auth_env_seqtoid_org.domain
+
+  depends_on = [auth0_custom_domain_verification.auth_env_cname]
+}
+
+resource "auth0_tenant" "env_tenant" {
+  allow_organization_name_in_authentication_api = false
+  # allowed_logout_urls = ["${local.env_seqtoid_org_url}/logout"]
+  # default_audience
+  # default_directory = "auth0"
+  # default_redirection_uri = local.env_seqtoid_org_url
+  enabled_locales = ["en"]
+  # ephemeral_session_lifetime
+  friendly_name = "Seqtoid ${var.env}"
+  # idle_ephemeral_session_lifetime
+  # idle_session_lifetime
+  # phone_consolidated_experience
+  picture_url = "${local.assets_url}/assets/logo-new.png"
+  # sandbox_version         = "22"
+  # session_lifetime        = 8760
+  support_email = "seqtoid@ucsf.edu"
+  # support_url             = "${local.env_seqtoid_org_url}/support"
+
+  # error_page {
+  #   html          = "<html></html>"
+  #   show_log_link = false
+  #   url           = "${local.env_seqtoid_org_url}/error"
+  # }
+
+  flags {
+    # enable_custom_domain_in_emails         = true
+    # enable_dynamic_client_registration     = false
+    # enable_public_signup_user_exists_error = true
   }
+
+  session_cookie {
+    mode = "non-persistent"
+  }
+
+  # sessions {
+  #   oidc_logout_prompt_enabled = false
+  # }
+  depends_on = [auth0_custom_domain_default.auth_env_seqtoid_org]
+}
+
+data "auth0_tenant" "env_tenant" {
+  depends_on = [auth0_tenant.env_tenant]
+}
+
+resource "auth0_role" "admin" {
+  name        = "Admin"
+  description = "Administrator"
 }
 
 resource "auth0_client" "idseq_web" {
-  name = "idseq-web"
+  name        = "idseq-web"
+  description = "SeqtoID Web Application"
   allowed_clients = [
-    "8t34lGa63vlDHNXglNWlWfh97WLaTdQt",
+    # auth0_client.idseq_web_management.id
+    # var.auth0_m2m_client_id,
+    # local.env_seqtoid_org_url
   ]
   allowed_logout_urls = [
-    "http://localhost:3000/",
-    "https://sandbox.idseq.net/",
-    "https://meta.sandbox.idseq.net/",
-    "http://sandbox.czid.org/",
-    "https://sandbox.czid.org/",
+    local.env_seqtoid_org_url,
+    # local.meta_env_seqtoid_org_url,
+    "http://localhost:3000",
   ]
   allowed_origins = [
+    local.env_seqtoid_org_url,
+    # local.meta_env_seqtoid_org_url,
     "http://localhost:3000",
-    "https://sandbox.idseq.net",
-    "https://meta.sandbox.idseq.net/",
-    "https://sandbox.czid.org/",
   ]
   app_type = "regular_web"
   callbacks = [
-    "http://localhost:3000/auth/auth0/callback",
-    "http://127.0.0.2:4000/auth/auth0/callback",
-    "https://sandbox.idseq.net/auth/auth0/callback",
-    "https://meta.sandbox.idseq.net/auth/auth0/callback",
-    "https://sandbox.czid.org/auth/auth0/callback",
+    # "http://localhost:3000/auth/auth0/callback",
+    # "http://127.0.0.2:4000/auth/auth0/callback",
+    "${local.env_seqtoid_org_url}/auth/auth0/callback",
+    "${local.env_seqtoid_org_url}/login",
+    # "${local.meta_env_seqtoid_org_url}/auth/auth0/callback",
   ]
-  logo_uri = "https://assets.prod.czid.org/assets/CZID_Favicon_Black.png"
-  sso      = true
+  initiate_login_uri = "${local.env_seqtoid_org_url}/login"
+  logo_uri           = "${local.assets_url}/assets/logo-new.png"
+  sso                = true
   web_origins = [
+    local.env_seqtoid_org_url,
+    # local.meta_env_seqtoid_org_url,
     "http://localhost:3000",
-    "https://sandbox.idseq.net",
-    "https://meta.sandbox.idseq.net/",
-    "https://sandbox.czid.org/",
   ]
 
   jwt_configuration {
@@ -49,108 +144,18 @@ resource "auth0_client" "idseq_web" {
     lifetime_in_seconds = 36000
     secret_encoded      = false
   }
-}
 
-resource "auth0_client" "auth0_deploy_cli_extension" {
-  name     = "auth0-deploy-cli-extension"
-  app_type = "non_interactive"
-}
-
-resource "auth0_client_grant" "auth0_deploy_cli_extension_grant" {
-  client_id = auth0_client.auth0_deploy_cli_extension.id
-  audience  = "https://czi-idseq-dev.auth0.com/api/v2/"
-  scope = [
-    "read:client_grants",
-    "create:client_grants",
-    "delete:client_grants",
-    "update:client_grants",
-    "read:users",
-    "update:users",
-    "delete:users",
-    "create:users",
-    "read:users_app_metadata",
-    "update:users_app_metadata",
-    "delete:users_app_metadata",
-    "create:users_app_metadata",
-    "create:user_tickets",
-    "read:clients",
-    "update:clients",
-    "delete:clients",
-    "create:clients",
-    "read:client_keys",
-    "update:client_keys",
-    "delete:client_keys",
-    "create:client_keys",
-    "read:connections",
-    "update:connections",
-    "delete:connections",
-    "create:connections",
-    "read:resource_servers",
-    "update:resource_servers",
-    "delete:resource_servers",
-    "create:resource_servers",
-    "read:device_credentials",
-    "update:device_credentials",
-    "delete:device_credentials",
-    "create:device_credentials",
-    "read:rules",
-    "update:rules",
-    "delete:rules",
-    "create:rules",
-    "read:rules_configs",
-    "update:rules_configs",
-    "delete:rules_configs",
-    "read:hooks",
-    "read:email_provider",
-    "update:email_provider",
-    "delete:email_provider",
-    "create:email_provider",
-    "blacklist:tokens",
-    "read:stats",
-    "read:tenant_settings",
-    "update:tenant_settings",
-    "read:logs",
-    "read:shields",
-    "create:shields",
-    "delete:shields",
-    "read:anomaly_blocks",
-    "delete:anomaly_blocks",
-    "update:triggers",
-    "read:triggers",
-    "read:grants",
-    "delete:grants",
-    "read:guardian_factors",
-    "update:guardian_factors",
-    "read:guardian_enrollments",
-    "delete:guardian_enrollments",
-    "create:guardian_enrollment_tickets",
-    "read:user_idp_tokens",
-    "create:passwords_checking_job",
-    "delete:passwords_checking_job",
-    "read:custom_domains",
-    "delete:custom_domains",
-    "create:custom_domains",
-    "read:email_templates",
-    "create:email_templates",
-    "update:email_templates",
-    "read:mfa_policies",
-    "update:mfa_policies",
-    "read:roles",
-    "create:roles",
-    "delete:roles",
-    "update:roles",
-    "read:prompts",
-    "update:prompts",
-    "read:branding",
-    "update:branding",
-    "delete:branding",
-  ]
+  # refresh_token {
+  #   rotation_type   = "non-rotating"
+  #   expiration_type = "non-expiring"
+  # }
 }
 
 resource "auth0_client_grant" "idseq_web_grant" {
-  client_id = auth0_client.idseq_web.id
-  audience  = "https://sandbox.idseq.net"
-  scope     = []
+  client_id    = auth0_client.idseq_web.id
+  audience     = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/" # TODO: Should be auth0_resource_server.idseq_web.identifier ??
+  subject_type = "user"
+  scopes       = []
 }
 
 resource "auth0_client" "idseq_web_management" {
@@ -160,8 +165,9 @@ resource "auth0_client" "idseq_web_management" {
 
 resource "auth0_client_grant" "idseq_web_management_grant" {
   client_id = auth0_client.idseq_web_management.id
-  audience  = "https://czi-idseq-dev.auth0.com/api/v2/"
-  scope = [
+  audience  = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/"
+  # subject_type = "client"
+  scopes = [
     "read:users",
     "update:users",
     "delete:users",
@@ -171,103 +177,21 @@ resource "auth0_client_grant" "idseq_web_management_grant" {
   ]
 }
 
-resource "auth0_client" "idseq_cli_v2" {
-  name = "idseq-cli-v2"
-  allowed_clients = [
-    "JuxupFFHWAkv6g3IBYKe5fGBNTOAXNOV",
-    "https://sandbox.idseq.net",
-  ]
-  app_type = "native"
-}
-
-resource "auth0_branding" "brand" {
-  logo_url = "https://assets.prod.czid.org/assets/CZID_Logo_Black.png"
-
-  colors {
-    primary         = "#3867fa"
-    page_background = "#FFFFFF"
-  }
-
-  font {}
-
-  universal_login {
-    body = "<!DOCTYPE html><code><html><head>{%- auth0:head -%}</head><body>{%- auth0:widget -%}</body></html></code>"
-  }
-}
-
-resource "auth0_connection" "idseq_legacy_users" {
-  name     = "idseq-legacy-users"
+resource "auth0_connection" "username_password_authentication" {
+  name     = "Username-Password-Authentication"
   strategy = "auth0"
-  enabled_clients = [
-    auth0_client.idseq_web_management.id,
-    auth0_client.auth0_deploy_cli_extension.id,
-  ]
-  is_domain_connection = false
-  realms = [
-    "idseq-legacy-users",
-  ]
+  # realms = [
+  #   "Username-Password-Authentication"
+  # ]
 
   options {
     import_mode                    = false
     disable_signup                 = true
-    password_policy                = "good"
-    strategy_version               = 2
-    requires_username              = true
-    brute_force_protection         = true
-    enabled_database_customization = false
-
-    mfa {
-      active                 = true
-      return_enroll_settings = true
-    }
-
-    validation {
-      username {
-        max = 15
-        min = 1
-      }
-    }
-
-    password_complexity_options {
-      min_length = 1
-    }
-  }
-}
-
-resource "auth0_connection" "username_password_authentication" {
-  name     = "Username-Password-Authentication"
-  strategy = "auth0"
-  enabled_clients = [
-    auth0_client.idseq_web.id,
-    auth0_client.auth0_deploy_cli_extension.id,
-    auth0_client.idseq_web_management.id,
-    auth0_client.idseq_cli_v2.id,
-  ]
-  is_domain_connection = false
-  realms = [
-    "Username-Password-Authentication",
-  ]
-
-  options {
-    import_mode                    = true
-    disable_signup                 = false
     password_policy                = "excellent"
     strategy_version               = 2
     requires_username              = false
     brute_force_protection         = true
-    enabled_database_customization = true
-
-    custom_scripts = {
-      login    = file("${path.module}/scripts/login.js")
-      get_user = file("${path.module}/scripts/get_user.js")
-    }
-
-    # NOTE: these are encrypted
-    configuration = {
-      AUTH0_DOMAIN        = "2.0$a0858bad153334eb92b46ce05a2db540f4b72b4454cb74987243e8b71d761109$cbf4802839e101bfeeb45f98ee4b3024$d15a324e911abfda189b602c225aa2e97e08e91490a37a572eba90c94b4ea0aa"
-      AUTH0_CLIENT_ID     = "2.0$d8cddf649696a644b2b19b2d96134668d7eb7a11156a9be9c639b6ad8bba13f5be7ce658b19ced3e9c9b1cf2bef5a28a$696d1b60d64269282ef652640793775d$6a534d7507b6b247a36ecdc29f9fced586fc1512a64e551dadf7221b67689ca3"
-      AUTH0_CLIENT_SECRET = "2.0$b07097368044e7d291ea2fb7e91da6544302c2a524cd1ad37bcd26a41094a59d71fc20ce5089a8e0f4700ee652e9eaa01363781f75a62edd06bd43b7920afd45ae1556d3444b3144bf3a01a62e88e81b$8da7b827cd86cfb5bc2094f57da41fd3$c949fe3320a2c7e128f449250291aef099e71c673ec121e769fed25efe2d4f90"
-    }
+    enabled_database_customization = false
 
     mfa {
       active                 = true
@@ -291,5 +215,101 @@ resource "auth0_connection" "username_password_authentication" {
     password_complexity_options {
       min_length = 10
     }
+  }
+}
+
+resource "auth0_connection_client" "idseq_web_connection_client" {
+  connection_id = auth0_connection.username_password_authentication.id
+  client_id     = auth0_client.idseq_web.id
+}
+
+resource "auth0_connection_client" "idseq_web_management_connection_client" {
+  connection_id = auth0_connection.username_password_authentication.id
+  client_id     = auth0_client.idseq_web_management.id
+}
+
+# resource "auth0_branding" "seqtoid_branding" {
+#   depends_on  = [auth0_custom_domain.auth_env_seqtoid_org]
+#   logo_url    = "${local.assets_url}/assets/logo-new.png"
+#   favicon_url = "${local.assets_url}/assets/CZID_Favicon_Black.png"
+#
+#   colors {
+#     primary         = "#3867fa"
+#     page_background = "#9a9996"
+#   }
+#
+#   font {}
+#
+#   universal_login {
+#     body = "<!DOCTYPE html><code><html><head>{%- auth0:head -%}</head><body>{%- auth0:widget -%}</body></html></code>"
+#   }
+# }
+
+resource "auth0_prompt_custom_text" "login" {
+  prompt   = "login"
+  language = "en"
+
+  body = jsonencode(
+    {
+      "login" : {
+        "description" : "Log in to continue",
+        # "logoAltText" : "SeqtoID",
+        # "pageTitle" : "Log in | SeqtoID",
+        "title" : "Welcome to SeqtoID",
+      }
+    }
+  )
+}
+
+resource "auth0_prompt_custom_text" "login-password" {
+  prompt   = "login-password"
+  language = "en"
+
+  body = jsonencode(
+    {
+      "login-password" : {
+        "description" : "Enter your password",
+        "title" : "Welcome to SeqtoID",
+      }
+    }
+  )
+}
+
+resource "auth0_prompt_custom_text" "reset-password" {
+  prompt   = "reset-password"
+  language = "en"
+
+  body = jsonencode(
+    {
+      "reset-password-request" = {
+        "backToLoginLinkText" = "Back to Login"
+      }
+    }
+  )
+}
+
+data "auth0_client" "idseq_web" {
+  client_id = auth0_client.idseq_web.id
+}
+
+data "auth0_client" "idseq_web_management" {
+  client_id = auth0_client.idseq_web_management.id
+}
+
+module "auth0-ssm-params" {
+  source  = "github.com/chanzuckerberg/cztack//aws-ssm-params-writer?ref=v0.104.2"
+  project = var.project
+  env     = var.env
+  service = "web"
+  owner   = var.owner
+
+  parameters = {
+    AUTH0_CLIENT_ID                = auth0_client.idseq_web.client_id
+    AUTH0_CLIENT_SECRET            = data.auth0_client.idseq_web.client_secret
+    AUTH0_CONNECTION               = auth0_connection.username_password_authentication.name
+    AUTH0_DOMAIN                   = data.auth0_tenant.env_tenant.domain
+    AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
+    AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
+    AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
   }
 }

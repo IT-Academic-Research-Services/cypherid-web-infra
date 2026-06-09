@@ -62,6 +62,7 @@ data "aws_iam_policy_document" "idseq-web" {
       "ec2:DescribeTags",
       "ec2:DescribeVpcs",
       "ec2:DescribeVpcClassicLink",
+      "ec2:TerminateInstances",
       "ecs:Describe*",
       "ecs:List*",
       "ecs:RegisterTaskDefinition",

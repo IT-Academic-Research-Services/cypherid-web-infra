@@ -2,7 +2,7 @@
 # Make improvements in fogg, so that everyone can benefit.
 
 module "aws-env" {
-  source                = "git@github.com:chanzuckerberg/shared-infra//terraform/modules/aws-env?ref=aws-env-v4.0.0"
+  source                = "../../../modules/aws-env-v4.0.0"
   azs                   = local.azs
   database_subnet_cidrs = local.database_subnet_cidrs
   env                   = local.env
@@ -13,6 +13,7 @@ module "aws-env" {
   public_subnet_cidrs   = local.public_subnet_cidrs
   region                = local.region
   service               = local.service
+  single_nat_gateway    = local.single_nat_gateway
   vpc_cidr              = local.vpc_cidr
 
 
