@@ -55,18 +55,18 @@ jobs:
           path: results
           run-id: ${{ inputs.run-id || github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: 'Download Artifacts for Workflow Run ${{ inputs.run-id || github.event.workflow_run.id }} using nektos act'
-        if: ${{ env.ACT }}
-        uses: actions/download-artifact@v3 # TODO: nektosact requires this version for local cross-workflow artifacts
-        with:
-          path: results
-      - name: 'Decompress Artifacts for Workflow Run ${{ inputs.run-id || github.event.workflow_run.id }} using nektos act'
-        if: ${{ env.ACT }}
-        working-directory: results
-        run: |
-          rm -r plan-*
-          find result-* -name "*.zip" | while read filename; do unzip -o -d "`dirname "$filename"`" "$filename"; done;
-          rm `find . -name "*.zip"`
+      #- name: 'Download Artifacts for Workflow Run ${{ inputs.run-id || github.event.workflow_run.id }} using nektos act'
+      #  if: ${{ env.ACT }}
+      #  uses: actions/download-artifact@v3 # TODO: nektosact requires this version for local cross-workflow artifacts
+      #  with:
+      #    path: results
+      #- name: 'Decompress Artifacts for Workflow Run ${{ inputs.run-id || github.event.workflow_run.id }} using nektos act'
+      #  if: ${{ env.ACT }}
+      #  working-directory: results
+      #  run: |
+      #    rm -r plan-*
+      #    find result-* -name "*.zip" | while read filename; do unzip -o -d "`dirname "$filename"`" "$filename"; done;
+      #    rm `find . -name "*.zip"`
       - name: Generate Changing Components Matrix
         id: changing-components
         run: |

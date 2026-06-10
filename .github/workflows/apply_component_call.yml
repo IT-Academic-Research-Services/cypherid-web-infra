@@ -90,19 +90,19 @@ jobs:
           path: './terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/'
           run-id: ${{ inputs.run-id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: 'Download Plan Artifact using nektos act'
-        if: ${{ inputs.run-id && env.ACT }}
-        uses: actions/download-artifact@v3 # TODO: nektosact requires this for local cross-workflow artifacts
-        with:
-          name: 'plan-${{ inputs.component }}'
-          path: './terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/'
-          run-id: ${{ inputs.run-id }}
-      - name: 'Decompress Plan Artifact while using nektos act'
-        if: ${{ inputs.run-id && env.ACT }}
-        working-directory: './terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/'
-        run: |
-          unzip 'plan-${{ inputs.component }}.zip'
-          rm 'plan-${{ inputs.component }}.zip'
+      #- name: 'Download Plan Artifact using nektos act'
+      #  if: ${{ inputs.run-id && env.ACT }}
+      #  uses: actions/download-artifact@v3 # TODO: nektosact requires this for local cross-workflow artifacts
+      #  with:
+      #    name: 'plan-${{ inputs.component }}'
+      #    path: './terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/'
+      #    run-id: ${{ inputs.run-id }}
+      #- name: 'Decompress Plan Artifact while using nektos act'
+      #  if: ${{ inputs.run-id && env.ACT }}
+      #  working-directory: './terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/'
+      #  run: |
+      #    unzip 'plan-${{ inputs.component }}.zip'
+      #    rm 'plan-${{ inputs.component }}.zip'
       - name: Terraform Init
         working-directory: './terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/'
         run: |

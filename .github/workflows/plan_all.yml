@@ -3,17 +3,17 @@ run-name: Terraform Plan all Components in env ${{ inputs.environment || github.
 
 on:
   push:
-    branches:
-      - development
-      - staging
-      - main
-      #- 'releases/**' TODO: Handle releases
-  pull_request:
-    branches:
-      - development
-      - staging
-      - main
-      #- 'releases/**' TODO: Handle releases
+#    branches:
+#      - development
+#      - staging
+#      - main
+#      #- 'releases/**' TODO: Handle releases
+#  pull_request:
+#    branches:
+#      - development
+#      - staging
+#      - main
+#      #- 'releases/**' TODO: Handle releases
   workflow_dispatch:
     inputs:
       environment:
