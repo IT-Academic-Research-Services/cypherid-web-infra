@@ -207,25 +207,28 @@ resource "aws_route53_record" "assets" {
 #   }
 # }
 
-resource "local_file" "templated_main_js" {
-  content = replace(
-    file("${path.module}/templates/main.js.tpl"),
-    "REPLACE_WITH_API_GATEWAY_ENDPOINT",
-    "${aws_apigatewayv2_stage.prod.invoke_url}/signup"
-  )
-  filename = "${path.module}/dist/main.js"
-}
-
-resource "aws_s3_object" "landing_page" {
+resource "aws_s3_object" "landing_page_static" {
   for_each = fileset("${path.module}/dist", "**/*")
 
   bucket = aws_s3_bucket.maintenance_bucket.id
   key    = each.value
   source = "${path.module}/dist/${each.value}"
   etag   = filemd5("${path.module}/dist/${each.value}")
+}
 
-  # Extracts the extension and looks up the MIME type, defaulting to octet-stream
-  content_type = lookup(local.mime_types, regex("[^.]+$", each.value), "application/octet-stream")
+resource "aws_s3_object" "landing_page_templates" {
+  for_each = fileset("${path.module}/templates", "**/*")
 
-  depends_on = [local_file.templated_main_js]
+  bucket = aws_s3_bucket.maintenance_bucket.id
+  key    = trimsuffix(each.value, ".tpl")
+
+  content = templatefile("${path.module}/templates/${each.value}", {
+    REPLACE_WITH_API_GATEWAY_ENDPOINT = "${aws_apigatewayv2_stage.prod.invoke_url}/signup"
+  })
+
+  etag = md5(templatefile("${path.module}/templates/${each.value}", {
+    REPLACE_WITH_API_GATEWAY_ENDPOINT = "${aws_apigatewayv2_stage.prod.invoke_url}/signup"
+  }))
+
+  content_type = lookup(local.mime_types, regex("[^.]+\\.tpl$", each.value), "application/octet-stream")
 }

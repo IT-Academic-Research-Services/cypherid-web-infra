@@ -130,33 +130,6 @@ resource "aws_s3_object" "lambda_zip" {
   depends_on = [data.archive_file.lambda_zip]
 }
 
-
-# resource "aws_lambda_layer_version" "dependency_layer" {
-#   filename            = data.archive_file.layer_zip.output_path
-#   layer_name          = "python_dependencies"
-#   compatible_runtimes = ["python3.11"]
-#   source_code_hash    = data.archive_file.layer_zip.output_base64sha256
-# }
-#
-# # Deploy the Lambda Function linked with the Layer
-# resource "aws_lambda_function" "my_lambda" {
-#   filename         = data.archive_file.lambda_zip.output_path
-#   function_name    = "my_dependent_lambda"
-#   role             = aws_iam_role.lambda_role.arn
-#   handler          = "index.handler"
-#   runtime          = "python3.11"
-#   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-#
-#   layers = [
-#     aws_lambda_layer_version.dependency_layer.arn
-#   ]
-#
-#   depends_on = [aws_iam_role_policy_attachment.lambda_logs]
-# }
-
-
-####################
-
 resource "aws_lambda_function" "mailing_list" {
   function_name = "seqtoid-mailing-list"
   role          = aws_iam_role.lambda_execution.arn
@@ -176,8 +149,6 @@ resource "aws_lambda_function" "mailing_list" {
       ALLOWED_ORIGINS = var.allowed_origins
     }
   }
-
-  depends_on = [aws_s3_object.landing_page]
 }
 
 resource "aws_cloudwatch_log_group" "ecs" {
@@ -196,9 +167,9 @@ resource "aws_apigatewayv2_api" "http_api" {
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
-  api_id           = aws_apigatewayv2_api.http_api.id
-  integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.mailing_list.invoke_arn
+  api_id                 = aws_apigatewayv2_api.http_api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.mailing_list.invoke_arn
   payload_format_version = "2.0"
 }
 

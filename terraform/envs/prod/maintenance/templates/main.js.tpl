@@ -6,7 +6,7 @@
    API Gateway endpoint URL output by the CloudFormation stack or deploy script.
    Example: https://abc123xyz.execute-api.us-west-2.amazonaws.com/prod/signup
 ───────────────────────────────────────────────────────────────────────────── */
-const API_ENDPOINT = 'REPLACE_WITH_API_GATEWAY_ENDPOINT';
+const API_ENDPOINT = `${REPLACE_WITH_API_GATEWAY_ENDPOINT}`;
 
 /* ---- Mobile Nav ---- */
 const navToggle = document.getElementById('navToggle');
@@ -143,7 +143,7 @@ if (form) {
     } catch (err) {
       console.error('Signup error:', err);
       // Dev/preview mode — show success if API not yet wired up
-      if (API_ENDPOINT === 'REPLACE_WITH_API_GATEWAY_ENDPOINT') {
+      if (API_ENDPOINT === `${REPLACE_WITH_API_GATEWAY_ENDPOINT}`) {
         if (successEmail) successEmail.textContent = payload.email;
         form.style.display        = 'none';
         formSuccess.style.display = 'block';
