@@ -1,0 +1,174 @@
+name: Terraform Apply all Components
+run-name: Terraform Apply all Components for Workflow ${{ inputs.run-id || github.event.workflow_run.id }} by ${{ github.actor }}
+
+on:
+  # TODO: Trigger automatically for branch deployments?
+  #push:
+  #  branches:
+  #    - development # Corresponds to dev
+  #    - main # Corresponds to prod
+  #    - production # TODO: Do we want main to mean prod, or an actual production branch?
+  #    - staging
+  #    #- 'releases/**' TODO: Handle releases
+  #workflow_run:
+  #  workflows:
+  #    - Terraform Plan all Components
+  #  types:
+  #    - completed
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: Github Action Workflow Run ID to get Plan Artifacts from
+        type: number
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.run-id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  should-apply:
+    name: Check if Terraform Apply should be performed
+    if: ${{ !cancelled() && (inputs.run-id || github.event.workflow_run.id) }}
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.changing-components.outputs.environment }}
+      changing-components: ${{ steps.changing-components.outputs.changing-components }}
+    steps:
+      - name: Print GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          echo "$GITHUB_CONTEXT"
+      - name: 'Download Artifacts for Workflow Run ${{ inputs.run-id }}'
+        if: ${{ !env.ACT }}
+        uses: actions/download-artifact@v5
+        with:
+          pattern: result-*
+          path: results
+          run-id: ${{ inputs.run-id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      #- name: 'Download Artifacts for Workflow Run ${{ inputs.run-id || github.event.workflow_run.id }} using nektos act'
+      #  if: ${{ env.ACT }}
+      #  uses: actions/download-artifact@v3 # TODO: nektosact requires this version for local cross-workflow artifacts
+      #  with:
+      #    path: results
+      #- name: 'Decompress Artifacts for Workflow Run ${{ inputs.run-id || github.event.workflow_run.id }} using nektos act'
+      #  if: ${{ env.ACT }}
+      #  working-directory: results
+      #  run: |
+      #    rm -r plan-*
+      #    find result-* -name "*.zip" | while read filename; do unzip -o -d "`dirname "$filename"`" "$filename"; done;
+      #    rm `find . -name "*.zip"`
+      - name: Generate Changing Components Matrix
+        id: changing-components
+        run: |
+          find results/
+          find results/ -name "*.json" -exec jq --compact-output --slurp '.' {} + > results.json
+          jq . results.json
+
+          components=$(jq -c 'map(.component)' results.json)
+          echo "components=$components"
+          echo "components=$components" >> "$GITHUB_OUTPUT"
+
+          changing_components=$(jq -c '[.[] | select(.change_count > 0) | .component]' results.json)
+          echo "changing-components=$changing_components"
+          echo "changing-components=$changing_components" >> "$GITHUB_OUTPUT"
+
+          environment=$(jq -cr 'map(.environment) | unique | .[0] // empty' results.json)
+          echo "environment=$environment"
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+
+          component_count=$(jq 'length' <<< "$components")
+          changing_component_count=$(jq 'length' <<< "$changing_components")
+          echo "component_count=$component_count"
+          echo "| Should Apply | Environment | Components | Changing Components | Plan Workflow Run ID |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ------------ | ----------- | ---------- | ------------------ | -------------------- |" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$component_count" -gt 0 ]]; then
+            echo "| :green_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run-id }} |"
+            echo "| :green_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run_id }} |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| :yellow_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run-id }} |"
+            echo "| :yellow_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run_id }} |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "<br/>" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "|   | Component | Changes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| - | --------- | ------- |" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.[] | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\(.component)|\(.change_count)|"' results.json
+          jq -r '.[] | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\(.component)|\(.change_count)|"' results.json >> "$GITHUB_STEP_SUMMARY"
+
+  apply-components:
+    name: Terraform Apply each Component
+    if: ${{ needs.should-apply.outputs.environment && needs.should-apply.outputs.changing-components != '[]' }}
+    needs:
+      - should-apply
+    strategy:
+      fail-fast: false
+      #max-parallel: 2
+      matrix:
+        component: ${{ fromJson(needs.should-apply.outputs.changing-components) }}
+    uses: ./.github/workflows/apply_component_call.yml
+    with:
+      environment: ${{ needs.should-apply.outputs.environment }}
+      component: ${{ matrix.component }}
+      run-id: ${{ fromJson(inputs.run-id || github.event.workflow_run.id) }}
+    secrets: inherit
+
+  apply-components-summary:
+    name: Terraform Apply Results
+    if: ${{ !cancelled() }} # && contains(needs.apply-components.result, 'success') }}
+    runs-on: ubuntu-latest
+    needs:
+      - apply-components
+    steps:
+      - name: Download Result Artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: result-*
+          path: results
+      - name: Generate Summary
+        run: |
+          echo "needs.apply-components.result=${{ needs.apply-components.result }}"
+          find results/
+          find results/ -name "*.json" -exec jq --compact-output --slurp '.' {} + > results.json
+          jq . results.json
+
+          change_count=$(jq 'map(.change_count) | add' results.json)
+          echo "|   | Total Changes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| - | ------------- |" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$change_count" -eq 0 ]]; then
+            echo "| :green_circle: | $change_count |"
+            echo "| :green_circle: | $change_count |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| :yellow_circle: | $change_count |"
+            echo "| :yellow_circle: | $change_count |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "<br/>" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "|   | Component | Changes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| - | --------- | ------- |" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.[] | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\(.component)|\(.change_count)|"' results.json
+          jq -r '.[] | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\(.component)|\(.change_count)|"' results.json >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "<br/>" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| Component | Action | Address |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --------- | ------ | ------- |" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.[] | .component as $component | .resources_changed[] | "|\($component)|\(.action)|\(.address)|"' results.json
+          jq -r '.[] | .component as $component | .resources_changed[] | "|\($component)|\(.action)|\(.address)|"' results.json >> "$GITHUB_STEP_SUMMARY"

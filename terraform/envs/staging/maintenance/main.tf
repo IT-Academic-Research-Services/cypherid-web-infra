@@ -18,7 +18,6 @@ resource "aws_s3_bucket" "maintenance_bucket" {
   }
 }
 
-
 data "aws_iam_policy_document" "s3_iam_policy" {
   statement {
     actions   = ["s3:GetObject"]
@@ -53,7 +52,6 @@ module "assets-cert" {
 resource "aws_cloudfront_origin_access_identity" "origin_access_identity" {
   comment = "OAI for maintenance cloudfront distribution"
 }
-
 
 resource "aws_cloudfront_distribution" "distribution" {
 
