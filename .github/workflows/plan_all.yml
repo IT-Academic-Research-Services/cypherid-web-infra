@@ -2,7 +2,7 @@ name: Terraform Plan all Components
 run-name: Terraform Plan all Components in env ${{ inputs.environment || github.base_ref || github.ref_name }} branch ${{ github.base_ref || github.ref_name }} by ${{ github.actor }}
 
 on:
-  push:
+#  push:
 #    branches:
 #      - development
 #      - staging
