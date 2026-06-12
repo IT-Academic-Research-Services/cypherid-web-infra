@@ -1,0 +1,149 @@
+name: Terraform Plan Component Call
+run-name: Terraform Plan Component Call with env ${{ inputs.environment }} component ${{ inputs.component }}
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Both Github Environment and AWS Environment
+        type: string
+        required: true
+      component:
+        description: 'Fogg Component, located in the terraform/emvs/<environment>/<component> directory'
+        type: string
+        required: true
+    secrets:
+      AUTH0_CLIENT_ID:
+        required: true
+      AUTH0_CLIENT_SECRET:
+        required: true
+      AUTH0_DOMAIN:
+        required: true
+    outputs:
+      plan-artifact-id:
+        description: The Artifact ID of the generated Terraform Plan
+        value: ${{ jobs.plan-component.outputs.plan-artifact-id }}
+      result-artifact-id:
+        description: The Artifact ID of the Result JSON
+        value: ${{ jobs.plan-component.outputs.result-artifact-id }}
+
+env:
+  AWS_REGION: us-west-2
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  plan-component:
+    name: Terraform Plan Component - ${{ inputs.component }}
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    outputs:
+      plan-artifact-id: ${{ steps.upload-plan.outputs.artifact-id }}
+      result-artifact-id: ${{ steps.upload-result.outputs.artifact-id }}
+    steps:
+      - name: Git clone the repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Reconfigure Git to use HTTP authentication
+        run: |
+          git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@v1
+        with:
+          version: 2
+          verbose: false
+          arch: amd64
+      - name: Configure AWS Credentials
+        if: ${{ !env.ACT }}
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/czid-${{ inputs.environment }}-gh-actions-executor
+          #output-credentials: true
+          output-env-credentials: true
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ env.AWS_REGION }}
+          aws-profile: idseq-${{ inputs.environment }}
+      - name: Configure AWS Credentials for local execution using nektos act
+        if: ${{ env.ACT }}
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: czid-${{ inputs.environment }}-gh-actions-executor
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          #output-credentials: true
+          output-env-credentials: true
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ env.AWS_REGION }}
+          aws-profile: idseq-${{ inputs.environment }}
+      - name: Setup Terraform
+        run: |
+          aws sts get-caller-identity --profile "idseq-${{ inputs.environment }}" --no-cli-pager --no-cli-auto-prompt
+          make terraform
+          .fogg/tfenv/bin/terraform --version
+      - name: Terraform Plan
+        working-directory: "./terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/"
+        env:
+          # TODO: Get these from Parameter Store instead of GitHub Secrets
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+        # TODO: Handle special cases, like route53 which needs idseq-prod access; or fix route53 to be profile-specific only
+        # NOTE: make check-plan should be sufficient, but it doesn't leave the plan file after it executes
+        #       other commands should also be make commands, but they expect AWS CLI to be installed, and we don't do that here (yet)
+        #       make check-auth init fmt refresh check-plan
+        run: |
+          make check-auth
+          ${{ github.workspace }}/.fogg/tfenv/bin/terraform init -input=false -upgrade
+          echo "Plan will be created in: ${{ github.workspace }}/tf.plan"
+          set +e
+          ${{ github.workspace }}/.fogg/tfenv/bin/terraform plan -input=false -detailed-exitcode -refresh=false -out="${{ github.workspace }}/tf.plan"
+          exitcode=$?
+          echo "Terraform exited with exit-code $exitcode"
+          if [[ $exitcode -eq 1 ]]; then
+            exit $exitcode
+          fi
+          set -e
+          ${{ github.workspace }}/.fogg/tfenv/bin/terraform show -json "${{ github.workspace }}/tf.plan" > plan.json
+          jq '.resource_changes[] | select(.change.actions[0] != "no-op" and .change.actions[0] != "read")' plan.json | jq '{address, action: .change.actions[0]}' | jq -c --slurp . > "${{ github.workspace }}/resource_changes.json"
+          jq -c . "${{ github.workspace }}/resource_changes.json"
+      # TODO: Only uncomment for local execution via nektos act, when testing outputs and artifacts
+      #- name: Terraform Plan
+      #  run: |
+      #    echo foo > "${{ github.workspace }}/tf.plan"
+      #    change_count=$(( RANDOM % 2 ))
+      #    if [[ $change_count -eq 0 ]]; then
+      #      jq -cn '$ARGS.positional' > "${{ github.workspace }}/resource_changes.json"
+      #    else
+      #      jq -cn '$ARGS.positional' --jsonargs '{"address": "foo", "action": "create"}' '{"address": "bar", "action": "update"}' '{"address": "baz", "action": "delete"}' > "${{ github.workspace }}/resource_changes.json"
+      #    fi
+      - name: Upload Plan as Artifact
+        id: upload-plan
+        uses: actions/upload-artifact@v5
+        with:
+          name: plan-${{ inputs.component }}
+          path: ${{ github.workspace }}/tf.plan
+          retention-days: 30
+          compression-level: 0 # Plan files are already pretty compact, and max compression gives at best 10% savings
+          if-no-files-found: error
+      - name: Create Result JSON
+        run: |
+          change_count=$(jq 'length' "${{ github.workspace }}/resource_changes.json")
+          echo "change-count=$change_count"
+          jq -cnS \
+            --arg environment "${{ inputs.environment }}" \
+            --arg component "${{ inputs.component }}" \
+            --arg artifact_name "plan-${{ inputs.component }}" \
+            --arg artifact_id "${{ steps.upload-plan.outputs.artifact-id }}" \
+            --argjson change_count "$change_count" \
+            --argjson resource_changes $(<"${{ github.workspace }}/resource_changes.json") \
+            '$ARGS.named' > "${{ github.workspace }}/result.json"
+          jq . "${{ github.workspace }}/result.json"
+      - name: Upload Result JSON as Artifact
+        id: upload-result
+        uses: actions/upload-artifact@v5
+        with:
+          name: result-${{ inputs.component }}
+          path: ${{ github.workspace }}/result.json
+          retention-days: 30
+          if-no-files-found: error
