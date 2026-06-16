@@ -1,0 +1,10 @@
+{
+  "name": "seqtoid-mailing-list-lambda",
+  "version": "1.0.1",
+  "description": "SeqToID mailing list signup handler",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.974.0",
+    "@aws-sdk/lib-dynamodb": "^3.974.0"
+  }
+}

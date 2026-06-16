@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SeqToID — Metagenomic Pathogen Identification</title>
+  <meta name="description" content="SeqToID is a cloud-based bioinformatics platform operated by UCSF for metagenomic pathogen identification and infectious disease research." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- NAV -->
+  <header class="nav">
+    <div class="nav-inner container">
+      <a href="index.html" class="nav-logo">
+        <img src="logo.png" alt="SeqToID" />
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#mailing-list" class="btn btn-primary btn-sm">Join Mailing List</a>
+      </nav>
+      <button class="nav-hamburger" id="navToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-logo-wrap">
+        <img src="logo-transparent.png" alt="SeqToID" class="hero-logo" />
+      </div>
+      <div class="hero-badge">Coming Soon &mdash; UCSF</div>
+      <h1 class="hero-title">Sequence to Identification.<br /><span class="gradient-text">Pathogen Discovery at Scale.</span></h1>
+      <p class="hero-subtitle">SeqToID is a cloud-based metagenomic analysis platform operated by the University of California, San Francisco. No coding required &mdash; just upload your sequencing data and let the pipeline do the rest.</p>
+      <div class="hero-cta">
+        <a href="#mailing-list" class="btn btn-primary btn-lg">Join the Mailing List</a>
+        <a href="#how-it-works" class="btn btn-outline btn-lg">Learn More</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-num">No-Code</span>
+          <span class="stat-label">No bioinformatics expertise needed</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-num">Secure</span>
+          <span class="stat-label">Your raw data is never shared</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-num">UCSF</span>
+          <span class="stat-label">Operated by UC San Francisco</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-wave">
+      <svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0,40 C360,80 1080,0 1440,40 L1440,80 L0,80 Z" fill="#f8fafc"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="features section-pad" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2>Built for Researchers, Powered by UCSF</h2>
+        <p>SeqToID brings together cutting-edge metagenomic pipelines and privacy-first data handling in a single, accessible platform.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon icon-blue">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <h3>Metagenomic Pipeline</h3>
+          <p>Characterize microbes present in your samples — including viruses, bacteria, and eukaryotes — using our fully automated pipeline.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon icon-teal">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          </div>
+          <h3>Fast &amp; Scalable</h3>
+          <p>Rapid, concurrent sample analysis directly from your laptop. No local compute infrastructure required.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon icon-green">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3>Private &amp; Secure</h3>
+          <p>Raw sample data is never shared with other users. Human genetic sequences are filtered out before any analysis is stored.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon icon-purple">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <h3>Rich Visualizations</h3>
+          <p>Heatmaps, phylogenetic trees, coverage visualizations, and taxonomic trees — all customizable and shareable.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon icon-orange">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3>Collaborative Research</h3>
+          <p>Create projects, share report data with colleagues, and contribute to a global pathogen surveillance network.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon icon-red">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <h3>AMR &amp; Viral Pipelines</h3>
+          <p>Dedicated pipelines for antimicrobial resistance detection and viral consensus genome assembly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how-it-works section-pad bg-light" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <h2>How SeqToID Works</h2>
+        <p>From raw sequencing files to actionable pathogen reports in three simple steps.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">01</div>
+          <div class="step-content">
+            <h3>Upload Your Data</h3>
+            <p>Submit FASTA or FASTQ files along with sample metadata such as collection date, host type, and tissue type. All human genetic sequences are automatically filtered and discarded.</p>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">02</div>
+          <div class="step-content">
+            <h3>Automated Pipeline Analysis</h3>
+            <p>SeqToID's data pipeline cleans, deduplicates, and matches nucleotide sequences against known pathogen databases to generate comprehensive report data.</p>
+          </div>
+        </div>
+        <div class="step-connector"></div>
+        <div class="step">
+          <div class="step-number">03</div>
+          <div class="step-content">
+            <h3>Explore &amp; Share Results</h3>
+            <p>Visualize identified pathogens, download reports, and optionally share findings with collaborators or the broader research community to advance global health surveillance.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- MAILING LIST -->
+  <section class="waitlist section-pad" id="mailing-list">
+    <div class="container">
+      <div class="waitlist-inner">
+        <div class="waitlist-text">
+          <h2>Join Our Mailing List</h2>
+          <p>Sign up to get the latest updates on our upcoming launch. We'll be in touch with news, access information, and registration details.</p>
+          <p class="waitlist-note">SeqToID is operated by UCSF.</p>
+        </div>
+        <div class="waitlist-form-wrap">
+          <form class="waitlist-form" id="waitlistForm" novalidate>
+            <div class="form-group">
+              <label for="wl-name">Full Name</label>
+              <input type="text" id="wl-name" name="name" placeholder="Dr. Jane Smith" required />
+            </div>
+            <div class="form-group">
+              <label for="wl-email">Email Address</label>
+              <input type="email" id="wl-email" name="email" placeholder="you@institution.edu" required />
+            </div>
+            <div class="form-group">
+              <label for="wl-institution">Institution / Organization</label>
+              <input type="text" id="wl-institution" name="institution" placeholder="Your institution" />
+            </div>
+            <div class="form-group">
+              <label for="wl-role">Research Focus</label>
+              <select id="wl-role" name="role">
+                <option value="" disabled selected>Select your area</option>
+                <option value="infectious-disease">Infectious Disease</option>
+                <option value="genomics">Genomics / Sequencing</option>
+                <option value="public-health">Public Health</option>
+                <option value="microbiology">Microbiology</option>
+                <option value="virology">Virology</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg btn-full">Join the Mailing List</button>
+            <p class="form-legal">By submitting this form you agree to our <a href="privacy.html">Privacy Policy</a> and <a href="terms.html">Terms of Service</a>.</p>
+          </form>
+          <div class="form-success" id="formSuccess" style="display:none;">
+            <div class="success-icon">&#10003;</div>
+            <h3>You're on the list!</h3>
+            <p>Thank you for your interest in SeqToID. We'll be in touch at <span id="successEmail"></span> with updates on our upcoming launch.</p>
+            <p class="success-note">Questions? Email us at <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="logo.png" alt="SeqToID" class="footer-logo" />
+        <p>A cloud-based metagenomic platform for infectious disease research, operated by UCSF.</p>
+        <p class="footer-address">
+          SeqToID Administrator<br />
+          1855 Folsom St, Suite 601<br />
+          San Francisco, CA 94143
+        </p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Platform</h4>
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#mailing-list">Mailing List</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="terms.html">Terms of Service</a>
+        </div>
+        <div class="footer-col">
+          <h4>Contact</h4>
+          <a href="mailto:seqtoid@ucsf.edu">seqtoid@ucsf.edu</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="container">
+        <p>&copy; 2026 The Regents of the University of California. Operated by UCSF. &nbsp;|&nbsp; <a href="privacy.html">Privacy Policy</a> &nbsp;|&nbsp; <a href="terms.html">Terms of Service</a></p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
