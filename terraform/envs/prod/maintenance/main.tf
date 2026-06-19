@@ -1,7 +1,9 @@
 locals {
-  env_fqdn    = data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn
-  full_domain = "${var.component}.${data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn}"
-  zone_id     = data.terraform_remote_state.route53.outputs.env_seqtoid_org_zone_id
+  zone_id            = data.terraform_remote_state.route53.outputs.env_seqtoid_org_zone_id
+  env_fqdn           = data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn
+  www_env_fqdn       = "www.${local.env_fqdn}"
+  component_fqdn     = "${var.component}.${local.env_fqdn}"
+  www_component_fqdn = "www.${local.component_fqdn}"
 
   # aliases = {
   #   "www.${local.full_domain}" = local.zone_id
@@ -19,7 +21,7 @@ locals {
 }
 
 resource "aws_s3_bucket" "maintenance_bucket" {
-  bucket        = local.full_domain
+  bucket        = local.component_fqdn
   acl           = "private"
   force_destroy = true
 
@@ -68,9 +70,10 @@ module "env-cert" {
   tags                = var.tags # TODO: var.tags is deprecated
 
   cert_subject_alternative_names = {
-    (local.full_domain)        = local.zone_id
-    "www.${local.full_domain}" = local.zone_id
-    "www.${local.env_fqdn}"    = local.zone_id
+    (local.env_fqdn)           = local.zone_id
+    (local.www_env_fqdn)       = local.zone_id
+    (local.component_fqdn)     = local.zone_id
+    (local.www_component_fqdn) = local.zone_id
   }
   providers = {
     aws = aws.us-east-1
@@ -87,7 +90,12 @@ resource "aws_cloudfront_distribution" "distribution" {
   default_root_object = "index.html"
   comment             = "Serves ${var.env} maintenance page from S3 bucket"
 
-  aliases = [local.full_domain, local.env_fqdn]
+  aliases = [
+    local.env_fqdn,
+    local.www_env_fqdn,
+    local.component_fqdn,
+    local.www_component_fqdn,
+  ]
 
   origin {
     domain_name = aws_s3_bucket.maintenance_bucket.bucket_regional_domain_name
@@ -171,9 +179,9 @@ resource "aws_cloudfront_distribution" "distribution" {
   }
 }
 
-resource "aws_route53_record" "assets" {
+resource "aws_route53_record" "maintenance_env_redirect" {
   zone_id = local.zone_id
-  name    = local.full_domain
+  name    = local.component_fqdn
   type    = "A"
 
   alias {
@@ -183,29 +191,41 @@ resource "aws_route53_record" "assets" {
   }
 }
 
-# resource "aws_route53_record" "env_domain_maintenance_redirect" {
-#   zone_id = local.zone_id
-#   name    = local.env_fqdn
-#   type    = "A"
-#
-#   alias {
-#     name                   = aws_cloudfront_distribution.distribution.domain_name
-#     zone_id                = aws_cloudfront_distribution.distribution.hosted_zone_id
-#     evaluate_target_health = true
-#   }
-# }
+resource "aws_route53_record" "www_maintenance_env_redirect" {
+  zone_id = local.zone_id
+  name    = local.www_component_fqdn
+  type    = "A"
 
-# resource "aws_route53_record" "www_env_domain_maintenance_redirect" {
-#   zone_id = local.zone_id
-#   name    = "www.${local.env_fqdn}"
-#   type    = "A"
-#
-#   alias {
-#     name                   = aws_cloudfront_distribution.distribution.domain_name
-#     zone_id                = aws_cloudfront_distribution.distribution.hosted_zone_id
-#     evaluate_target_health = true
-#   }
-# }
+  alias {
+    name                   = aws_cloudfront_distribution.distribution.domain_name
+    zone_id                = aws_cloudfront_distribution.distribution.hosted_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "env_redirect" {
+  zone_id = local.zone_id
+  name    = local.env_fqdn
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.distribution.domain_name
+    zone_id                = aws_cloudfront_distribution.distribution.hosted_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "www_env_redirect" {
+  zone_id = local.zone_id
+  name    = local.www_env_fqdn
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.distribution.domain_name
+    zone_id                = aws_cloudfront_distribution.distribution.hosted_zone_id
+    evaluate_target_health = true
+  }
+}
 
 resource "aws_s3_object" "landing_page_static" {
   for_each = fileset("${path.module}/dist", "**/*")

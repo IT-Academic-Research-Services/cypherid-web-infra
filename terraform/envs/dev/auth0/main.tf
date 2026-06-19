@@ -307,9 +307,9 @@ module "auth0-ssm-params" {
     AUTH0_CLIENT_ID                = auth0_client.idseq_web.client_id
     AUTH0_CLIENT_SECRET            = data.auth0_client.idseq_web.client_secret
     AUTH0_CONNECTION               = auth0_connection.username_password_authentication.name
-    AUTH0_DOMAIN                   = data.auth0_tenant.env_tenant.domain
+    AUTH0_DOMAIN                   = aws_route53_record.auth_env_cname.name
     AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
     AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
-    AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
+    AUTH0_MANAGEMENT_DOMAIN        = aws_route53_record.auth_env_cname.name # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
   }
 }
