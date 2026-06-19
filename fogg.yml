@@ -145,6 +145,7 @@ envs:
         depends_on:
           components:
             - web
+        module_source: terraform/modules/github-actions-runner-permissions
       # used to code generate our configuration for the s3 storing state files outisde of TFE buckets
       # s3-tf-state:
       #   depends_on:
@@ -495,6 +496,7 @@ envs:
         depends_on:
           components:
             - web
+        module_source: terraform/modules/github-actions-runner-permissions
       auth0:
         providers:
           auth0:
@@ -826,6 +828,7 @@ modules:
   czid-services-private-key:
   ecs-cluster-v2.4.0:
   ecs-service-with-alb-v0.421.0:
+  github-actions-runner-permissions:
   happy-env-eks:
   happy-github-ci-role:
   happy-github-ci-role-ecs:
