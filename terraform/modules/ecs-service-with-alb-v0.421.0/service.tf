@@ -19,6 +19,38 @@ locals {
       element(concat(aws_ecs_task_definition.fargate_job.*.revision, aws_ecs_task_definition.job.*.revision), 0),
     ])
   )
+
+  # Default container definition if no task_definition is provided.
+  # Defaults to a minimal hello-world implementation; should be updated separately from
+  # Terraform, e.g. using ecs deploy or czecs
+  task = <<TEMPLATE
+  [{
+    "name": "${local.container_name}",
+    "image": "library/busybox:1.29",
+    "command": ["sh", "-c", "while true; do { echo -e 'HTTP/1.1 200 OK\r\n\nRunning stub server'; date; } | nc -l -p ${var.container_port}; done"],
+    "memoryReservation": 8,
+    "portMappings": [
+      {
+        "containerPort": ${var.container_port},
+        "hostPort": 0
+      }
+    ]
+  }]
+  TEMPLATE
+
+  fargate_task = <<TEMPLATE
+  [{
+    "name": "${local.container_name}",
+    "image": "library/busybox:1.29",
+    "command": ["sh", "-c", "while true; do { echo -e 'HTTP/1.1 200 OK\r\n\nRunning stub server'; date; } | nc -l -p ${var.container_port}; done"],
+    "portMappings": [
+      {
+        "containerPort": ${var.container_port},
+        "hostPort":  ${var.container_port}
+      }
+    ]
+  }]
+  TEMPLATE
 }
 
 module "alb-sg" {
@@ -251,51 +283,6 @@ resource "aws_ecs_service" "unmanaged-fargate-discovery-job" {
   depends_on = [module.alb]
 }
 
-# Default container definition if no task_definition is provided.
-# Defaults to a minimal hello-world implementation; should be updated separately from
-# Terraform, e.g. using ecs deploy or czecs
-
-data "template_file" "task" {
-  count = var.use_fargate ? 0 : 1
-
-  template = <<TEMPLATE
-[
-  {
-    "name": "${local.container_name}",
-    "image": "library/busybox:1.29",
-    "command": ["sh", "-c", "while true; do { echo -e 'HTTP/1.1 200 OK\r\n\nRunning stub server'; date; } | nc -l -p ${var.container_port}; done"],
-    "memoryReservation": 8,
-    "portMappings": [
-      {
-        "containerPort": ${var.container_port},
-        "hostPort": 0
-      }
-    ]
-  }
-]
-TEMPLATE
-}
-
-data "template_file" "fargate_task" {
-  count = var.use_fargate ? 1 : 0
-
-  template = <<TEMPLATE
-[
-  {
-    "name": "${local.container_name}",
-    "image": "library/busybox:1.29",
-    "command": ["sh", "-c", "while true; do { echo -e 'HTTP/1.1 200 OK\r\n\nRunning stub server'; date; } | nc -l -p ${var.container_port}; done"],
-    "portMappings": [
-      {
-        "containerPort": ${var.container_port},
-        "hostPort":  ${var.container_port}
-      }
-    ]
-  }
-]
-TEMPLATE
-}
-
 data "aws_iam_policy_document" "execution_role" {
   count = var.use_fargate ? 1 : 0
 
@@ -346,14 +333,14 @@ resource "aws_iam_role_policy" "task_execution_role_secretsmanager" {
 resource "aws_ecs_task_definition" "job" {
   count                 = var.use_fargate ? 0 : 1
   family                = local.name
-  container_definitions = local.tf_managed_task ? var.task_definition : data.template_file.task.*.rendered[count.index]
+  container_definitions = local.tf_managed_task ? var.task_definition : local.task
   task_role_arn         = var.task_role_arn
 }
 
 resource "aws_ecs_task_definition" "fargate_job" {
   count                    = var.use_fargate ? 1 : 0
   family                   = local.name
-  container_definitions    = local.tf_managed_task ? var.task_definition : data.template_file.fargate_task.*.rendered[count.index]
+  container_definitions    = local.tf_managed_task ? var.task_definition : local.fargate_task
   task_role_arn            = var.task_role_arn
   requires_compatibilities = ["FARGATE"]
   cpu                      = var.fargate_cpu

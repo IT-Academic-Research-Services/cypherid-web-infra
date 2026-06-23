@@ -19,6 +19,14 @@ locals {
   rolling_start_hour_offset = random_id.rand.dec % 30
 
   rolling_end_hour_offset = local.rolling_start_hour_offset + 15
+
+  boothook = templatefile("${path.module}/templates/boothook.tpl", {
+    cluster_name = aws_ecs_cluster.cluster.name
+  })
+
+  user_data = templatefile("${path.module}/templates/user_data.tpl", {
+    additional_user_data_script = var.additional_user_data_script
+  })
 }
 
 resource "random_id" "rand" {
@@ -290,26 +298,10 @@ module "sg" {
   egress_rules        = ["all-all"]
 }
 
-data "template_file" "boothook" {
-  template = file("${path.module}/templates/boothook.tpl")
-
-  vars = {
-    cluster_name = aws_ecs_cluster.cluster.name
-  }
-}
-
-data "template_file" "user_data" {
-  template = file("${path.module}/templates/user_data.tpl")
-
-  vars = {
-    additional_user_data_script = var.additional_user_data_script
-  }
-}
-
 module "user_data" {
   source          = "../instance-cloud-init-script-v0.484.6"
-  user_script     = data.template_file.user_data.rendered
-  user_boothook   = data.template_file.boothook.rendered
+  user_script     = local.user_data
+  user_boothook   = local.boothook
   users           = var.ssh_users
   datadog_api_key = var.datadog_api_key
 
