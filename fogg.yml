@@ -60,6 +60,8 @@ accounts:
     extra_vars:
       s3_bucket_name: tfstate-283694049553
 defaults:
+  extra_gitignore:
+    - "*.iml"
   #needs_aws_accounts_variable: false
   depends_on:
     accounts: []
