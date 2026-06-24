@@ -9,7 +9,7 @@ resource "aws_rds_cluster" "db" {
   storage_encrypted                   = true
   iam_database_authentication_enabled = true
   engine                              = "aurora-mysql"
-  # skip_final_snapshot                 = true
+  skip_final_snapshot                 = true
 
   db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.db_8.id
 

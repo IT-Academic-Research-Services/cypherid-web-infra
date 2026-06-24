@@ -2,7 +2,7 @@ locals {
   service     = "es"
   name        = "${var.project}-${var.env}-${local.service}"
   bucket_name = "idseq-${var.env}-heatmap-batch-jobs-${local.account_id}"
-  account_id  = var.aws_accounts.idseq-dev
+  account_id  = var.aws_accounts.idseq-staging
   tags = {
     managedBy = "terraform"
     Name      = local.name

@@ -319,23 +319,24 @@ module "staging_east" {
 module "web-service" {
   source = "../../../modules/ecs-service-with-alb-v0.421.0"
 
-  service             = "web"
-  project             = var.project
-  owner               = var.owner
-  container_port      = 3000
-  container_name      = "rails"
-  env                 = var.env
-  vpc_id              = data.terraform_remote_state.cloud-env.outputs.vpc_id
-  cluster_id          = data.terraform_remote_state.ecs.outputs.cluster_id
-  task_role_arn       = aws_iam_role.idseq-web.arn
-  desired_count       = 1
-  lb_subnets          = data.terraform_remote_state.cloud-env.outputs.public_subnets
-  route53_zone_id     = local.zone_id
-  subdomain           = ""
-  health_check_path   = "/health_check"
-  acm_certificate_arn = module.staging.arn
-  lb_egress_cidrs     = [data.terraform_remote_state.cloud-env.outputs.vpc_cidr_block]
-  access_logs_bucket  = data.terraform_remote_state.elb-access-logs.outputs.bucket_name
+  service                           = "web"
+  project                           = var.project
+  owner                             = var.owner
+  container_port                    = 3000
+  container_name                    = "rails"
+  env                               = var.env
+  vpc_id                            = data.terraform_remote_state.cloud-env.outputs.vpc_id
+  cluster_id                        = data.terraform_remote_state.ecs.outputs.cluster_id
+  task_role_arn                     = aws_iam_role.idseq-web.arn
+  desired_count                     = 1
+  lb_subnets                        = data.terraform_remote_state.cloud-env.outputs.public_subnets
+  route53_zone_id                   = local.zone_id
+  subdomain                         = ""
+  health_check_path                 = "/health_check"
+  health_check_grace_period_seconds = 600
+  acm_certificate_arn               = module.staging.arn
+  lb_egress_cidrs                   = [data.terraform_remote_state.cloud-env.outputs.vpc_cidr_block]
+  access_logs_bucket                = data.terraform_remote_state.elb-access-logs.outputs.bucket_name
 
   # The AWS and module default is 60s. We decided to increase it after observing
   # multiple endpoints exceeding that in production under normal loads, including

@@ -185,7 +185,6 @@ envs:
           #- aws_org_id # TODO: determine if this being set correctly matters or not, as the default is some CZI(?) Org
           - cluster_name
           - cluster_version
-          - iam_cluster_name_prefix
           - node_groups
           - owner_roles
         module_name: eks-cluster
@@ -341,12 +340,12 @@ envs:
             - cloud-env
         module_source: github.com/chanzuckerberg/cztack//aws-eks-cluster?ref=v0.104.2
         variables:
+          - addons
+          - authorized_github_repos
           - cluster_name
           - cluster_version
-          - owner_roles
           - node_groups
-          - authorized_github_repos
-          - addons
+          - owner_roles
         module_name: eks-cluster
         provider_aliases:
           aws.us-east-1: aws.us-east-1
@@ -444,7 +443,6 @@ envs:
           #- aws_org_id # TODO: determine if this being set correctly matters or not, as the default is some CZI(?) Org
           - cluster_name
           - cluster_version
-          - iam_cluster_name_prefix
           - owner_roles
           - node_groups
         module_name: eks-cluster
@@ -662,14 +660,13 @@ envs:
             - cloud-env
         module_source: github.com/chanzuckerberg/cztack//aws-eks-cluster?ref=v0.104.2
         variables:
-          - cluster_name
-          - iam_cluster_name_prefix
-          - cluster_version
-          - owner_roles
-          - node_groups
-          - authorized_github_repos
           - addons
+          - authorized_github_repos
           #- aws_org_id # TODO: determine if this being set correctly matters or not, as the default is some CZI(?) Org
+          - cluster_name
+          - cluster_version
+          - node_groups
+          - owner_roles
         module_name: eks-cluster
         provider_aliases:
           aws.us-east-1: aws.us-east-1
@@ -687,10 +684,10 @@ envs:
       happy:
         depends_on:
           components:
-            - route53
             - cloud-env
-            - k8s-core
             - eks
+            - k8s-core
+            - route53
         module_source: terraform/modules/happy-env-eks
         variables:
           - additional_secrets

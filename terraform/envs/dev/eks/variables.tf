@@ -13,7 +13,6 @@ locals {
   ]
 
   cluster_name            = var.eks_cluster_name
-  iam_cluster_name_prefix = null
 
   tags            = var.tags # TODO: var.tags is deprecated
   vpc_id          = data.terraform_remote_state.cloud-env.outputs.vpc_id
