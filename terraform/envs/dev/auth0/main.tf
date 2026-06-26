@@ -22,6 +22,7 @@ locals {
   # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
   assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
   assets_url  = "https://${local.assets_fqdn}"
+  audience    = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/"
 }
 
 resource "auth0_custom_domain" "auth_env_seqtoid_org" {
@@ -79,11 +80,11 @@ resource "auth0_tenant" "env_tenant" {
   #   url           = "${local.env_seqtoid_org_url}/error"
   # }
 
-  flags {
-    # enable_custom_domain_in_emails         = true
-    # enable_dynamic_client_registration     = false
-    # enable_public_signup_user_exists_error = true
-  }
+  # flags {
+  #   enable_custom_domain_in_emails         = true
+  #   enable_dynamic_client_registration     = false
+  #   enable_public_signup_user_exists_error = true
+  # }
 
   session_cookie {
     mode = "non-persistent"
@@ -153,7 +154,7 @@ resource "auth0_client" "idseq_web" {
 
 resource "auth0_client_grant" "idseq_web_grant" {
   client_id    = auth0_client.idseq_web.id
-  audience     = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/" # TODO: Should be auth0_resource_server.idseq_web.identifier ??
+  audience     = local.audience
   subject_type = "user"
   scopes       = []
 }
@@ -165,7 +166,7 @@ resource "auth0_client" "idseq_web_management" {
 
 resource "auth0_client_grant" "idseq_web_management_grant" {
   client_id = auth0_client.idseq_web_management.id
-  audience  = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/"
+  audience  = local.audience
   # subject_type = "client"
   scopes = [
     "read:users",
@@ -308,8 +309,9 @@ module "auth0-ssm-params" {
     AUTH0_CLIENT_SECRET            = data.auth0_client.idseq_web.client_secret
     AUTH0_CONNECTION               = auth0_connection.username_password_authentication.name
     AUTH0_DOMAIN                   = aws_route53_record.auth_env_cname.name
+    AUTH0_CLI_AUDIENCE             = local.audience
     AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
     AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
-    AUTH0_MANAGEMENT_DOMAIN        = aws_route53_record.auth_env_cname.name # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
+    AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain
   }
 }
