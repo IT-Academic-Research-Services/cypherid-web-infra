@@ -405,6 +405,10 @@ envs:
           components:
             - ecs
             - web
+      sentry:
+        module_source: terraform/modules/sentry
+        extra_vars:
+          sentry_organization: ucsf-rm
       web:
         depends_on:
           components:
@@ -449,12 +453,12 @@ envs:
         provider_aliases:
           aws.us-east-1: aws.us-east-1
       route53:
-      fivetran-ssh-nextgen:
-        depends_on:
-          components:
-            - db
-            - happy
-            - k8s-core
+      #fivetran-ssh-nextgen:
+      #  depends_on:
+      #    components:
+      #      - db
+      #      - happy
+      #      - k8s-core
       k8s-core:
         depends_on:
           components:
@@ -589,6 +593,10 @@ envs:
           components:
             - cloud-env
             - ecs
+      sentry:
+        module_source: terraform/modules/sentry
+        extra_vars:
+          sentry_organization: ucsf-rm
       web:
         depends_on:
           components:
@@ -749,13 +757,13 @@ envs:
         module_source: terraform/modules/aws-elb-access-logs-bucket-v0.420.0
         module_name: aws-elb-access-logs-bucket
       email:
-      fivetran-ssh:
-        depends_on:
-          components:
-            - ecs
-            - db
-            - happy
-            - k8s-core
+      #fivetran-ssh:
+      #  depends_on:
+      #    components:
+      #      - ecs
+      #      - db
+      #      - happy
+      #      - k8s-core
       #idseq-s3-tar-writer:
       #  module_source: terraform/modules/idseq-s3-tar-writer
       #  variables:
@@ -841,6 +849,7 @@ modules:
   machine-images:
   panther-s3-ingest-v2.0.1:
   snowflake-stage-s3-role-v0.420.0:
+  sentry:
   waf-georestriction-main:
   web-acl-regional-v3.3.1:
 plugins:
