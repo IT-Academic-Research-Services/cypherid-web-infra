@@ -20,7 +20,7 @@ resource "aws_rds_cluster_instance" "db" {
   count                   = 1
   identifier              = "${var.project}-${var.env}-${count.index}"
   cluster_identifier      = aws_rds_cluster.db.id
-  instance_class          = "db.r6i.xlarge"
+  instance_class          = "db.r6g.xlarge"
   db_subnet_group_name    = "${var.project}-${var.env}"
   db_parameter_group_name = aws_db_parameter_group.db_8.name
   monitoring_interval     = 0

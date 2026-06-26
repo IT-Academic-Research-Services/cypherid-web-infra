@@ -8,7 +8,7 @@ output "alb_route53_zone_id" {
 
 output "ecs_task_definition_family" {
   description = "The family of the task definition defined for the given/generated container definition."
-  value       = element(concat(aws_ecs_task_definition.fargate_job.*.family, aws_ecs_task_definition.job.*.family), 0)
+  value       = concat(aws_ecs_task_definition.fargate_job.*.family, aws_ecs_task_definition.job.*.family)[0]
 }
 
 output "container_security_group_id" {

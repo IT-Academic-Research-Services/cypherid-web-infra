@@ -1,5 +1,5 @@
 locals {
-  env_seqtoid_org_fqdn = data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn
+  env_seqtoid_org_url = "https://${data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn}"
 }
 
 resource "aws_s3_bucket" "samples" {
@@ -69,7 +69,7 @@ resource "aws_s3_bucket" "samples" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["PUT", "POST", "GET", "DELETE"]
-    allowed_origins = ["https://${var.env}.idseq.net", "https://${var.env}.czid.org", "https://${local.env_seqtoid_org_fqdn}"]
+    allowed_origins = [local.env_seqtoid_org_url]
     expose_headers  = ["ETag", "x-amz-checksum-sha256"]
   }
 
@@ -132,7 +132,7 @@ resource "aws_s3_bucket" "samples_v1" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["PUT", "POST", "GET", "DELETE"]
-    allowed_origins = ["https://${var.env}.idseq.net", "https://${var.env}.czid.org", "https://${local.env_seqtoid_org_fqdn}"]
+    allowed_origins = [local.env_seqtoid_org_url]
   }
 
   // For Nextclade integration via presigned links. This allows us to use both the latest and v2 of Nextclade Web

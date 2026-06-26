@@ -5,7 +5,7 @@ locals {
     "tfe-si",
   ]
 
-  cluster_name            = var.eks_cluster_name
+  cluster_name = var.eks_cluster_name
 
   tags            = var.tags
   vpc_id          = data.terraform_remote_state.cloud-env.outputs.vpc_id
