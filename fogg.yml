@@ -91,7 +91,7 @@ defaults:
           additional_regions:
             - us-east-1
     auth0:
-      version: ~> 1.48.0 # 0.26.2
+      version: ~> 1.50.0 # 0.26.2
       source: auth0/auth0
     kubernetes:
       enabled: true
@@ -303,6 +303,11 @@ envs:
           components:
             - ecs
             - web
+
+      sentry:
+        module_source: terraform/modules/sentry
+        extra_vars:
+          sentry_organization: ucsf-rm
       web:
         depends_on:
           components:
@@ -405,10 +410,6 @@ envs:
           components:
             - ecs
             - web
-      sentry:
-        module_source: terraform/modules/sentry
-        extra_vars:
-          sentry_organization: ucsf-rm
       web:
         depends_on:
           components:
