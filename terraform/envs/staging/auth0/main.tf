@@ -56,6 +56,18 @@ resource "auth0_custom_domain_default" "auth_env_seqtoid_org" {
   depends_on = [auth0_custom_domain_verification.auth_env_cname]
 }
 
+resource "auth0_resource_server" "env_seqtoid" {
+  name        = "SeqtoID API"
+  identifier  = local.env_seqtoid_org_url
+  signing_alg = "RS256"
+
+  # allow_offline_access                            = true
+  # NOTE: This is important, as otherwise users get a confusing "consent" page when trying to login
+  skip_consent_for_verifiable_first_party_clients = true
+  # token_dialect                                   = "access_token"
+  token_lifetime = 86400
+}
+
 resource "auth0_tenant" "env_tenant" {
   allow_organization_name_in_authentication_api = false
   # allowed_logout_urls = ["${local.env_seqtoid_org_url}/logout"]
@@ -80,11 +92,11 @@ resource "auth0_tenant" "env_tenant" {
   #   url           = "${local.env_seqtoid_org_url}/error"
   # }
 
-  # flags {
-  #   enable_custom_domain_in_emails         = true
-  #   enable_dynamic_client_registration     = false
-  #   enable_public_signup_user_exists_error = true
-  # }
+  flags {
+    enable_custom_domain_in_emails = true
+    # enable_dynamic_client_registration     = false
+    # enable_public_signup_user_exists_error = true
+  }
 
   session_cookie {
     mode = "non-persistent"
@@ -131,9 +143,11 @@ resource "auth0_client" "idseq_web" {
     "${local.env_seqtoid_org_url}/login",
     # "${local.meta_env_seqtoid_org_url}/auth/auth0/callback",
   ]
-  initiate_login_uri = "${local.env_seqtoid_org_url}/login"
-  logo_uri           = "${local.assets_url}/assets/logo-new.png"
-  sso                = true
+  initiate_login_uri                                   = "${local.env_seqtoid_org_url}/login"
+  is_first_party                                       = true
+  logo_uri                                             = "${local.assets_url}/assets/logo-new.png"
+  skip_non_verifiable_callback_uri_confirmation_prompt = true
+  sso                                                  = true
   web_origins = [
     local.env_seqtoid_org_url,
     # local.meta_env_seqtoid_org_url,
@@ -154,7 +168,7 @@ resource "auth0_client" "idseq_web" {
 
 resource "auth0_client_grant" "idseq_web_grant" {
   client_id    = auth0_client.idseq_web.id
-  audience     = local.audience
+  audience     = auth0_resource_server.env_seqtoid.identifier
   subject_type = "user"
   scopes       = []
 }
@@ -165,9 +179,9 @@ resource "auth0_client" "idseq_web_management" {
 }
 
 resource "auth0_client_grant" "idseq_web_management_grant" {
-  client_id = auth0_client.idseq_web_management.id
-  audience  = local.audience
-  # subject_type = "client"
+  client_id    = auth0_client.idseq_web_management.id
+  audience     = local.audience
+  subject_type = "client"
   scopes = [
     "read:users",
     "update:users",
@@ -309,7 +323,7 @@ module "auth0-ssm-params" {
     AUTH0_CLIENT_SECRET            = data.auth0_client.idseq_web.client_secret
     AUTH0_CONNECTION               = auth0_connection.username_password_authentication.name
     AUTH0_DOMAIN                   = aws_route53_record.auth_env_cname.name
-    AUTH0_CLI_AUDIENCE             = local.audience
+    AUTH0_CLI_AUDIENCE             = auth0_resource_server.env_seqtoid.identifier
     AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
     AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
     AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain
