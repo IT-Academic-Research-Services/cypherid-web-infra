@@ -59,7 +59,7 @@ Modules under `terraform/modules/` keep their **own** minimal `versions.tf` — 
 are reusable and must not inherit the root stacks' full provider set. This is also
 where **niche providers live**: `hashicorp/template` and `hashicorp/cloudinit` are
 declared only in the vendored modules that need them, **never** in
-`_shared/versions.tf`. `template` has no `darwin_arm64` build (CZID-130); because
+`_shared/versions.tf`. `template` has no `darwin_arm64` build; because
 `_shared` is symlinked into every stack, promoting `template` there would force
 *every* stack to resolve it and break local `terraform init` on Apple Silicon repo-wide
 — instead of only the two stacks (`prod/ecs`, `prod/web`) that actually use it.
@@ -71,7 +71,7 @@ Some modules under `terraform/modules/` are **vendored** — in-tree copies of
 modules that used to come from `chanzuckerberg/shared-infra` (e.g.
 `ecs-cluster-v2.2.1`, `ecs-service-with-alb-v0.421.0`, `instance-cloud-init-script`,
 `machine-images`, the `aws-iam-policy-orgwide-secrets` pair). That upstream repo is
-**inaccessible to our org**, so the modules were copied in-house (CZID-90) and are
+**inaccessible to our org**, so the modules were copied in-house and are
 referenced by a **local path**: `source = "../../../modules/<name>"`.
 
 Two consequences for maintenance:
@@ -81,7 +81,7 @@ Two consequences for maintenance:
   version it was copied at. (Renovate *does* manage everything else — provider
   constraints in `_shared/versions.tf` and in module `versions.tf`, external
   `?ref=` module pins, GitHub Actions, Docker digests, pip — once the app is
-  enabled, CZID-212.)
+  enabled.)
 - **Updating one is a manual re-vendor**, not a version bump. See
   [§6 → Update a vendored module](#update-a-vendored-module).
 
