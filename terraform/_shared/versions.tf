@@ -10,8 +10,8 @@
 # plugin cache and the appliance ships a local provider mirror, so nothing is
 # re-downloaded per stack. Reproducibility > a slightly longer first init.
 #
-# Licensing gate (Principle II): all providers below are MPL-2.0 except
-# bwoznicki/assert (MIT). No BUSL/SSPL. See specs/002-terraform-conversion/decisions.
+# Licensing gate: all providers below are MPL-2.0 except
+# bwoznicki/assert (MIT). No BUSL/SSPL.
 #
 # Deliberately NOT listed here: niche, module-local providers — currently
 # hashicorp/template and hashicorp/cloudinit, declared only in the vendored
