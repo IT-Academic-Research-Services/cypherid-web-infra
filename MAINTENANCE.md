@@ -5,8 +5,8 @@
 exact file path and in-file location of each. If it's in the "human-maintained" table,
 nothing will remind you — so this list is how we avoid silently drifting.
 
-> ⚠️ **Renovate is configured (`renovate.json`) but the GitHub app is not enabled yet
-> (CZID-212).** Until it is, *everything* below is effectively human-maintained. The
+> ⚠️ **Renovate is configured (`renovate.json`) but the GitHub app is not enabled
+> yet.** Until it is, *everything* below is effectively human-maintained. The
 > "Automated" table describes the intended steady state once the app is on.
 
 ---
@@ -15,9 +15,9 @@ nothing will remind you — so this list is how we avoid silently drifting.
 
 | # | Item | Where (path → location in file) | Why it's manual | How to update |
 |---|------|--------------------------------|-----------------|---------------|
-| A1 | **Vendored modules** (frozen copies of the inaccessible `chanzuckerberg/shared-infra`) | `terraform/modules/{ecs-cluster-v2.2.1, ecs-cluster-v2.4.0, ecs-service-with-alb-v0.421.0, instance-cloud-init-script, instance-cloud-init-script-v0.484.6, machine-images, aws-iam-policy-orgwide-secrets, aws-iam-policy-document-orgwide-secrets}/` (whole dirs) + the `source = "../../../modules/<name>"` lines in their consuming stacks | Local-path `source` → Renovate has no datasource; upstream repo is inaccessible (CZID-90) | Manual re-vendor — see [`docs/OPENTOFU.md` → Update a vendored module](docs/OPENTOFU.md#update-a-vendored-module) |
+| A1 | **Vendored modules** (frozen copies of the inaccessible `chanzuckerberg/shared-infra`) | `terraform/modules/{ecs-cluster-v2.2.1, ecs-cluster-v2.4.0, ecs-service-with-alb-v0.421.0, instance-cloud-init-script, instance-cloud-init-script-v0.484.6, machine-images, aws-iam-policy-orgwide-secrets, aws-iam-policy-document-orgwide-secrets}/` (whole dirs) + the `source = "../../../modules/<name>"` lines in their consuming stacks | Local-path `source` → Renovate has no datasource; upstream repo is inaccessible | Manual re-vendor — see [`docs/OPENTOFU.md` → Update a vendored module](docs/OPENTOFU.md#update-a-vendored-module) |
 | A2 | **All other in-house modules** | `terraform/modules/*/` (every module is consumed via a local `../` path) | Renovate cannot bump a local-path module source | Edit in place; `make validate` |
-| A3 | **Module-local niche providers** `template`, `cloudinit` | `terraform/modules/{ecs-cluster-v2.2.1, ecs-cluster-v2.4.0, ecs-service-with-alb-v0.421.0}/versions.tf` (`required_providers { template }`); `terraform/modules/instance-cloud-init-script*/versions.tf` (`cloudinit`) | Deliberately **not** in `_shared/versions.tf` — `template` has no `darwin_arm64` build (CZID-130), so it must stay module-local. `template` is also deprecated/archived (frozen at 2.2.0) | Leave `template` frozen; `cloudinit` version constraint *is* Renovate-reachable (see B3) |
+| A3 | **Module-local niche providers** `template`, `cloudinit` | `terraform/modules/{ecs-cluster-v2.2.1, ecs-cluster-v2.4.0, ecs-service-with-alb-v0.421.0}/versions.tf` (`required_providers { template }`); `terraform/modules/instance-cloud-init-script*/versions.tf` (`cloudinit`) | Deliberately **not** in `_shared/versions.tf` — `template` has no `darwin_arm64` build, so it must stay module-local. `template` is also deprecated/archived (frozen at 2.2.0) | Leave `template` frozen; `cloudinit` version constraint *is* Renovate-reachable (see B3) |
 | A4 | **Backend state config** (the unique state key per stack) | `terraform/envs/<env>/<component>/terraform.tf` → `terraform { backend "s3" { bucket = …, key = "terraform/idseq/envs/<env>/components/<name>.tfstate" } }` | Per-stack literal, unique to each component | Set by hand when adding a component ([OPENTOFU.md §6](docs/OPENTOFU.md#add-a-new-component)) |
 | A5 | **Remote-state data sources** (cross-stack dependencies) | `terraform/envs/<env>/<component>/terraform.tf` → `data "terraform_remote_state" "<name>" { config = { bucket, key, region, profile } }` | Per-stack literal pointing at another stack's state | Edit by hand; the `key`/`profile` must match the upstream stack |
 | A6 | **Hardcoded AWS identifiers** | account IDs (`tfstate-<id>` backend bucket in `…/terraform.tf`; the `aws_accounts` map in `…/terraform.tf`); S3 bucket-name defaults (`variable "s3_bucket_*"` in `…/terraform.tf`); domains; AMI owner IDs in `terraform/modules/machine-images/` | Real-world identifiers, no upstream to track | Edit by hand; keep in sync with the live AWS accounts |
