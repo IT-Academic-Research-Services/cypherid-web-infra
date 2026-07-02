@@ -1,5 +1,5 @@
 # module "logs" {
-#   source  = "github.com/thorvath-slower/cztack//aws-cloudwatch-log-group?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+#   source  = "../../../modules/aws-cloudwatch-log-group-v0.41.0" # cztack v0.41.0
 #   project = var.project
 #   env     = var.env
 #   service = var.component
@@ -19,7 +19,7 @@
 # }
 #
 # module "service_fivetran" {
-#   source = "github.com/thorvath-slower/cztack//aws-ecs-job?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+#   source = "../../../modules/aws-ecs-job-v0.41.0" # cztack v0.41.0
 #
 #   env     = var.env
 #   project = var.project
@@ -34,7 +34,7 @@
 # }
 #
 # module "web-service-params" {
-#   source  = "github.com/thorvath-slower/cztack//aws-ssm-params-writer?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+#   source  = "../../../modules/aws-ssm-params-writer-v0.41.0" # cztack v0.41.0
 #   project = var.project
 #   env     = var.env
 #   service = var.component

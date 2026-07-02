@@ -1,5 +1,5 @@
 module "resque" {
-  source        = "github.com/thorvath-slower/cztack//aws-ecs-job?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source        = "../../../modules/aws-ecs-job-v0.41.0" # cztack v0.41.0
   desired_count = 10
   env           = var.env
   service       = "resque"
@@ -12,7 +12,7 @@ module "resque" {
 }
 
 module "resque-pipeline-monitor" {
-  source        = "github.com/thorvath-slower/cztack//aws-ecs-job?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source        = "../../../modules/aws-ecs-job-v0.41.0" # cztack v0.41.0
   desired_count = 1
   env           = var.env
   service       = "resque-pipeline-monitor"
@@ -25,7 +25,7 @@ module "resque-pipeline-monitor" {
 }
 
 module "resque-result-monitor" {
-  source        = "github.com/thorvath-slower/cztack//aws-ecs-job?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source        = "../../../modules/aws-ecs-job-v0.41.0" # cztack v0.41.0
   desired_count = 1
   env           = var.env
   service       = "resque-result-monitor"
@@ -38,7 +38,7 @@ module "resque-result-monitor" {
 }
 
 module "resque-scheduler" {
-  source        = "github.com/thorvath-slower/cztack//aws-ecs-job?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source        = "../../../modules/aws-ecs-job-v0.41.0" # cztack v0.41.0
   desired_count = 1
   env           = var.env
   service       = "resque-scheduler"

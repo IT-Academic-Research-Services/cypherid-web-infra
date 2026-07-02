@@ -45,7 +45,7 @@ module "images" {
 }
 
 module "logs" {
-  source            = "github.com/thorvath-slower/cztack//aws-cloudwatch-log-group?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source            = "../aws-cloudwatch-log-group-v0.104.2" # cztack v0.104.2
   project           = var.project
   env               = var.env
   service           = var.service
@@ -71,7 +71,7 @@ resource "aws_autoscaling_lifecycle_hook" "graceful_shutdown_asg_hook" {
 }
 
 module "profile" {
-  source      = "github.com/thorvath-slower/cztack//aws-iam-instance-profile?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source      = "../aws-iam-instance-profile-v0.104.2" # cztack v0.104.2
   name_prefix = "${local.name}-"
   iam_path    = var.iam_path
 }
@@ -146,7 +146,7 @@ resource "aws_iam_role_policy_attachment" "attach-ecs" {
 }
 
 module "attach-logs" {
-  source    = "github.com/thorvath-slower/cztack//aws-iam-policy-cwlogs?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source    = "../aws-iam-policy-cwlogs-v0.104.2" # cztack v0.104.2
   role_name = module.profile.role_name
   iam_path  = var.iam_path
 }

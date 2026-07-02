@@ -21,7 +21,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_private" {
 }
 
 module "db-params" {
-  source  = "github.com/thorvath-slower/cztack//aws-ssm-params-writer?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source  = "../../../modules/aws-ssm-params-writer-v0.104.2" # cztack v0.104.2
   project = var.project
   env     = var.env
   service = "web"

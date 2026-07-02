@@ -24,7 +24,7 @@ locals {
 }
 
 module "aws-bucket" {
-  source = "github.com/thorvath-slower/cztack//aws-s3-private-bucket?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source = "../aws-s3-private-bucket-v0.104.2" # cztack v0.104.2
 
   bucket_name   = local.bucket_name
   bucket_policy = data.aws_iam_policy_document.bucket_policy.json

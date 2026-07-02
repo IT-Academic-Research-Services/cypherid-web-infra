@@ -252,7 +252,7 @@ resource "aws_iam_role_policy" "idseq-upload" {
 }
 
 module "parameters-policy" {
-  source = "github.com/thorvath-slower/cztack//aws-params-reader-policy?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source = "../../../modules/aws-params-reader-policy-v0.41.0" # cztack v0.41.0
 
   project   = var.project
   env       = var.env
@@ -262,7 +262,7 @@ module "parameters-policy" {
 }
 
 module "web-service-params" {
-  source  = "github.com/thorvath-slower/cztack//aws-ssm-params-writer?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source  = "../../../modules/aws-ssm-params-writer-v0.41.0" # cztack v0.41.0
   project = var.project
   env     = var.env
   service = var.component

@@ -14,7 +14,7 @@ locals {
 }
 
 module "idseq-heatmap-es-param" {
-  source  = "github.com/thorvath-slower/cztack//aws-ssm-params-writer?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source  = "../../../modules/aws-ssm-params-writer-v0.104.2" # cztack v0.104.2
   project = var.project
   env     = var.env
   service = "web"
@@ -125,7 +125,7 @@ resource "aws_iam_role_policy_attachment" "glue-service-role-policy" {
 }
 
 module "aws-s3-batch-taxon-indexing-private-bucket" {
-  source      = "github.com/thorvath-slower/cztack//aws-s3-private-bucket?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source      = "../../../modules/aws-s3-private-bucket-v0.104.2" # cztack v0.104.2
   bucket_name = local.bucket_name
   env         = var.env
   owner       = var.owner
@@ -165,7 +165,7 @@ resource "aws_glue_job" "batch-taxon-indexing" {
 }
 
 module "gh_actions_executor" {
-  source = "github.com/thorvath-slower/cztack//aws-iam-role-github-action?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source = "../../../modules/aws-iam-role-github-action-v0.104.2" # cztack v0.104.2
 
   tags = local.tags
   role = {

@@ -15,7 +15,7 @@ resource "aws_batch_job_queue" "idseq-lomem" {
 }
 
 module "idseq-batch" {
-  source      = "github.com/thorvath-slower/cztack//aws-iam-instance-profile?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source      = "../../../modules/aws-iam-instance-profile-v0.104.2" # cztack v0.104.2
   name_prefix = "idseq-batch-${var.env}"
 }
 

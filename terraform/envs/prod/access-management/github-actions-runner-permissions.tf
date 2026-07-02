@@ -4,7 +4,7 @@ locals {
 }
 
 module "czid_web_private_gh_actions_executor" {
-  source = "github.com/thorvath-slower/cztack//aws-iam-role-github-action?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source = "../../../modules/aws-iam-role-github-action-v0.104.2" # cztack v0.104.2
 
   tags = var.tags # TODO: var.tags is deprecated
 

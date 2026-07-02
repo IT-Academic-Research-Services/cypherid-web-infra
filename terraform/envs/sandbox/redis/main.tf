@@ -1,5 +1,5 @@
 module "elasticache_secure" {
-  source                     = "github.com/thorvath-slower/cztack//aws-redis-replication-group?ref=4d68bea7006d06e5e26f9bb9bec783ee1f2adccd" # cztack v0.91.1
+  source                     = "../../../modules/aws-redis-replication-group-v0.91.1" # cztack v0.91.1
   ingress_security_group_ids = [data.terraform_remote_state.ecs.outputs.security_group_id]
   subnets                    = data.terraform_remote_state.cloud-env.outputs.private_subnets
   engine_version             = "7.1" //Upgraded as v5 is no longer supported

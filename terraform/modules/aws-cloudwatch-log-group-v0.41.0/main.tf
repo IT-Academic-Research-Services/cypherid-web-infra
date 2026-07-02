@@ -1,0 +1,18 @@
+locals {
+  name           = "${var.project}-${var.env}-${var.service}"
+  log_group_name = length(var.log_group_name) > 0 ? var.log_group_name : "${var.project}-${var.env}-${var.service}"
+}
+
+resource "aws_cloudwatch_log_group" "group" {
+  name              = local.log_group_name
+  retention_in_days = var.retention_in_days
+
+  tags = {
+    Name      = local.name
+    project   = var.project
+    env       = var.env
+    service   = var.service
+    owner     = var.owner
+    managedBy = "terraform"
+  }
+}

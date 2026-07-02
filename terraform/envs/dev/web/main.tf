@@ -246,7 +246,7 @@ resource "aws_iam_role_policy" "idseq-upload" {
 }
 
 module "parameters-policy" {
-  source = "github.com/thorvath-slower/cztack//aws-params-reader-policy?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source = "../../../modules/aws-params-reader-policy-v0.104.2" # cztack v0.104.2
 
   project   = var.project
   env       = var.env
@@ -265,7 +265,7 @@ resource "random_string" "secret_key_base" {
 }
 
 module "web-service-params" {
-  source  = "github.com/thorvath-slower/cztack//aws-ssm-params-writer?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source  = "../../../modules/aws-ssm-params-writer-v0.104.2" # cztack v0.104.2
   project = var.project
   env     = var.env
   service = var.component
@@ -288,7 +288,7 @@ module "web-service-params" {
 }
 
 module "staging" {
-  source = "github.com/thorvath-slower/cztack//aws-acm-certificate?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source = "../../../modules/aws-acm-certificate-v0.104.2" # cztack v0.104.2
 
   cert_domain_name    = local.env_fqdn
   aws_route53_zone_id = local.zone_id
@@ -300,7 +300,7 @@ module "staging" {
 }
 
 module "staging_east" {
-  source = "github.com/thorvath-slower/cztack//aws-acm-certificate?ref=0fe349fc39bcfeb0e069b4ca45a566751931089a" # cztack v0.104.2
+  source = "../../../modules/aws-acm-certificate-v0.104.2" # cztack v0.104.2
 
   cert_domain_name    = local.env_fqdn
   aws_route53_zone_id = local.zone_id

@@ -18,7 +18,7 @@ resource "aws_s3_bucket" "czid_help_redirect_bucket" {
 }
 
 module "czid_help_cert" {
-  source = "github.com/thorvath-slower/cztack//aws-acm-certificate?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source = "../../../modules/aws-acm-certificate-v0.41.0" # cztack v0.41.0
 
   cert_domain_name    = local.czid_help_host
   aws_route53_zone_id = local.czid_zone_id

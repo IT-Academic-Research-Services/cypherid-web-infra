@@ -1,6 +1,6 @@
 #
 # module "czid_sra_export" {
-#   source        = "github.com/thorvath-slower/cztack//aws-s3-private-bucket?ref=a9e4f965ecbf1fbe73e4f2955e0c072178333fe0" # cztack v0.73.0
+#   source        = "../../modules/aws-s3-private-bucket-v0.73.0" # cztack v0.73.0
 #   bucket_name   = "czid-sra-export"
 #   bucket_policy = data.aws_iam_policy_document.bucket_policy.json
 #   env           = var.env

@@ -11,7 +11,7 @@ locals {
 }
 
 module "czid-assets-cert" {
-  source = "github.com/thorvath-slower/cztack//aws-acm-certificate?ref=ad3cae93e104cf399f5c24ffd4f1096143202907" # cztack v0.41.0
+  source = "../../../modules/aws-acm-certificate-v0.41.0" # cztack v0.41.0
 
   cert_domain_name               = local.czid_full_domain
   aws_route53_zone_id            = local.czid_zone_id
