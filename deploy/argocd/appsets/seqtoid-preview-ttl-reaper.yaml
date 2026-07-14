@@ -97,7 +97,7 @@ spec:
                 - name: MAX_AGE_DAYS
                   value: "7"
                 - name: GH_REPO
-                  value: thorvath-slower/seqtoid-web
+                  value: IT-Academic-Research-Services/seqtoid-web
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef:

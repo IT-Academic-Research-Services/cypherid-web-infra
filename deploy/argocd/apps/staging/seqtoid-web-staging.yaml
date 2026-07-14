@@ -7,13 +7,13 @@ metadata:
 spec:
   project: czid
   sources:
-    - repoURL: https://github.com/thorvath-slower/seqtoid-web.git
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
       targetRevision: main
       path: deploy/charts/seqtoid-web
       helm:
         valueFiles:
           - $values/deploy/argocd/values/seqtoid-web/staging.yaml
-    - repoURL: https://github.com/thorvath-slower/cypherid-web-infra.git
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
       targetRevision: main
       ref: values
   destination:

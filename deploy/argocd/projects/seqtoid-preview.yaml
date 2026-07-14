@@ -13,7 +13,9 @@ spec:
   description: Per-PR preview sandboxes (isolated app + DB + S3; shared dev backend)
   sourceRepos:
     - https://github.com/thorvath-slower/seqtoid-web.git        # app chart (@ PR head sha)
+    - https://github.com/IT-Academic-Research-Services/seqtoid-web.git  # transitional: IT-ARS (cutover #692); keep thorvath for rollback
     - https://github.com/thorvath-slower/cypherid-web-infra.git # preview base values
+    - https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git  # transitional: IT-ARS (cutover #692); keep thorvath for rollback
   # ONLY per-PR namespaces on the dev cluster. Glob -- pr-1, pr-2, ... all match; nothing
   # else (seqtoid-dev, czid-*, argocd, kube-system) is a valid destination.
   destinations:
