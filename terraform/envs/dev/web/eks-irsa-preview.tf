@@ -108,6 +108,7 @@ data "aws_iam_policy_document" "seqtoid_web_preview_s3" {
     sid     = "SandboxAndReferenceList"
     actions = ["s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:GetBucketLocation"]
     resources = [
+      aws_s3_bucket.preview_samples.arn,
       "arn:aws:s3:::seqtoid-sandbox",
       "arn:aws:s3:::${var.s3_bucket_public_references}",
       "arn:aws:s3:::${var.s3_bucket_idseq_bench}",
@@ -117,18 +118,29 @@ data "aws_iam_policy_document" "seqtoid_web_preview_s3" {
     sid     = "SandboxAndReferenceRead"
     actions = ["s3:GetObject", "s3:GetObjectTagging"]
     resources = [
+      "${aws_s3_bucket.preview_samples.arn}/*",
       "arn:aws:s3:::seqtoid-sandbox/*",
       "arn:aws:s3:::${var.s3_bucket_public_references}/*",
       "arn:aws:s3:::${var.s3_bucket_idseq_bench}/*",
     ]
   }
   statement {
-    # WRITE is fail-closed to the sandbox bucket ONLY. Per-PR prefix isolation
-    # (seqtoid-sandbox/pr-N/*) is enforced by the pod's SAMPLES_BUCKET_NAME; the role
-    # bounds the blast radius to the sandbox bucket regardless.
-    sid       = "SandboxWriteOnly"
+    # WRITE is fail-closed to the dedicated preview bucket ONLY.
+    #
+    # This used to target `arn:aws:s3:::seqtoid-sandbox/*`, on the reasoning that "the role bounds
+    # the blast radius to the sandbox bucket regardless" while per-PR prefix isolation was
+    # "enforced by the pod's SAMPLES_BUCKET_NAME". That reasoning assumed seqtoid-sandbox was a
+    # throwaway. It is not: it is a hand-created, un-terraformed bucket holding ~4.8 TB / 55k
+    # objects of the team's research data (validation-*, time-trials-*, taxid_indexes/, jsims/
+    # ...), backup status unknown. So the blast radius was that data, and the only thing keeping a
+    # sandbox out of it was a config STRING -- any bug in a sandbox could delete research results.
+    #
+    # Isolation is now enforced by IAM against a dedicated bucket, which is what "isolated" was
+    # always supposed to mean. READ on seqtoid-sandbox is retained above (sandboxes may pull
+    # test-files/ etc.); WRITE and DELETE on it are withdrawn deliberately. Do not add them back.
+    sid       = "PreviewSamplesWriteOnly"
     actions   = ["s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject", "s3:AbortMultipartUpload"]
-    resources = ["arn:aws:s3:::seqtoid-sandbox/*"]
+    resources = ["${aws_s3_bucket.preview_samples.arn}/*"]
   }
 }
 
