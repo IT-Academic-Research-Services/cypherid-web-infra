@@ -240,6 +240,20 @@ data "aws_iam_policy_document" "idseq-upload" {
 
     resources = [
       "arn:aws:s3:::${var.s3_bucket_samples}/samples/*",
+      # Per-PR preview sandboxes upload to their own bucket (#697). The app mints these creds by
+      # assuming THIS role with a session policy scoped to
+      # `arn:aws:s3:::$SAMPLES_BUCKET_NAME/<file_path>` (samples_helper.rb get_upload_credentials).
+      # A session policy INTERSECTS with this identity policy, so a sandbox's request for
+      # seqtoid-preview-samples-*/samples/* against a role that only allows idseq-samples-dev
+      # intersected to NOTHING and every sandbox upload failed with "All uploads failed".
+      #
+      # This is why sandbox uploads NEVER worked -- including against the old `seqtoid-sandbox`
+      # bucket, which this role was never granted either. (Which also means the browser upload path
+      # could never write into that 4.8 TB research bucket: it had no permission. Only the preview
+      # IRSA role did, server-side, and that grant is now withdrawn.)
+      #
+      # Same /samples/* prefix scoping as dev: a sandbox can only ever write under samples/.
+      "${aws_s3_bucket.preview_samples.arn}/samples/*",
     ]
   }
 }
