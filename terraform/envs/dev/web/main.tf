@@ -205,7 +205,25 @@ data "aws_iam_policy_document" "idseq-upload-assume-role" {
       # (get_upload_credentials -> CLI_UPLOAD_ROLE_ARN). BOTH the ECS task role AND the
       # EKS/IRSA pod role must be trusted so uploads work on either runtime during the
       # ECS->EKS strangler (#489). Drop idseq-web once ECS dev is decommissioned (Phase 5).
-      identifiers = [aws_iam_role.idseq-web.arn, aws_iam_role.seqtoid_web_eks.arn]
+      #
+      # seqtoid_web_preview is here because per-PR sandbox pods run as THAT role, not
+      # seqtoid_web_eks -- so every sandbox upload died server-side, before S3 was ever
+      # reached, with a 500 from /samples/N/upload_credentials.json:
+      #   Aws::STS::Errors::AccessDenied (User: .../seqtoid-web-preview is not authorized to
+      #   perform: sts:AssumeRole on resource: .../idseq-upload-dev)
+      # This is why sandbox uploads NEVER worked. Granting the preview bucket on the role's
+      # policy (#29) was necessary but not sufficient: a session policy intersects with the
+      # role's permissions, and none of that matters if the caller cannot assume the role at
+      # all. Trust and permissions are separate locks and the sandbox failed both.
+      #
+      # This does NOT widen what a sandbox can write: the session policy the app builds is
+      # scoped to $SAMPLES_BUCKET_NAME/<file_path> (the sandbox's own bucket), and the role's
+      # own policy is scoped to */samples/*. A sandbox still cannot touch dev's samples.
+      identifiers = [
+        aws_iam_role.idseq-web.arn,
+        aws_iam_role.seqtoid_web_eks.arn,
+        aws_iam_role.seqtoid_web_preview.arn,
+      ]
     }
   }
   # statement {
