@@ -1,0 +1,62 @@
+# Observability Phase 4 (#608/#700): alert RULES for the domains kube-prometheus-stack does NOT
+# already cover (kps ships node/pod/target-down/etc). These add Argo CD app health + app RED
+# (rate/errors/latency derived from the OTel spanmetrics connector). Rules FIRE and are visible in
+# Prometheus/Alertmanager/Grafana; DELIVERY is intentionally not wired until the SMTP secret exists
+# (alertmanager-smtp). The Prometheus operator selects this because ruleSelectorNilUsesHelmValues=false.
+#
+# Metric names/labels verified live 2026-07-15: argocd_app_info{health_status,sync_status,name},
+# traces_span_metrics_calls_total{service_name,span_kind,status_code},
+# traces_span_metrics_duration_milliseconds_bucket. Apply:
+#   kubectl apply -f deploy/argocd/_deliberate/observability-alert-rules.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: seqtoid-observability-rules
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: argocd.rules
+      rules:
+        - alert: ArgoCDAppUnhealthy
+          expr: argocd_app_info{health_status=~"Degraded|Missing|Unknown"} == 1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Argo CD app {{ $labels.name }} is {{ $labels.health_status }}"
+            description: "Argo application {{ $labels.name }} (dest ns {{ $labels.dest_namespace }}) has been {{ $labels.health_status }} for >15m."
+        - alert: ArgoCDAppOutOfSync
+          expr: argocd_app_info{sync_status="OutOfSync"} == 1
+          for: 30m
+          labels:
+            severity: info
+          annotations:
+            summary: "Argo CD app {{ $labels.name }} OutOfSync >30m"
+            description: "Argo application {{ $labels.name }} has been OutOfSync for >30m -- may need a sync or has drifted."
+    - name: app-red.rules
+      rules:
+        # Inbound (server) request error rate from span metrics. status_code carries the HTTP/status
+        # value on server spans; 5xx = server errors. Tune the threshold once real error traffic is seen.
+        - alert: AppHighServerErrorRate
+          expr: |
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code=~"5.."}[5m]))
+              / clamp_min(sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m])), 1) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service_name }} server 5xx rate >5%"
+            description: "{{ $labels.service_name }} inbound 5xx error rate has exceeded 5% for 10m (from OTel span metrics)."
+        - alert: AppHighLatencyP95
+          expr: |
+            histogram_quantile(0.95,
+              sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m]))
+            ) > 2000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service_name }} p95 latency >2s"
+            description: "{{ $labels.service_name }} inbound p95 request latency has exceeded 2000ms for 10m (from OTel span metrics)."

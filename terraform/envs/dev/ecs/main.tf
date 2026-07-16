@@ -159,10 +159,13 @@ module "web-params" {
 
   parameters = {
     S3_AEGEA_ECS_EXECUTE_BUCKET = local.s3_bucket_aegea_ecs_execute
-    # OpenTelemetry (#426): the OTLP HTTP endpoint of the in-cluster ADOT collector.
-    # Chamber surfaces this to every service (web + Resque/Shoryuken workers all load
-    # idseq-<env>-web); the app's initializer is inert until this is present.
-    OTEL_EXPORTER_OTLP_ENDPOINT = "http://collector.${var.env}.otel.internal:4318"
+    # OpenTelemetry (#426/#608): the OTLP HTTP endpoint of the in-cluster OTel collector on eks-v2.
+    # Chamber surfaces this to every service (web + Resque/Shoryuken workers all load idseq-<env>-web);
+    # the app's initializer is inert until this is present. The old ECS ADOT collector
+    # (collector.<env>.otel.internal) was RETIRED when dev moved to eks-v2 -- this now points at the
+    # Kubernetes OTel Collector service (monitoring ns), which is what the live app already uses and
+    # what makes traces/span-metrics flow to Tempo/Prometheus. Same across eks envs (same ns/release).
+    OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
   }
 }
 

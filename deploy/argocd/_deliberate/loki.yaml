@@ -1,0 +1,77 @@
+# Observability Phase 2b (LGTM epic, #608/#426): Grafana Loki -- the LOGS backend.
+# Single-binary Loki on dev eks-v2, filesystem storage on a gp2 PVC. The in-cluster OTel
+# collector (Phase 3) exports app logs here over OTLP; pod/cluster log shipping (promtail or
+# alloy) is layered in Phase 5. Wired into Grafana as the "Loki" datasource by the
+# kube-prometheus-stack app (grafana.additionalDataSources).
+#
+# Dev sizing: SingleBinary mode, filesystem storage (no S3/IRSA), caches/gateway/minio off.
+# Swap object_store to S3 for staging/prod. Deliberate (see ../README.md); project: default (#698).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: loki
+    targetRevision: 7.1.0   # app: Loki 3.6.8. Pinned; bump deliberately.
+    helm:
+      values: |
+        deploymentMode: SingleBinary
+        loki:
+          auth_enabled: false   # dev single-tenant
+          commonConfig:
+            replication_factor: 1
+          storage:
+            type: filesystem
+          schemaConfig:
+            configs:
+              - from: "2024-04-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
+          limits_config:
+            retention_period: 168h   # 7d
+          # Single-binary needs the ingester WAL + a small target; the chart wires the rest.
+        singleBinary:
+          replicas: 1
+          persistence:
+            enabled: true
+            storageClass: gp2
+            size: 20Gi
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+        # Disable the SimpleScalable components + dev-unneeded extras.
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        backend:
+          replicas: 0
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+        gateway:
+          enabled: false
+        minio:
+          enabled: false
+        lokiCanary:
+          enabled: false
+        test:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,37 @@
+# Observability Phase 1b (#608): a stable URL for Grafana so the team does not have to port-forward.
+# https://grafana.dev.seqtoid.org -> the kube-prometheus-stack Grafana service, via an internet-facing
+# ALB (same pattern as the app + preview ingresses), the *.dev.seqtoid.org wildcard cert, and external-dns
+# for the Route53 record. Access is gated by Grafana's own admin login (anonymous access is disabled;
+# sign-up off). Standalone Ingress (NOT part of the kps chart) so it applies without re-syncing the whole
+# chart (which currently also carries the alertmanager SMTP change that waits on Tom's secret).
+#
+# To make Grafana's generated links use this host, add server.root_url = https://grafana.dev.seqtoid.org
+# to the kps grafana.ini values on the next kps sync (login/dashboards already work without it).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:491013321714:certificate/0c85408b-ceb9-4e9e-8275-a999e36e9e87
+    alb.ingress.kubernetes.io/subnets: subnet-06bfffadf91e2c189,subnet-0f94623d782341d71
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+    alb.ingress.kubernetes.io/group.name: grafana-dev
+    external-dns.alpha.kubernetes.io/hostname: grafana.dev.seqtoid.org
+spec:
+  ingressClassName: alb
+  rules:
+    - host: grafana.dev.seqtoid.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kube-prometheus-stack-grafana
+                port:
+                  number: 80

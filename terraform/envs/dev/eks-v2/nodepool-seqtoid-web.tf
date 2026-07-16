@@ -47,7 +47,14 @@ resource "kubectl_manifest" "seqtoid_web_nodepool" {
             { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
             { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
-            # Small nodes only — dev right-sizing.
+            # Non-burstable, right-sized dev nodes: c/m/r families, 4-8 vCPU. Burstable t2/t3
+            # (excluded by instance-category) were the root cause of the NotReady flapping:
+            # under load a 2-vCPU t3 pegged CPU to ~100%, starved the kubelet, and the node
+            # dropped its heartbeat. c/m/r at >=4 vCPU gives fixed performance with headroom
+            # for the app plus the kubelet reservation (see the module EC2NodeClass). Still
+            # "small for dev" (<=8 vCPU) and spot-eligible for cost. See platform-overhaul #699.
+            { key = "karpenter.k8s.aws/instance-category", operator = "In", values = ["c", "m", "r"] },
+            { key = "karpenter.k8s.aws/instance-cpu", operator = "Gt", values = ["3"] },
             { key = "karpenter.k8s.aws/instance-cpu", operator = "Lt", values = ["9"] },
             # Exclude the ancient/instance-store families (mirrors the default pool).
             { key = "karpenter.k8s.aws/instance-family", operator = "NotIn",

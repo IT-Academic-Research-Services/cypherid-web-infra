@@ -1,0 +1,99 @@
+# Observability Phase 4 (#608/#700): custom Argo CD health dashboard on argocd_app_info +
+# argocd_app_sync_total (scraped via the argocd PodMonitor). Loaded by the kps Grafana sidecar.
+# Apply: kubectl apply -f deploy/argocd/_deliberate/grafana-dashboard-argocd.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-argocd
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  argocd.json: |
+    {
+      "uid": "seqtoid-argocd",
+      "title": "seqtoid - Argo CD",
+      "tags": ["seqtoid", "argocd", "gitops"],
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "1m",
+      "time": { "from": "now-6h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": { "text": "Prometheus", "value": "prometheus" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Apps by health",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum by (health_status) (argocd_app_info)",
+              "legendFormat": "{{health_status}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Apps by sync status",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum by (sync_status) (argocd_app_info)",
+              "legendFormat": "{{sync_status}}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "table",
+          "title": "Apps not Healthy / not Synced",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 6 },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "format": "table",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "argocd_app_info{health_status!=\"Healthy\"} or argocd_app_info{sync_status!=\"Synced\"}"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Sync activity (rate)",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 6 },
+          "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum by (name) (rate(argocd_app_sync_total[5m]))",
+              "legendFormat": "{{name}}"
+            }
+          ]
+        }
+      ]
+    }

@@ -58,6 +58,12 @@ resource "kubectl_manifest" "seqtoid_preview_nodepool" {
             # Spot-first: previews tolerate interruption (a killed sandbox pod just
             # reschedules; no live user traffic depends on it).
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
+            # Non-burstable, 4-8 vCPU (mirrors the web pool). Burstable t2/t3 (excluded by
+            # instance-category) saturated CPU under load and starved the kubelet into
+            # NotReady flapping. c/m/r at >=4 vCPU gives fixed performance with headroom.
+            # See platform-overhaul #699.
+            { key = "karpenter.k8s.aws/instance-category", operator = "In", values = ["c", "m", "r"] },
+            { key = "karpenter.k8s.aws/instance-cpu", operator = "Gt", values = ["3"] },
             { key = "karpenter.k8s.aws/instance-cpu", operator = "Lt", values = ["9"] },
             { key = "karpenter.k8s.aws/instance-family", operator = "NotIn",
             values = ["a1", "c1", "cc1", "cc2", "cg1", "cg2", "cr1", "g1", "g2", "hi1", "hs1", "m1", "m2", "m3", "t1"] },

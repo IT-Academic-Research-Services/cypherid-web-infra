@@ -1,0 +1,97 @@
+# Observability Phase 4 (#608/#700): CloudWatch "Pipeline" dashboard -- Step Functions + Lambda +
+# Batch, via the read-only CloudWatch datasource (IRSA). OBSERVE-ONLY: no changes to the jobs/SFN.
+# Metrics: AWS/States (swipe WDL state machines) + AWS/Lambda (idseq/swipe/taxon fns). Batch has no
+# native CW job-metrics namespace, so Batch health is shown via its orchestrating SFN + a Logs
+# Insights panel over /aws/batch/job. Panels are empty until the grafana-cloudwatch IRSA is applied.
+# Loaded by the kps Grafana sidecar. Apply: kubectl apply -f <this file>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cw-pipeline
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  cw-pipeline.json: |
+    {
+      "uid": "seqtoid-cw-pipeline",
+      "title": "seqtoid - CloudWatch Pipeline (SFN/Lambda/Batch)",
+      "tags": ["seqtoid", "cloudwatch", "pipeline", "aws"],
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "5m",
+      "time": { "from": "now-24h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "region",
+            "type": "custom",
+            "query": "us-west-2",
+            "current": { "text": "us-west-2", "value": "us-west-2" }
+          },
+          {
+            "name": "function",
+            "type": "query",
+            "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+            "query": "dimension_values($region,AWS/Lambda,Invocations,FunctionName)",
+            "regex": "/idseq|swipe|taxon/",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "timeseries", "title": "Step Functions - executions failed / timed out / aborted",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/States", "metricName": "ExecutionsFailed", "dimensions": { "StateMachineArn": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "failed {{StateMachineArn}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/States", "metricName": "ExecutionsTimedOut", "dimensions": { "StateMachineArn": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "timedout {{StateMachineArn}}" },
+            { "refId": "C", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/States", "metricName": "ExecutionsAborted", "dimensions": { "StateMachineArn": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "aborted {{StateMachineArn}}" }
+          ]
+        },
+        {
+          "id": 2, "type": "timeseries", "title": "Step Functions - started vs succeeded",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/States", "metricName": "ExecutionsStarted", "dimensions": { "StateMachineArn": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "started {{StateMachineArn}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/States", "metricName": "ExecutionsSucceeded", "dimensions": { "StateMachineArn": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "succeeded {{StateMachineArn}}" }
+          ]
+        },
+        {
+          "id": 3, "type": "timeseries", "title": "Lambda - errors + throttles",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/Lambda", "metricName": "Errors", "dimensions": { "FunctionName": "$function" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "err {{FunctionName}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/Lambda", "metricName": "Throttles", "dimensions": { "FunctionName": "$function" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "throttle {{FunctionName}}" }
+          ]
+        },
+        {
+          "id": 4, "type": "timeseries", "title": "Lambda - invocations + p95 duration",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [ { "matcher": { "id": "byRegexp", "options": "/dur.*/" }, "properties": [ { "id": "unit", "value": "ms" }, { "id": "custom.axisPlacement", "value": "right" } ] } ] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/Lambda", "metricName": "Invocations", "dimensions": { "FunctionName": "$function" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "inv {{FunctionName}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/Lambda", "metricName": "Duration", "dimensions": { "FunctionName": "$function" }, "statistic": "p95", "matchExact": false, "period": "300", "label": "dur {{FunctionName}}" }
+          ]
+        },
+        {
+          "id": 5, "type": "logs", "title": "Batch job errors (/aws/batch/job, Logs Insights)",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "queryMode": "Logs", "region": "$region", "logGroupNames": ["/aws/batch/job"], "expression": "fields @timestamp, @logStream, @message | filter @message like /(?i)(error|fail|exception|traceback)/ | sort @timestamp desc | limit 100" }
+          ]
+        }
+      ]
+    }
