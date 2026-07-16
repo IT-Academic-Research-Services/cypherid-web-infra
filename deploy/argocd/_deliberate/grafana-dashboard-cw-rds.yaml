@@ -1,0 +1,69 @@
+# Observability Phase 4 (#608/#700): CloudWatch RDS/Aurora dashboard (cluster idseq-dev, instance
+# idseq-dev-0) via the read-only CloudWatch datasource. Panels empty until the grafana-cloudwatch
+# IRSA is applied. Loaded by the kps Grafana sidecar. Apply: kubectl apply -f <this file>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cw-rds
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  cw-rds.json: |
+    {
+      "uid": "seqtoid-cw-rds",
+      "title": "seqtoid - CloudWatch RDS (Aurora)",
+      "tags": ["seqtoid", "cloudwatch", "rds", "aws"],
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "5m",
+      "time": { "from": "now-6h", "to": "now" },
+      "templating": {
+        "list": [
+          { "name": "region", "type": "custom", "query": "us-west-2", "current": { "text": "us-west-2", "value": "us-west-2" } }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "timeseries", "title": "CPU utilization (%)",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "percent", "max": 100 }, "overrides": [] },
+          "targets": [ { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "CPUUtilization", "dimensions": { "DBInstanceIdentifier": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "{{DBInstanceIdentifier}}" } ]
+        },
+        {
+          "id": 2, "type": "timeseries", "title": "DB connections",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [ { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "DatabaseConnections", "dimensions": { "DBInstanceIdentifier": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "{{DBInstanceIdentifier}}" } ]
+        },
+        {
+          "id": 3, "type": "timeseries", "title": "Freeable memory",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+          "targets": [ { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "FreeableMemory", "dimensions": { "DBInstanceIdentifier": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "{{DBInstanceIdentifier}}" } ]
+        },
+        {
+          "id": 4, "type": "timeseries", "title": "Read / write latency",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "ReadLatency", "dimensions": { "DBInstanceIdentifier": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "read {{DBInstanceIdentifier}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "WriteLatency", "dimensions": { "DBInstanceIdentifier": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "write {{DBInstanceIdentifier}}" }
+          ]
+        },
+        {
+          "id": 5, "type": "timeseries", "title": "Aurora volume used + replica lag",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [ { "matcher": { "id": "byRegexp", "options": "/lag.*/" }, "properties": [ { "id": "unit", "value": "ms" }, { "id": "custom.axisPlacement", "value": "right" } ] } ] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "VolumeBytesUsed", "dimensions": { "DBClusterIdentifier": "idseq-dev" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "volume used" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/RDS", "metricName": "AuroraReplicaLag", "dimensions": { "DBInstanceIdentifier": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "lag {{DBInstanceIdentifier}}" }
+          ]
+        }
+      ]
+    }

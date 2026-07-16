@@ -1,0 +1,97 @@
+# Observability Phase 3 (LGTM epic, #608/#426): the in-cluster OpenTelemetry Collector on eks-v2.
+# This is the "re-attach OTel to the right place" step. The seqtoid-web app + Resque/Shoryuken workers
+# are already instrumented (opentelemetry-sdk, inert until OTEL_EXPORTER_OTLP_ENDPOINT is set); this
+# collector is that endpoint. It receives OTLP and fans out to the LGTM backend:
+#   traces  -> Tempo (OTLP gRPC)     logs -> Loki (native OTLP)     metrics -> Prometheus (remote-write)
+# The exporters are the ONE swap point: to move to DataDog later, change only this exporter block --
+# the app stays OTLP and never changes. Uses the -contrib image (loki/prometheusremotewrite exporters).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    targetRevision: 0.165.0
+    helm:
+      values: |
+        mode: deployment
+        replicaCount: 1
+        image:
+          repository: "otel/opentelemetry-collector-contrib"
+        command:
+          name: otelcol-contrib
+        # We supply the full config; disable the chart's default pipelines.
+        presets:
+          logsCollection: { enabled: false }
+          kubernetesAttributes: { enabled: true }   # tag spans/logs with pod/namespace
+        resources:
+          requests: { cpu: 100m, memory: 256Mi }
+          limits: { memory: 512Mi }
+        ports:
+          otlp:      { enabled: true, containerPort: 4317, servicePort: 4317, protocol: TCP }
+          otlp-http: { enabled: true, containerPort: 4318, servicePort: 4318, protocol: TCP }
+        config:
+          receivers:
+            otlp:
+              protocols:
+                grpc: { endpoint: 0.0.0.0:4317 }
+                http: { endpoint: 0.0.0.0:4318 }
+          processors:
+            batch: {}
+            memory_limiter:
+              check_interval: 5s
+              limit_percentage: 80
+              spike_limit_percentage: 25
+          exporters:
+            otlp/tempo:
+              endpoint: tempo.monitoring.svc.cluster.local:4317
+              tls: { insecure: true }
+            otlphttp/loki:
+              endpoint: http://loki.monitoring.svc.cluster.local:3100/otlp
+            prometheusremotewrite:
+              endpoint: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/api/v1/write
+              tls: { insecure: true }
+          # spanmetrics connector: derive RED metrics (calls_total + a latency histogram) from the
+          # app's traces, so we get request-rate / error-rate / duration WITHOUT the app exposing a
+          # Prometheus /metrics endpoint. Output is remote-written to Prometheus like any other metric.
+          connectors:
+            spanmetrics:
+              histogram:
+                explicit:
+                  buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
+              dimensions:
+                - name: http.method
+                - name: http.status_code
+                - name: http.route
+              metrics_flush_interval: 15s
+          service:
+            pipelines:
+              traces:
+                receivers: [otlp]
+                processors: [memory_limiter, batch]
+                exporters: [otlp/tempo, spanmetrics]
+              logs:
+                receivers: [otlp]
+                processors: [memory_limiter, batch]
+                exporters: [otlphttp/loki]
+              metrics:
+                receivers: [otlp]
+                processors: [memory_limiter, batch]
+                exporters: [prometheusremotewrite]
+              # RED metrics synthesized from spans by the spanmetrics connector.
+              metrics/spanmetrics:
+                receivers: [spanmetrics]
+                exporters: [prometheusremotewrite]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

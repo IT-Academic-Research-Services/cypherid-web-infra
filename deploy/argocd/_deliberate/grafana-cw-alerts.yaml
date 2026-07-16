@@ -1,0 +1,168 @@
+# Observability Phase 4 (#608/#700): Grafana-managed alert rules on the CloudWatch datasource --
+# the AWS-native alerts that Prometheus/Alertmanager cannot express (no CW access). Each rule is the
+# standard 3-node Grafana form: A = CloudWatch query, B = reduce to a single value, C = threshold.
+#
+# DO NOT APPLY until BOTH are true: (1) the grafana-cloudwatch IRSA is applied so the "cloudwatch"
+# datasource actually queries, and (2) the Grafana alerting sidecar is enabled (kube-prometheus-stack.yaml
+# grafana.sidecar.alerts). A malformed provisioning file can break Grafana's entire alert load, so this
+# needs a validation pass against live Grafana first. Rules FIRE + are visible in Grafana Alerting;
+# DELIVERY stays off until the SMTP contact point exists (same as the Prometheus rules).
+#
+# Sidecar label: grafana_alert. searchNamespace: monitoring.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-cw-alerts
+  namespace: monitoring
+  labels:
+    grafana_alert: "1"
+data:
+  cw-alerts.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: cloudwatch-pipeline
+        folder: CloudWatch Alerts
+        interval: 5m
+        rules:
+          - uid: cw-sfn-executions-failed
+            title: StepFunctions executions failed
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: OK
+            labels: { severity: warning, source: cloudwatch }
+            annotations:
+              summary: "A Step Functions state machine reported failed executions"
+              description: "AWS/States ExecutionsFailed > 0 over 15m (swipe WDL pipelines)."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 900, to: 0 }
+                datasourceUid: cloudwatch
+                model:
+                  refId: A
+                  namespace: AWS/States
+                  metricName: ExecutionsFailed
+                  dimensions: { StateMachineArn: "*" }
+                  statistic: Sum
+                  region: us-west-2
+                  matchExact: false
+                  period: "300"
+              - refId: B
+                datasourceUid: __expr__
+                model: { type: reduce, reducer: sum, expression: A, refId: B }
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  refId: C
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+          - uid: cw-lambda-errors
+            title: Lambda errors elevated
+            condition: C
+            for: 10m
+            noDataState: OK
+            execErrState: OK
+            labels: { severity: warning, source: cloudwatch }
+            annotations:
+              summary: "Lambda functions reporting errors"
+              description: "AWS/Lambda Errors summed across idseq/swipe/taxon functions > 5 over 15m."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 900, to: 0 }
+                datasourceUid: cloudwatch
+                model:
+                  refId: A
+                  namespace: AWS/Lambda
+                  metricName: Errors
+                  dimensions: { FunctionName: "*" }
+                  statistic: Sum
+                  region: us-west-2
+                  matchExact: false
+                  period: "300"
+              - refId: B
+                datasourceUid: __expr__
+                model: { type: reduce, reducer: sum, expression: A, refId: B }
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  refId: C
+                  conditions:
+                    - evaluator: { type: gt, params: [5] }
+      - orgId: 1
+        name: cloudwatch-data-edge
+        folder: CloudWatch Alerts
+        interval: 5m
+        rules:
+          - uid: cw-rds-cpu-high
+            title: RDS CPU high
+            condition: C
+            for: 10m
+            noDataState: OK
+            execErrState: OK
+            labels: { severity: warning, source: cloudwatch }
+            annotations:
+              summary: "RDS/Aurora CPU utilization high"
+              description: "AWS/RDS CPUUtilization > 85% for 10m on an idseq-dev instance."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: cloudwatch
+                model:
+                  refId: A
+                  namespace: AWS/RDS
+                  metricName: CPUUtilization
+                  dimensions: { DBInstanceIdentifier: "*" }
+                  statistic: Average
+                  region: us-west-2
+                  matchExact: false
+                  period: "300"
+              - refId: B
+                datasourceUid: __expr__
+                model: { type: reduce, reducer: max, expression: A, refId: B }
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  refId: C
+                  conditions:
+                    - evaluator: { type: gt, params: [85] }
+          - uid: cw-alb-5xx-high
+            title: ALB 5xx elevated
+            condition: C
+            for: 10m
+            noDataState: OK
+            execErrState: OK
+            labels: { severity: warning, source: cloudwatch }
+            annotations:
+              summary: "ALB target 5xx elevated"
+              description: "AWS/ApplicationELB HTTPCode_Target_5XX_Count > 20 over 10m across the LBs."
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: cloudwatch
+                model:
+                  refId: A
+                  namespace: AWS/ApplicationELB
+                  metricName: HTTPCode_Target_5XX_Count
+                  dimensions: { LoadBalancer: "*" }
+                  statistic: Sum
+                  region: us-west-2
+                  matchExact: false
+                  period: "300"
+              - refId: B
+                datasourceUid: __expr__
+                model: { type: reduce, reducer: sum, expression: A, refId: B }
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: B
+                  refId: C
+                  conditions:
+                    - evaluator: { type: gt, params: [20] }
