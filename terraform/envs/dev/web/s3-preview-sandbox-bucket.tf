@@ -33,6 +33,28 @@ locals {
 }
 
 resource "aws_s3_bucket" "preview_samples" {
+  # VERSIONING IS DELIBERATELY OFF, and this is the one skip here that is a design decision rather
+  # than scope. Versioning would defeat the entire point of this bucket: noncurrent versions
+  # survive the 14-day expiry rule unless a separate noncurrent-expiration is added, so deleted
+  # sandbox uploads would linger as versions -- exactly the retention hole this bucket exists to
+  # close. Sandbox uploads are disposable test data with a 7-day sandbox lifetime; there is nothing
+  # here worth recovering, and "recoverable" is the opposite of what we want for it.
+  # checkov:skip=CKV_AWS_21:versioning would retain noncurrent versions past the lifecycle expiry, defeating the retention guarantee this bucket exists to provide
+  #
+  # SSE-S3 (AES256) + bucket keys, matching dev's samples bucket and seqtoid-sandbox. A CMK would
+  # add per-request KMS charges on multi-GB sample uploads and key administration, to protect
+  # disposable dev test data that is deleted after 14 days.
+  # checkov:skip=CKV_AWS_145:SSE-S3 matches the other samples buckets; a CMK adds cost + key admin for disposable 14-day dev data
+  #
+  # No access logging: this is dev-only, ephemeral test data with no audit requirement, and a log
+  # target would itself need a bucket + lifecycle. Revisit if sandboxes ever hold anything real.
+  # checkov:skip=CKV_AWS_18:dev-only ephemeral test data, no audit requirement; revisit if sandboxes ever hold real data
+  #
+  # No cross-region replication for data that is deliberately deleted after 14 days.
+  # checkov:skip=CKV_AWS_144:replicating data that is intentionally expired after 14 days is pointless
+  #
+  # No event notifications: nothing consumes upload events for sandboxes.
+  # checkov:skip=CKV2_AWS_62:no consumer exists for sandbox upload events
   bucket = local.preview_samples_bucket
 
   # This bucket is disposable, but a `count = 0` or a rename in a future refactor would silently
