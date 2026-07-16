@@ -48,6 +48,18 @@ preview:
   provisioner:
     serviceAccountName: seqtoid-web-provisioner
     roleArn: arn:aws:iam::491013321714:role/seqtoid-web-preview-provisioner
+  # S3 bucket a sandbox uploads samples to (becomes the sandbox's SAMPLES_BUCKET_NAME).
+  # From `terraform output preview_samples_bucket` (dev/web) -- a dedicated, terraformed bucket
+  # with a 14-day lifecycle expiry and the CORS the browser upload path needs.
+  #
+  # This is NOT `seqtoid-sandbox`. Despite the name, that bucket is not a throwaway: it holds
+  # ~4.8 TB of the team's research data (validation sets, time trials, taxid indexes), it is
+  # hand-created and un-terraformed, and its backup status is unknown. Sandboxes used to upload
+  # into it, and the preview role used to hold DeleteObject across the whole thing, with prefix
+  # isolation resting only on this value. The role's write/delete on it is now withdrawn
+  # (cypherid-web-infra #25), and sandbox:provision aborts if this is unset or set to
+  # seqtoid-sandbox -- so a wrong value fails loudly instead of polluting research data.
+  samplesBucket: seqtoid-preview-samples-dev-491013321714
 
 # Seed app_configs after migrate so the sandbox has the (dev) SFN ARNs to dispatch with.
 # db:seed derives them from ENVIRONMENT (dev) + AWS_ACCOUNT_ID, so they point at the
