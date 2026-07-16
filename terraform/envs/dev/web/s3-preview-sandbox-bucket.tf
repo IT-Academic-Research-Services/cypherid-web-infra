@@ -74,6 +74,26 @@ resource "aws_s3_bucket" "preview_samples" {
   }
 }
 
+# S3 TRANSFER ACCELERATION -- required, not an optimisation.
+#
+# The browser upload path hardcodes `useAccelerateEndpoint: true` (seqtoid-web
+# RemoteUploadProgressModal.tsx / LocalUploadProgressModal.tsx), so every PUT goes to
+# <bucket>.s3-accelerate.amazonaws.com. With acceleration disabled that endpoint rejects the
+# request before it ever emits CORS headers, and the browser reports it as:
+#
+#   Access to fetch at 'https://seqtoid-preview-samples-...s3-accelerate.amazonaws.com/...?x-id=PutObject'
+#   ... blocked by CORS policy: Response to preflight request doesn't pass access control check:
+#   No 'Access-Control-Allow-Origin' header is present on the requested resource.
+#
+# That message points at CORS, which is configured correctly and is NOT the problem -- the bucket
+# simply does not answer on that hostname. dev's samples bucket has Status=Enabled, which is why
+# uploads work there. Mirroring dev's SECURITY posture (encryption/ACLs/public-access) was not
+# enough; this is part of its OPERATIONAL posture and the upload path depends on it.
+resource "aws_s3_bucket_accelerate_configuration" "preview_samples" {
+  bucket = aws_s3_bucket.preview_samples.id
+  status = "Enabled"
+}
+
 # ACLs disabled. Matches seqtoid-sandbox and dev's samples bucket, and avoids the ACLs-disabled
 # landmine that has already bitten an apply in this account.
 resource "aws_s3_bucket_ownership_controls" "preview_samples" {
