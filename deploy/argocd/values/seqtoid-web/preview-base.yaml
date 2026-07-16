@@ -9,6 +9,21 @@
 # environment name.
 environment: dev
 
+# THE ACCOUNT ID IS LOAD-BEARING, not decoration. db:seed builds the Step Functions ARNs it
+# writes into app_configs from ENV["AWS_ACCOUNT_ID"] (lib/seed_resources/app_configs.rb), and the
+# chart only exports that variable when this is set (seqtoid-web commonEnv).
+#
+# Unset, the sandbox's migrate hook (sandbox:seed_once -> db:seed) silently seeds ARNs with an
+# EMPTY account field -- arn:aws:states:us-west-2::stateMachine:idseq-swipe-dev-... -- and every
+# pipeline dispatch dies instantly, client-side, with "Invalid Arn: 'AccountId can not be empty'".
+# The sample uploads fine and then just fails, with NO error recorded in the DB: the only trace is
+# the app log. That is why sandboxes could never run a pipeline (found 2026-07-16 via Loki).
+#
+# dev does not hit this because its app_configs rows were seeded correctly once, long ago. A
+# per-PR sandbox seeds FRESH on every provision, so it fails every time.
+aws:
+  accountId: "491013321714"
+
 # Small footprint -- previews are ephemeral and many may run at once.
 replicaCount: 1
 nodeSelector:
