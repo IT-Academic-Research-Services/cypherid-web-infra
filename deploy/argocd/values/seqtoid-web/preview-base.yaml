@@ -33,9 +33,6 @@ nodeSelector:
   # reliably, and bounds total preview spend via the pool's limits.
   seqtoid.io/pool: preview
 
-# POLLING pipeline model: run result-monitor + pipeline-monitor (they poll the sandbox's
-# OWN DB), but NOT shoryuken -- a sandbox shoryuken would be a competing consumer on dev's
-# shared SQS queue. (#618)
 # Web pod. The sandbox previously inherited the chart default (512Mi request / 1Gi LIMIT) and
 # runs at 1023Mi -- one mebibyte under its own hard ceiling (kubectl top, 2026-07-17). It has
 # been living on the edge of an OOMKill, which is the likeliest explanation for sandboxes that
@@ -49,7 +46,6 @@ resources:
   limits:
     memory: 2Gi
 
-#
 # Memory requests are sized to MEASURED usage, not to what a sandbox "ought" to need. These
 # were 768Mi/384Mi -- picked as a fraction of the chart's 3Gi rather than from observation --
 # and a sandbox's monitors actually run ~1.6Gi (kubectl top, 2026-07-17). Under-requesting by
@@ -63,6 +59,9 @@ resources:
 # loading the entire application. That is ~7Gi per sandbox and it does not fit on one
 # c7i-flex.xlarge (~6.5Gi allocatable). Sizing honestly is what lets Karpenter provision for
 # what is actually there instead of discovering it by OOM.
+# POLLING pipeline model: run result-monitor + pipeline-monitor (they poll the sandbox's
+# OWN DB), but NOT shoryuken -- a sandbox shoryuken would be a competing consumer on dev's
+# shared SQS queue. (#618)
 workers:
   shoryuken:
     enabled: false
@@ -105,11 +104,12 @@ preview:
   # Give the sandbox its OWN Redis instead of dev's ElastiCache. Sandboxes copy dev's config, which
   # put every one of them on DEV's Resque queues -- and the worker's queue list ends in `*`, so it
   # consumes every queue. That is competing consumers in both directions, silently: dev's workers
-  # ate a sandbox's ResultMonitorLoader jobs (proven -- the sandbox's report could never render),
-  # and a sandbox's workers can eat DEV's scheduled jobs, which include account deletion under a
-  # stated 30-day compliance obligation and export-control hold resolution. Same hazard shoryuken
-  # is disabled here for; nobody had applied it to Resque. sandbox:provision now REQUIRES the URL
-  # the chart templates for this and writes it over the inherited value.
+  # ate a sandbox's ResultMonitorLoader jobs (proven -- the sandbox's report could never render,
+  # even though its pipeline reached SUCCEEDED), and a sandbox's workers can eat DEV's scheduled
+  # jobs -- notably HandleSfnNotificationsTimeout, dev's failsafe for missed SFN notifications,
+  # without which a stalled dev pipeline has nothing to rescue it. Same hazard shoryuken is
+  # disabled here for; nobody had applied it to Resque. sandbox:provision now REQUIRES the URL the
+  # chart templates for this and writes it over the inherited value.
   redis:
     enabled: true
 
