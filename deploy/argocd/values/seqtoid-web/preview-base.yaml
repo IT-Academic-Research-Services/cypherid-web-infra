@@ -102,6 +102,16 @@ preview:
   # (cypherid-web-infra #25), and sandbox:provision aborts if this is unset or set to
   # seqtoid-sandbox -- so a wrong value fails loudly instead of polluting research data.
   samplesBucket: seqtoid-preview-samples-dev-491013321714
+  # Give the sandbox its OWN Redis instead of dev's ElastiCache. Sandboxes copy dev's config, which
+  # put every one of them on DEV's Resque queues -- and the worker's queue list ends in `*`, so it
+  # consumes every queue. That is competing consumers in both directions, silently: dev's workers
+  # ate a sandbox's ResultMonitorLoader jobs (proven -- the sandbox's report could never render),
+  # and a sandbox's workers can eat DEV's scheduled jobs, which include account deletion under a
+  # stated 30-day compliance obligation and export-control hold resolution. Same hazard shoryuken
+  # is disabled here for; nobody had applied it to Resque. sandbox:provision now REQUIRES the URL
+  # the chart templates for this and writes it over the inherited value.
+  redis:
+    enabled: true
 
 # Seed app_configs after migrate so the sandbox has the (dev) SFN ARNs to dispatch with.
 # db:seed derives them from ENVIRONMENT (dev) + AWS_ACCOUNT_ID, so they point at the
