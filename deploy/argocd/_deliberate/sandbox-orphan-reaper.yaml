@@ -30,7 +30,9 @@
 # Applied out-of-band (like the rest of _deliberate) because the ArgoCD install here is a Helm
 # release that is not in git. Requires terraform/envs/dev/web/eks-irsa-sandbox-reaper.tf applied.
 #
-# DRY RUN FIRST: set SANDBOX_REAP_DRY_RUN=1 and read the logs before letting it delete anything.
+# SHIPS IN DRY RUN (SANDBOX_REAP_DRY_RUN=1): it logs what it WOULD reap and deletes nothing.
+# Read one hourly cycle's logs, confirm the orphan list is what you expect, then arm it by setting
+# that variable to "0" in its own commit. See the note on the variable itself.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -96,9 +98,25 @@ spec:
                     secretKeyRef:
                       name: github-pr-generator
                       key: token
-                # Flip to "1" to log what WOULD be reaped without deleting anything.
+                # DRY RUN BY DEFAULT. This job DROPs schemas and DELETEs SSM paths on an hourly
+                # timer, unattended, and the schemas hold copied user PII -- the blast radius of a
+                # wrong answer here is data nobody can get back. So the safe value is the one you
+                # get by doing nothing.
+                #
+                # It shipped as "0" under a header that says "DRY RUN FIRST", i.e. the file's own
+                # instruction and its value disagreed, and the value won. A safety step that
+                # depends on someone remembering to edit a line before merging is not a safety
+                # step; the next person to add a sandbox gets no such reminder.
+                #
+                # In dry-run the reaper does the full read path -- lists live schemas + SSM paths,
+                # asks GitHub which PRs are open, computes the difference -- and logs what it WOULD
+                # destroy without destroying it. That is exactly the evidence needed to trust it.
+                #
+                # TO ARM IT: read one hourly cycle's logs, confirm the orphan list matches the PRs
+                # you expect to be gone (and nothing you expect to be live), then set this to "0"
+                # in a commit of its own, so arming is a reviewable act with a diff attached.
                 - name: SANDBOX_REAP_DRY_RUN
-                  value: "0"
+                  value: "1"
               resources:
                 requests:
                   cpu: 100m
