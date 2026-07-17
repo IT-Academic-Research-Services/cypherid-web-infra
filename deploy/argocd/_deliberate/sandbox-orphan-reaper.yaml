@@ -68,6 +68,18 @@ spec:
             # Do not let Karpenter evict a reap mid-DROP.
             karpenter.sh/do-not-disrupt: "true"
         spec:
+          # seqtoid-web images are amd64-only. Without this pin Karpenter is free to place the
+          # reaper on the cheapest node it can find, which is arm64 (t4g) -- and the pull then
+          # fails with "no match for platform in manifest". That is exactly what happened on the
+          # first live schedule: the CronJob reported perfectly healthy (`kubectl get cronjob`
+          # shows schedule + dry-run set) while every Job sat in ImagePullBackOff, so it reaped
+          # nothing. This file's own header warns that a reaper which reports as configured and
+          # does nothing is the failure mode to avoid; it arrived through the arch, not the task.
+          # Every other seqtoid-web workload (dev.yaml, preview-base.yaml) already pins this.
+          # Deliberately NOT pinning seqtoid.io/pool: the preview pool is capacity-capped and
+          # contended, and the retention backstop must not queue behind the sandboxes it cleans up.
+          nodeSelector:
+            kubernetes.io/arch: amd64
           restartPolicy: Never
           serviceAccountName: seqtoid-sandbox-reaper
           containers:
