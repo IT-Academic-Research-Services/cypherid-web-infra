@@ -26,37 +26,63 @@ replicaCount: 2
 nodeSelector:
   kubernetes.io/arch: amd64
   seqtoid.io/pool: web
-# Rightsize dev worker memory (#486). The chart defaults (3Gi each) are prod-ish and
-# forced Karpenter onto an oversized node; dev needs far less. Per-worker overrides are
-# possible now that `workers` is a name-keyed map (seqtoid-web #129). NOTE: this reduces
-# memory pressure but the node stays large until seqtoid-web also lands on a dedicated
-# small Karpenter NodePool (the shared NodePool floors instance-cpu > 8) — see #486.
+# Dev worker memory, sized to MEASURED usage.
+#
+# The chart asks 3Gi per worker, which is prod-ish and forced Karpenter onto an oversized
+# node, so these were cut to 512Mi-1Gi. That went too far: the values were chosen against
+# the chart default, not against what the workers actually consume, and they landed BELOW
+# real usage. `kubectl top`, dev + sandboxes, 2026-07-17:
+#
+#   worker                  requested   ACTUAL      over
+#   resque-pipeline-monitor   512Mi     1601Mi      3.1x
+#   resque-result-monitor     512Mi     1618Mi      3.2x
+#   shoryuken                 512Mi      884Mi      1.7x
+#   resque-scheduler          512Mi      822Mi      1.6x
+#   resque                      1Gi     1015Mi      at the line
+#
+# A request is what the SCHEDULER packs against, so under-requesting does not save memory --
+# it hides the demand. Nodes reported "memory 3168Mi (47%) requested" while the kubelet was
+# evicting with 6240Ki free against a 200Mi threshold (25 pods on a ~6.5Gi c7i-flex.xlarge).
+# Pods died as Evicted/ContainerStatusUnknown, dev's own web pods were evicted with them
+# (brief 503s), and under sustained pressure the kubelet stopped posting node status at all
+# -- nodes going NotReady ~5 minutes into their life. Karpenter then made it worse by design:
+# consolidation is WhenEmptyOrUnderutilized, so nodes that looked underutilized BY REQUEST
+# were deleted and the survivors packed tighter.
+#
+# These are measured peaks + ~25% headroom. Nodes will be larger or more numerous; that is
+# the real cost of these workers, previously paid in evictions instead of instances. Each
+# Rails worker loads the whole app, which is why a "monitor" is not small.
+#
+# NOT set: memory LIMITS on workers. A monitor using 1.6Gi against a 512Mi request smells
+# like a leak or an unbounded batch rather than a sizing miss (#709 step 3). Sizing contains
+# the blast radius; it does not explain the appetite. Add limits once the cause is known --
+# a limit set now would convert an unexplained leak into an OOMKill loop.
 workers:
   resque:
     resources:
       requests:
         cpu: 250m
-        memory: 1Gi
+        memory: 1536Mi
   resque-scheduler:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 1Gi
   resque-pipeline-monitor:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 2Gi
   resque-result-monitor:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 2Gi
   shoryuken:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 1152Mi
 serviceAccount:
   create: true
   name: seqtoid-web # MUST match the IRSA trust (system:serviceaccount:seqtoid-dev:seqtoid-web)
@@ -67,12 +93,19 @@ blueGreen:
   analysis:
     enabled: true
     postPromotion: false
+# Web pod, sized to measured usage: dev web pods run 852-1015Mi (kubectl top, 2026-07-17).
+#
+# The 512Mi request was half of that, so the scheduler packed nodes against a number the pod
+# passes within seconds of booting. The 1Gi LIMIT is the sharper edge: at 1015Mi a pod is
+# sitting on 99% of its hard ceiling, and the only reason we are not seeing OOMKills is luck
+# and timing -- one slow request with a big result set and the container dies. Raise the
+# request to cover real usage and give the limit genuine headroom above it.
 resources:
   requests:
     cpu: 250m
-    memory: 512Mi
+    memory: 1280Mi
   limits:
-    memory: 1Gi
+    memory: 2Gi
 autoscaling:
   enabled: false
 ingress:

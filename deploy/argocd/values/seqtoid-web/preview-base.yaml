@@ -36,17 +36,44 @@ nodeSelector:
 # POLLING pipeline model: run result-monitor + pipeline-monitor (they poll the sandbox's
 # OWN DB), but NOT shoryuken -- a sandbox shoryuken would be a competing consumer on dev's
 # shared SQS queue. (#618)
+# Web pod. The sandbox previously inherited the chart default (512Mi request / 1Gi LIMIT) and
+# runs at 1023Mi -- one mebibyte under its own hard ceiling (kubectl top, 2026-07-17). It has
+# been living on the edge of an OOMKill, which is the likeliest explanation for sandboxes that
+# answer 503 with pods that look "Running": the container dies, the ALB has no healthy target,
+# and it comes back before anyone reads the pod state. A sandbox web pod is the same Rails app
+# as dev's, so it needs the same memory as dev's -- being ephemeral makes it no smaller.
+resources:
+  requests:
+    cpu: 250m
+    memory: 1280Mi
+  limits:
+    memory: 2Gi
+
+#
+# Memory requests are sized to MEASURED usage, not to what a sandbox "ought" to need. These
+# were 768Mi/384Mi -- picked as a fraction of the chart's 3Gi rather than from observation --
+# and a sandbox's monitors actually run ~1.6Gi (kubectl top, 2026-07-17). Under-requesting by
+# 4x does not make a sandbox cheap; it makes the scheduler pack pods onto a node that then
+# runs out of real memory. The kubelet evicts (Evicted / ContainerStatusUnknown), and the
+# pipeline-monitor is the pod that suffers most -- which is worse than it sounds, because it
+# is what advances a sample's status. A sample can run perfectly and still read "in progress"
+# forever. Sandboxes shared nodes with DEV, so this took dev's web pods down with it (#709).
+#
+# A sandbox is a full app: web + resque + scheduler + both monitors, each a Rails process
+# loading the entire application. That is ~7Gi per sandbox and it does not fit on one
+# c7i-flex.xlarge (~6.5Gi allocatable). Sizing honestly is what lets Karpenter provision for
+# what is actually there instead of discovering it by OOM.
 workers:
   shoryuken:
     enabled: false
   resque:
-    resources: { requests: { cpu: 100m, memory: 768Mi } }
+    resources: { requests: { cpu: 100m, memory: 1536Mi } }
   resque-scheduler:
-    resources: { requests: { cpu: 50m, memory: 384Mi } }
+    resources: { requests: { cpu: 50m, memory: 1Gi } }
   resque-pipeline-monitor:
-    resources: { requests: { cpu: 50m, memory: 384Mi } }
+    resources: { requests: { cpu: 50m, memory: 2Gi } }
   resque-result-monitor:
-    resources: { requests: { cpu: 50m, memory: 384Mi } }
+    resources: { requests: { cpu: 50m, memory: 2Gi } }
 
 # App pods run as the tightly-scoped preview IRSA role (fail-closed vs dev). The
 # ApplicationSet does not override serviceAccount.name, so it stays `seqtoid-web` --
