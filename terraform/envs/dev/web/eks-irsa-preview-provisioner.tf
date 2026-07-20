@@ -99,6 +99,24 @@ data "aws_iam_policy_document" "seqtoid_web_provisioner" {
     ]
     resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/_chamber/store-config"]
   }
+  # The provision COPIES the SHARED sandbox config -- the isolated OpenSearch endpoints
+  # (ES_ADDRESS / HEATMAP_ES_ADDRESS at /idseq-sandbox-web/*, written by the heatmap-sandbox
+  # component, web-infra #41) -- into each per-PR path. Reading that shared path was never
+  # granted: the reads above cover only dev (/idseq-${var.env}-web/*) and the per-PR path
+  # (/idseq-sandbox-pr-*-web/*). So sandbox.rake's fail-closed sandbox_shared_es_address helper
+  # hit AccessDenied on /idseq-sandbox-web/HEATMAP_ES_ADDRESS and EVERY new sandbox provision
+  # aborted before deploying the app (platform-overhaul #732; observed on seqtoid-pr-70). The
+  # schema/user/grants are created first, so this only breaks the app bring-up. Read-only, and
+  # the shared path holds only the sandbox ES endpoints -- never DB creds.
+  statement {
+    sid = "ReadSharedSandboxConfig"
+    actions = [
+      "ssm:GetParametersByPath",
+      "ssm:GetParameters",
+      "ssm:GetParameter",
+    ]
+    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/idseq-sandbox-web/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "seqtoid_web_provisioner" {
