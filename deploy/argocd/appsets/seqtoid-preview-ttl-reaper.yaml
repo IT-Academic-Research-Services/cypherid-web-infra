@@ -75,8 +75,10 @@ metadata:
   name: seqtoid-preview-ttl-reaper
   namespace: argocd
 spec:
-  # Daily at 06:00 UTC.
-  schedule: "0 6 * * *"
+  # Hourly at :37 (#760). A merged/closed PR's orphaned namespace should be reaped within
+  # an hour, not a day; the label-age pass is idempotent so running it hourly is harmless.
+  # Offset from the sandbox-orphan-reaper (:17) so the two do not hit the GitHub API at once.
+  schedule: "37 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -109,13 +111,25 @@ spec:
                 - |
                   set -eu
                   now=$(date +%s)
+                  # The alpine/k8s image ships BusyBox `date`, which cannot parse the RFC3339
+                  # timestamps kubectl emits: `date -d "2026-07-17T00:16:41Z"` fails with
+                  # "invalid date". That crashed this reaper in pass 1 (arithmetic syntax error
+                  # on the empty result) BEFORE it ever reached the namespace sweep, so orphaned
+                  # namespaces from merged/closed PRs piled up for days (#760). Parse with GNU
+                  # `date -d` when present, else BusyBox `date -D FMT -d`; a per-row parse failure
+                  # warns and skips that row instead of aborting the whole run.
+                  epoch_of() {
+                    date -u -d "$1" +%s 2>/dev/null \
+                      || date -u -D "%Y-%m-%dT%H:%M:%SZ" -d "$1" +%s 2>/dev/null
+                  }
                   # Each preview Application carries seqtoid.io/pr=<number>. Find those
                   # older than MAX_AGE_DAYS and drop the `preview` label from their PR.
                   kubectl get applications -n argocd -l seqtoid.io/preview=true \
                     -o jsonpath='{range .items[*]}{.metadata.labels.seqtoid\.io/pr}{" "}{.metadata.creationTimestamp}{"\n"}{end}' \
                     | while read -r pr created; do
                         [ -n "$pr" ] || continue
-                        age=$(( (now - $(date -d "$created" +%s)) / 86400 ))
+                        created_s=$(epoch_of "$created") || { echo "  WARN: unparseable timestamp '$created' for PR #$pr, skipping"; continue; }
+                        age=$(( (now - created_s) / 86400 ))
                         if [ "$age" -ge "$MAX_AGE_DAYS" ]; then
                           echo "reaping PR #$pr (sandbox age ${age}d >= ${MAX_AGE_DAYS}d): removing 'preview' label"
                           curl -sf -X DELETE \
@@ -135,7 +149,8 @@ spec:
                     -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.creationTimestamp}{"\n"}{end}' \
                     | while read -r ns created; do
                         [ -n "$ns" ] || continue
-                        age_min=$(( (now - $(date -d "$created" +%s)) / 60 ))
+                        created_s=$(epoch_of "$created") || { echo "  WARN: unparseable timestamp '$created' for ns $ns, skipping"; continue; }
+                        age_min=$(( (now - created_s) / 60 ))
                         [ "$age_min" -lt 60 ] && continue
                         if ! kubectl get application "$ns" -n argocd >/dev/null 2>&1; then
                           echo "reaping ORPHANED namespace $ns (no Application, age ${age_min}m)"
