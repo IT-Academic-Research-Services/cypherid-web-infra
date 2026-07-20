@@ -21,6 +21,23 @@ on:
         description: Github Action Workflow Run ID to get Plan Artifacts from
         type: number
         required: true
+      components:
+        description: >-
+          Optional. Space- or comma-separated component names to apply. Empty
+          applies every changing component (default). When set, the apply set is
+          the intersection of these and the changing components; an unknown name
+          fails (typo protection), a known-but-unchanged name is warned + skipped.
+        type: string
+        required: false
+        default: ''
+      allow_destroy:
+        description: >-
+          Destroy guard. When false (default), the run fails if any resource in
+          the apply set would be destroyed or replaced (a delete action). Set
+          true to acknowledge and proceed.
+        type: boolean
+        required: false
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -69,6 +86,18 @@ jobs:
       #    rm `find . -name "*.zip"`
       - name: Generate Changing Components Matrix
         id: changing-components
+        # Two opt-in guards against the apply-all hazard (default behavior is
+        # unchanged when neither input is set):
+        #   1. `components` -- surgical filter. A targeted intent applies only the
+        #      requested component(s), so unrelated drift can't ride along.
+        #   2. `allow_destroy` -- destroy guard. A stale-config delete/replace in
+        #      the apply set fails the run by default, so it can't ride along on an
+        #      unrelated apply. Override only after reviewing the listed addresses.
+        # Inputs are passed via env (not inlined into the script) to avoid shell
+        # injection through the free-form `components` string.
+        env:
+          REQUESTED_COMPONENTS: ${{ inputs.components }}
+          ALLOW_DESTROY: ${{ inputs.allow_destroy }}
         run: |
           find results/
           find results/ -name "*.json" -exec jq --compact-output --slurp '.' {} + > results.json
@@ -79,34 +108,95 @@ jobs:
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
           changing_components=$(jq -c '[.[] | select(.change_count > 0) | .component]' results.json)
-          echo "changing-components=$changing_components"
-          echo "changing-components=$changing_components" >> "$GITHUB_OUTPUT"
+          echo "changing-components (pre-filter)=$changing_components"
+
+          # --- Surgical component filter (opt-in via `components`) ---
+          # Empty -> apply all changing (unchanged). Set -> intersection of
+          # requested and changing.
+          requested=$(printf '%s' "${REQUESTED_COMPONENTS:-}" | tr ',' ' ' | jq -Rsc '[splits("[[:space:]]+")] | map(select(length > 0))')
+          echo "requested=$requested"
+          filter_note="all changing"
+          if [[ "$(jq 'length' <<< "$requested")" -gt 0 ]]; then
+            filter_note="filtered to: $(jq -r 'join(", ")' <<< "$requested")"
+            # Typo protection: every requested component must exist in the plan.
+            unknown=$(jq -c --argjson all "$components" '[.[] | select(. as $r | ($all | index($r)) | not)]' <<< "$requested")
+            if [[ "$(jq 'length' <<< "$unknown")" -gt 0 ]]; then
+              echo "::error::Requested component(s) not present in this plan: $(jq -r 'join(", ")' <<< "$unknown"). Known components: $(jq -r 'join(", ")' <<< "$components")."
+              exit 1
+            fi
+            # Requested-but-not-changing: warn and skip (do not fail).
+            requested_no_change=$(jq -c --argjson chg "$changing_components" '[.[] | select(. as $r | ($chg | index($r)) | not)]' <<< "$requested")
+            while IFS= read -r c; do
+              [[ -n "$c" ]] && echo "::warning::Requested component '$c' has no planned changes (change_count 0); skipping."
+            done < <(jq -r '.[]' <<< "$requested_no_change")
+            # Final apply set = changing components intersected with requested.
+            apply_components=$(jq -c --argjson req "$requested" '[.[] | select(. as $c | ($req | index($c)))]' <<< "$changing_components")
+          else
+            apply_components="$changing_components"
+          fi
+          echo "apply-components=$apply_components"
+
+          # --- Destroy guard (opt-in override via `allow_destroy`) ---
+          # Over the FINAL apply set only, collect every resource change with
+          # action "delete" (a pure destroy, or the delete half of a replace).
+          deletes=$(jq -c --argjson apply "$apply_components" '
+            [ .[]
+              | select(.component as $c | ($apply | index($c)))
+              | .component as $c
+              | ((.resource_changes // [])[]
+                  | select(.action == "delete")
+                  | {component: $c, address: .address}) ]' results.json)
+          delete_count=$(jq 'length' <<< "$deletes")
+          destroy_note="none"
+          if [[ "$delete_count" -gt 0 ]]; then
+            if [[ "${ALLOW_DESTROY:-false}" != "true" ]]; then
+              echo "::error::Destroy guard: the apply set would destroy or replace $delete_count resource(s). This is blocked by default. Re-run this workflow with allow_destroy=true (after reviewing the addresses below) to proceed."
+              jq -r '.[] | "::error::  would destroy/replace: \(.component) -> \(.address)"' <<< "$deletes"
+              echo "### :no_entry: Destroy guard blocked this apply" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "The apply set would destroy or replace **$delete_count** resource(s). Re-run with \`allow_destroy=true\` to proceed." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "| Component | Address |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| --------- | ------- |" >> "$GITHUB_STEP_SUMMARY"
+              jq -r '.[] | "|\(.component)|\(.address)|"' <<< "$deletes" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            destroy_note="OVERRIDDEN ($delete_count destroy/replace)"
+            echo "::warning::Destroy guard OVERRIDDEN (allow_destroy=true): proceeding despite $delete_count destroy/replace action(s):"
+            jq -r '.[] | "::warning::  destroy/replace: \(.component) -> \(.address)"' <<< "$deletes"
+          fi
+
+          # Output the FILTERED apply set so the matrix runs only intended components.
+          echo "changing-components=$apply_components"
+          echo "changing-components=$apply_components" >> "$GITHUB_OUTPUT"
 
           environment=$(jq -cr 'map(.environment) | unique | .[0] // empty' results.json)
           echo "environment=$environment"
           echo "environment=$environment" >> "$GITHUB_OUTPUT"
 
           component_count=$(jq 'length' <<< "$components")
-          changing_component_count=$(jq 'length' <<< "$changing_components")
+          apply_component_count=$(jq 'length' <<< "$apply_components")
           echo "component_count=$component_count"
-          echo "| Should Apply | Environment | Components | Changing Components | Plan Workflow Run ID |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ------------ | ----------- | ---------- | ------------------ | -------------------- |" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$component_count" -gt 0 ]]; then
-            echo "| :green_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run-id }} |"
-            echo "| :green_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run-id }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Should Apply | Environment | Components | Applying | Filter | Destroy Guard | Plan Workflow Run ID |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ------------ | ----------- | ---------- | -------- | ------ | ------------- | -------------------- |" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$apply_component_count" -gt 0 ]]; then
+            echo "| :green_circle: Enabled | $environment | $component_count | $apply_component_count | $filter_note | $destroy_note | ${{ inputs.run-id }} |"
+            echo "| :green_circle: Enabled | $environment | $component_count | $apply_component_count | $filter_note | $destroy_note | ${{ inputs.run-id }} |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| :yellow_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run-id }} |"
-            echo "| :yellow_circle: Enabled | $environment | $component_count | $changing_component_count | ${{ inputs.run-id }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| :yellow_circle: Enabled | $environment | $component_count | $apply_component_count | $filter_note | $destroy_note | ${{ inputs.run-id }} |"
+            echo "| :yellow_circle: Enabled | $environment | $component_count | $apply_component_count | $filter_note | $destroy_note | ${{ inputs.run-id }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "<br/>" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "|   | Component | Changes |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| - | --------- | ------- |" >> "$GITHUB_STEP_SUMMARY"
-          jq -r '.[] | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\(.component)|\(.change_count)|"' results.json
-          jq -r '.[] | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\(.component)|\(.change_count)|"' results.json >> "$GITHUB_STEP_SUMMARY"
+          # Per-component table: green = no change, yellow = changing, blue check =
+          # in the final apply set (survived the filter).
+          echo "|   | Component | Changes | In apply set |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| - | --------- | ------- | ------------ |" >> "$GITHUB_STEP_SUMMARY"
+          jq -r --argjson apply "$apply_components" '.[] | .component as $c | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\($c)|\(.change_count)|\(if ($apply | index($c)) then ":white_check_mark:" else "-" end)|"' results.json
+          jq -r --argjson apply "$apply_components" '.[] | .component as $c | "|\(if .change_count == 0 then ":green_circle:" else ":yellow_circle:" end)|\($c)|\(.change_count)|\(if ($apply | index($c)) then ":white_check_mark:" else "-" end)|"' results.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Reject direct-to-prod apply
         # No-direct-to-prod (CZID-96): apply_all may apply dev/staging on demand,
