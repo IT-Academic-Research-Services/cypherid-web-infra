@@ -66,7 +66,12 @@ variable "es_dedicated_master_count" {
 }
 
 variable "es_auto_tune_desired_state" {
-  description = "Auto-Tune desired state for the heatmap-es domain (ENABLED or DISABLED)."
+  # DISABLED: Auto-Tune is NOT supported on t2/t3 (burstable) instance types, and this domain
+  # runs t3.small data + t3.small.elasticsearch dedicated masters. Enabling it fails the apply with
+  # "ValidationException: Autotune is not supported in t2/t3 instance types" (#726). The #726 fix is
+  # the dedicated masters (node-loss stability); Auto-Tune stays off unless the domain moves to a
+  # non-burstable instance type.
+  description = "Auto-Tune desired state for the heatmap-es domain (ENABLED or DISABLED). Requires a non-t2/t3 instance type to enable."
   type        = string
-  default     = "ENABLED"
+  default     = "DISABLED"
 }
