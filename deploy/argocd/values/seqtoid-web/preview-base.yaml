@@ -117,15 +117,26 @@ preview:
 # db:seed derives them from ENVIRONMENT (dev) + AWS_ACCOUNT_ID, so they point at the
 # shared dev state machines. Idempotent find_or_create-style seed.
 migrate:
-  command: ["rails", "db:migrate:with_data", "sandbox:seed_once"]
+  # taxon_lineage_slice:load_slice_if_needed is folded into the migrate hook (rather than
+  # left to the separate taxonLoad PreSync Job) on purpose: in a sandbox, TAXON_LINEAGE_REF_SCHEMA
+  # is set (below via chart default idseq_sandbox_ref), so that task takes the platform-overhaul-731
+  # branch -- it attaches taxon_lineages as a VIEW onto the shared full-lineage schema and SKIPS
+  # both the slice import and the ES rebuild. That attach does DDL on idseq_pr_<N> + SELECT on
+  # idseq_sandbox_ref, and MUST run under the provisioner SA (the app SA does not exist yet at
+  # PreSync on a brand-new namespace) -- exactly the context this migrate hook already runs in.
+  # The standalone taxonLoad Job runs as the app SA and would rebuild ES, so it stays OFF here.
+  # Order: migrate -> seed_once -> attach (drop the freshly-migrated empty table, replace with view).
+  command: ["rails", "db:migrate:with_data", "sandbox:seed_once", "taxon_lineage_slice:load_slice_if_needed"]
   # Run the migrate PreSync hook as the provisioner SA. On a brand-new sandbox namespace
   # the app SA (Sync phase) does not exist yet when this PreSync hook runs; the provisioner
   # SA is a PreSync hook that is already present and can read the sandbox SSM path.
   serviceAccountName: seqtoid-web-provisioner
 
-# Skip the multi-GB taxon-lineage import + ES index build -- reference data is shared
-# read-only and per-sandbox OpenSearch is out of scope (heatmap/taxon-search degraded in
-# preview; #619 gate item). taxonLoad/taxonRefresh OFF avoids writing to dev's ES.
+# The standalone taxonLoad/taxonRefresh Jobs stay OFF in preview: they run as the app SA
+# (absent at PreSync) and would import the multi-GB slice + write dev's shared ES index.
+# The sandbox instead gets the FULL lineage via a VIEW attached inside the migrate hook above
+# (platform-overhaul 731), and reads dev's shared taxon_lineages_alias for ES -- so it needs
+# no per-sandbox import or index build. (heatmap/taxon-search still per #619 gate item.)
 taxonLoad:
   enabled: false
 taxonRefresh:
