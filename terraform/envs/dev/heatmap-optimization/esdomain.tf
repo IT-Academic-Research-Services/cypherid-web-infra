@@ -82,6 +82,12 @@ module "elasticsearch" {
   ebs_volume_type       = var.es_ebs_volume_type
   ebs_volume_size       = var.es_ebs_volume_size
   elasticsearch_version = "OpenSearch_2.7"
+
+  # CZID-726: dedicated masters + Auto-Tune (see esdomain_sizing.tf for rationale/cost).
+  dedicated_master_enabled = var.es_dedicated_master_enabled
+  dedicated_master_type    = var.es_dedicated_master_type
+  dedicated_master_count   = var.es_dedicated_master_count
+  auto_tune_desired_state  = var.es_auto_tune_desired_state
   log_publishing_options = {
     cloudwatch_log_group = aws_cloudwatch_log_group.elasticsearch-log-publishing-policy.arn
   }
