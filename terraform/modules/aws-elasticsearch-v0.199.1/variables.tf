@@ -87,3 +87,29 @@ variable "custom_sg_ids" {
   type        = list(string)
   default     = []
 }
+
+# CZID-726: dedicated master nodes (optional, off by default so existing
+# callers keep their current single-tier topology).
+variable "dedicated_master_enabled" {
+  description = "Run dedicated master nodes so data nodes stop absorbing cluster-management churn."
+  type        = bool
+  default     = false
+}
+
+variable "dedicated_master_type" {
+  description = "Instance type for dedicated master nodes. Only used when dedicated_master_enabled = true."
+  type        = string
+  default     = null
+}
+
+variable "dedicated_master_count" {
+  description = "Number of dedicated master nodes. Must be an odd number (3 recommended) for quorum. Only used when dedicated_master_enabled = true."
+  type        = number
+  default     = 3
+}
+
+variable "auto_tune_desired_state" {
+  description = "Auto-Tune desired state: ENABLED or DISABLED. ENABLED applies AWS JVM/queue tuning recommendations."
+  type        = string
+  default     = "DISABLED"
+}
