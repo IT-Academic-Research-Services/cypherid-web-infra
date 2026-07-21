@@ -26,7 +26,7 @@ spec:
   generators:
     - pullRequest:
         github:
-          owner: thorvath-slower
+          owner: IT-Academic-Research-Services
           repo: seqtoid-web
           # Only PRs carrying this label get a sandbox.
           labels:
@@ -50,7 +50,7 @@ spec:
       project: seqtoid-preview
       sources:
         # 1) the app chart @ the PR head commit (deploys the code under review)
-        - repoURL: https://github.com/thorvath-slower/seqtoid-web.git
+        - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
           targetRevision: "{{.head_sha}}"
           path: deploy/charts/seqtoid-web
           helm:
@@ -79,7 +79,7 @@ spec:
               - name: extraEnv[1].value
                 value: "idseq_pr_{{.number}}"
         # 2) this repo (main) supplies the shared preview-base values via $values.
-        - repoURL: https://github.com/thorvath-slower/cypherid-web-infra.git
+        - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
           targetRevision: main
           ref: values
       destination:

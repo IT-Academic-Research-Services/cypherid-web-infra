@@ -84,7 +84,15 @@ module "czid_gh_actions_apply" {
   # The "only main may apply" guard now comes from each GitHub Environment's
   # deployment-branch restriction (dev/staging/prod set to deploy only from `main`),
   # NOT the IAM sub. The module's C1 :pull_request deny still applies.
-  subject_ref_pattern = "environment:${var.env}"
+  #
+  # The `*` glob additionally admits the `${var.env}-targeted` environment used by
+  # targeted-apply.yml (scoped `-target` applies from ANY branch). That environment
+  # carries NO deployment-branch restriction -- its guard is a required reviewer plus
+  # the workflow's hard requirement of an explicit target list (it can never run a
+  # full apply). The branch-restricted `${var.env}` environment (full make-deploy) is
+  # unchanged: `environment:${var.env}` still matches this glob. Both environments are
+  # admin-created, so a non-admin cannot widen the set of matching subs.
+  subject_ref_pattern = "environment:${var.env}*"
 }
 
 # ---------------------------------------------------------------------------

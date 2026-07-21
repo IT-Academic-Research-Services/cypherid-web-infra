@@ -7,16 +7,19 @@ metadata:
   name: seqtoid-web-dev
   namespace: argocd
 spec:
-  project: default   # proving phase; a scoped `seqtoid` AppProject is a follow-up
+  # The scoped czid AppProject now permits the seqtoid-* + argocd destinations this app and the
+  # app-of-apps root need (see projects/czid.yaml, #698), so the app leaves the permissive built-in
+  # `default` project. When czid-root-dev adopts this app, it moves it into `czid` in place.
+  project: czid
   sources:
-    - repoURL: https://github.com/thorvath-slower/seqtoid-web.git
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
       # Pin to a release tag/sha in practice; CI advances it on deploy.
       targetRevision: main
       path: deploy/charts/seqtoid-web
       helm:
         valueFiles:
           - $values/deploy/argocd/values/seqtoid-web/dev.yaml
-    - repoURL: https://github.com/thorvath-slower/cypherid-web-infra.git
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
       targetRevision: main
       ref: values
   destination:

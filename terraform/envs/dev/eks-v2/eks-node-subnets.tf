@@ -42,6 +42,23 @@ resource "aws_subnet" "karpenter_node" {
     Name = "idseq-dev-karpenter-${each.key}"
     # Internal-facing nodes (no public IPs); mirrors the private-subnet role tagging.
     "kubernetes.io/role/internal-elb" = "1"
+    # Karpenter subnet discovery for THIS cluster. The EC2NodeClass matches on this per-cluster
+    # unique key, so it is what points Karpenter at these big /18s instead of the shared /24s.
+    #
+    # THIS TAG MUST LIVE HERE, in the subnet's own tag map. It used to be a separate
+    # `aws_ec2_tag.karpenter_subnet_discovery` resource, which created an unwinnable ownership
+    # fight: `aws_subnet.tags` is AUTHORITATIVE, so every apply stripped any tag not listed here
+    # and then aws_ec2_tag re-added it. The two ping-ponged forever -- the plan never converged,
+    # alternating between "subnet updated" and "ec2_tag created" (the "will recur" in #21).
+    #
+    # It was not just noise. On 2026-07-16 an apply stripped this tag, term 2 of the EC2NodeClass
+    # selector went dead, and Karpenter silently fell back to the /24s -- putting every new node
+    # back in the small, fragmented subnets that caused the 2026-07-15 CNI node-death incident
+    # (#699). Nothing errored, no pods pended, and the /18 fix was simply inactive. A perpetual
+    # diff that flips a production selector is an outage waiting for a quiet apply.
+    #
+    # aws_ec2_tag is the right tool ONLY for subnets this module does not own. It owns these.
+    "karpenter.sh/discovery/${local.cluster_name}" = local.cluster_name
   }
 }
 

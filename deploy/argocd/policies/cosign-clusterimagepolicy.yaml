@@ -53,7 +53,7 @@ spec:
         # actually scopes trust; the CA just says "a Fulcio-issued cert".
         identities:
           - issuer: https://token.actions.githubusercontent.com
-            subjectRegExp: "^https://github\\.com/thorvath-slower/seqtoid-web/\\.github/workflows/build-docker-image\\.yml@refs/.*$"
+            subjectRegExp: "^https://github\\.com/(thorvath-slower|IT-Academic-Research-Services)/seqtoid-web/\\.github/workflows/build-docker-image\\.yml@refs/.*$"
         # Require the signature to be logged in the Rekor transparency log (chart default
         # public-good Rekor). Explicit for auditability.
         ctlog:

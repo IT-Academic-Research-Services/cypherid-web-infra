@@ -1,0 +1,8 @@
+{
+  "_comment": "Regression baseline for the integration->main no-regressions gate (platform-overhaul #750). Consumed by the reusable regression-gate.yml (thorvath-slower/seqtoid-ci-workflows), which runs thorvath-slower/seqtoid-ssot-infra platform-harness bin/regression-compare.sh with --checkov-dir terraform. A green terraform-ci/checkov run can still hide a stack that was silently dropped from validation, or a checkov policy check that was suppressed with a new checkov:skip -- both LOWER the passed-check count. This gate FAILS if a monotonic-up metric drops below the floor here. checkov.passed is the enforced floor; tf.resource_blocks is informational (a legitimate stack removal lowers it and is reported as WARN, not FAIL). No coverage / rspec / jest metrics apply -- this is a Terraform repo. RE-BLESS after an intentional stack removal or checkov-baseline change: re-measure on a green main with the SAME checkov version the gate installs (3.3.6) -- `checkov -d terraform --compact --quiet --framework terraform` and read 'Passed checks: N' -- then commit the new floor here. Note: web-infra's security.yml checkov gate pins 3.3.0, but the regression comparator installs 3.3.6; both produced an identical passed count on capture (4477 on the prior tree), so the floor is version-stable.",
+  "captured_at": "2026-07-20 (itars/main HEAD 58c8ee2; checkov 3.3.6 `-d terraform --framework terraform`: Passed checks 4505; tf resource blocks 904)",
+  "metrics": {
+    "checkov.passed": 4505,
+    "tf.resource_blocks": 904
+  }
+}

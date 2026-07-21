@@ -1,0 +1,46 @@
+name: regression-gate
+
+# Fail-closed no-regressions guard on the integration -> main promotion path (platform-overhaul #750).
+#
+# terraform-ci + security (checkov, hard-fail on NEW findings vs .checkov.baseline) already gate every
+# PR, but a GREEN run can still hide a regression they don't look for: a stack quietly DROPPED from
+# validation (deleted, skip-listed, or quarantined), or a previously-passing checkov policy check
+# SUPPRESSED with a new `checkov:skip`. Both LOWER the count of passing checkov checks without adding
+# any NEW finding, so nothing else reds the run. This gate re-measures that count and HARD-FAILS if it
+# fell below the committed floor in .regression-baseline.json.
+#
+# It is the infra analogue of seqtoid-web's promotion regression gate: same reusable + same
+# single-source-of-truth comparator (seqtoid-ssot-infra platform-harness bin/regression-compare.sh),
+# just fed the infra metrics (measure_checkov) instead of rspec/jest/coverage.
+#
+# Trigger: every PR whose base is `main`. Per docs/branching.md the ONLY PRs to main are the weekly
+# integration -> main roll-ups opened by promote-integration-to-main.yml, so this runs exactly on
+# promotions. Make it a REQUIRED check on main so the auto-merged roll-up fails closed when a stack or
+# suppression silently regressed.
+#
+# Re-bless after an intentional stack removal or checkov-baseline change: re-measure on a green main
+# with checkov 3.3.6 and commit the new floor in .regression-baseline.json (see its _comment).
+#
+# Pinning: the reusable is not yet on the seqtoid-ci-workflows @v1 moving tag, so this pins @main (the
+# branch that carries it). Repin to @v1 once regression-gate.yml ships in the tagged release, to match
+# security.yml (#750 follow-up). harness_repo/ref default to the public thorvath-slower/seqtoid-ssot-infra
+# @main, the same source seqtoid-web's gate reads -- both dependencies are public, so the reusable's
+# cross-org checkouts need no PAT (same as security.yml's cross-org reusable call from this repo).
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    uses: thorvath-slower/seqtoid-ci-workflows/.github/workflows/regression-gate.yml@main
+    with:
+      measure_checkov: true
+      checkov_dir: terraform
+      baseline_file: .regression-baseline.json
+      harness_repo: thorvath-slower/seqtoid-ssot-infra
+      harness_ref: main
