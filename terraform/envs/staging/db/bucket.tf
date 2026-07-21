@@ -128,6 +128,20 @@ resource "aws_s3_bucket" "samples" {
     }
   }
 
+  lifecycle_rule {
+    id      = "Expire Samples in 3 days"
+    enabled = true
+    prefix  = "samples/"
+
+    tags = {
+      "type" = "sample"
+    }
+
+    expiration {
+      days = 1 # TODO: 3
+    }
+  }
+
   tags = {
     terraform = true
   }
