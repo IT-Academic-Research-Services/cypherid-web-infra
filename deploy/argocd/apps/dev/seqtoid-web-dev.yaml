@@ -29,6 +29,14 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    # Label the dev namespace so the AWS LB Controller injects pod readiness gates
+    # (platform-overhaul 782). A web pod is not Ready until its ALB target is HEALTHY, so
+    # the ping-pong Rollout won't shift weight / scale down the old color until the new
+    # color is actually serving from the ALB -- the mechanism that makes the cutover
+    # zero-downtime. (The preview appset carries the same label for sandboxes, via #64.)
+    managedNamespaceMetadata:
+      labels:
+        elbv2.k8s.aws/pod-readiness-gate-inject: enabled
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
