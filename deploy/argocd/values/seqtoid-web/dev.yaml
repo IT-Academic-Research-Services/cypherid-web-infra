@@ -87,8 +87,18 @@ serviceAccount:
   create: true
   name: seqtoid-web # MUST match the IRSA trust (system:serviceaccount:seqtoid-dev:seqtoid-web)
   roleArn: arn:aws:iam::491013321714:role/seqtoid-web-dev
+# Zero-downtime cutovers on the v2 ALB (platform-overhaul 782). blueGreen flips the
+# activeService selector atomically, dropping traffic for ~30s (503s) each promotion,
+# and pod readiness gates cannot be injected on blueGreen. pingpong uses canary + ALB
+# weighted target groups (static selectors -> gates inject; weight shift, not an atomic
+# flip). A PreSync smoke gate validates the new build at zero user traffic before the
+# cutover, and the PodDisruptionBudget + topology spread keep the two replicas on
+# separate nodes so a node loss can't take dev down. Requires: seqtoid-web chart pingpong
+# support (on main) + --aws-verify-target-group on the rollouts controller + the namespace
+# pod-readiness-gate-inject label (below). Roll back to blueGreen with a one-line flip.
+rolloutStrategy: pingpong
 blueGreen:
-  autoPromotionEnabled: true # dev: promote on the smoke AnalysisTemplate passing
+  autoPromotionEnabled: true # dev: promote on the smoke AnalysisTemplate passing (unused while pingpong)
   scaleDownDelaySeconds: 30
   analysis:
     enabled: true
