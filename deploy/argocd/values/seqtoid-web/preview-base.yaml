@@ -142,7 +142,15 @@ taxonLoad:
 taxonRefresh:
   enabled: false
 
-# Fast promotion -- no manual gate for an ephemeral preview.
+# Zero-downtime ping-pong cutovers (platform-overhaul 782). Validates the same
+# rollout topology dev will use, on throwaway sandboxes first. Sandboxes whose chart
+# predates the pingpong toggle (PR branch without the chart change) simply ignore this
+# and stay blueGreen, so this is safe to set globally. Needs the namespace
+# pod-readiness-gate-inject label (set in the appset's managedNamespaceMetadata) and
+# --aws-verify-target-group on the rollouts controller.
+rolloutStrategy: pingpong
+# Fast promotion -- no manual gate for an ephemeral preview. Retained but unused while
+# rolloutStrategy=pingpong (one-line rollback to blueGreen).
 blueGreen:
   autoPromotionEnabled: true
   analysis:
