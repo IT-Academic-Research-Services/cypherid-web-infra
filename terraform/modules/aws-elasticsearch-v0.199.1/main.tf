@@ -36,6 +36,22 @@ resource "aws_elasticsearch_domain" "es" {
     zone_awareness_config {
       availability_zone_count = var.availability_zone_count
     }
+
+    # CZID-726: optional dedicated master nodes. When enabled, cluster
+    # management (state, shard allocation, node health) runs on dedicated
+    # masters so that a data-node replacement no longer churns the cluster.
+    # Backwards compatible: disabled by default, so existing callers
+    # (prod/staging/sandbox) are unchanged.
+    dedicated_master_enabled = var.dedicated_master_enabled
+    dedicated_master_type    = var.dedicated_master_enabled ? var.dedicated_master_type : null
+    dedicated_master_count   = var.dedicated_master_enabled ? var.dedicated_master_count : null
+  }
+
+  # CZID-726: optional Auto-Tune. Applies AWS-recommended JVM/queue tuning
+  # to relieve heap pressure on small burstable instances. Off by default.
+  auto_tune_options {
+    desired_state       = var.auto_tune_desired_state
+    rollback_on_disable = "NO_ROLLBACK"
   }
 
   ebs_options {

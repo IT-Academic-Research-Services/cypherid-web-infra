@@ -9,6 +9,21 @@
 # environment name.
 environment: dev
 
+# THE ACCOUNT ID IS LOAD-BEARING, not decoration. db:seed builds the Step Functions ARNs it
+# writes into app_configs from ENV["AWS_ACCOUNT_ID"] (lib/seed_resources/app_configs.rb), and the
+# chart only exports that variable when this is set (seqtoid-web commonEnv).
+#
+# Unset, the sandbox's migrate hook (sandbox:seed_once -> db:seed) silently seeds ARNs with an
+# EMPTY account field -- arn:aws:states:us-west-2::stateMachine:idseq-swipe-dev-... -- and every
+# pipeline dispatch dies instantly, client-side, with "Invalid Arn: 'AccountId can not be empty'".
+# The sample uploads fine and then just fails, with NO error recorded in the DB: the only trace is
+# the app log. That is why sandboxes could never run a pipeline (found 2026-07-16 via Loki).
+#
+# dev does not hit this because its app_configs rows were seeded correctly once, long ago. A
+# per-PR sandbox seeds FRESH on every provision, so it fails every time.
+aws:
+  accountId: "491013321714"
+
 # Small footprint -- previews are ephemeral and many may run at once.
 replicaCount: 1
 nodeSelector:
@@ -18,6 +33,32 @@ nodeSelector:
   # reliably, and bounds total preview spend via the pool's limits.
   seqtoid.io/pool: preview
 
+# Web pod. The sandbox previously inherited the chart default (512Mi request / 1Gi LIMIT) and
+# runs at 1023Mi -- one mebibyte under its own hard ceiling (kubectl top, 2026-07-17). It has
+# been living on the edge of an OOMKill, which is the likeliest explanation for sandboxes that
+# answer 503 with pods that look "Running": the container dies, the ALB has no healthy target,
+# and it comes back before anyone reads the pod state. A sandbox web pod is the same Rails app
+# as dev's, so it needs the same memory as dev's -- being ephemeral makes it no smaller.
+resources:
+  requests:
+    cpu: 250m
+    memory: 1280Mi
+  limits:
+    memory: 2Gi
+
+# Memory requests are sized to MEASURED usage, not to what a sandbox "ought" to need. These
+# were 768Mi/384Mi -- picked as a fraction of the chart's 3Gi rather than from observation --
+# and a sandbox's monitors actually run ~1.6Gi (kubectl top, 2026-07-17). Under-requesting by
+# 4x does not make a sandbox cheap; it makes the scheduler pack pods onto a node that then
+# runs out of real memory. The kubelet evicts (Evicted / ContainerStatusUnknown), and the
+# pipeline-monitor is the pod that suffers most -- which is worse than it sounds, because it
+# is what advances a sample's status. A sample can run perfectly and still read "in progress"
+# forever. Sandboxes shared nodes with DEV, so this took dev's web pods down with it (#709).
+#
+# A sandbox is a full app: web + resque + scheduler + both monitors, each a Rails process
+# loading the entire application. That is ~7Gi per sandbox and it does not fit on one
+# c7i-flex.xlarge (~6.5Gi allocatable). Sizing honestly is what lets Karpenter provision for
+# what is actually there instead of discovering it by OOM.
 # POLLING pipeline model: run result-monitor + pipeline-monitor (they poll the sandbox's
 # OWN DB), but NOT shoryuken -- a sandbox shoryuken would be a competing consumer on dev's
 # shared SQS queue. (#618)
@@ -25,13 +66,13 @@ workers:
   shoryuken:
     enabled: false
   resque:
-    resources: { requests: { cpu: 100m, memory: 768Mi } }
+    resources: { requests: { cpu: 100m, memory: 1536Mi } }
   resque-scheduler:
-    resources: { requests: { cpu: 50m, memory: 384Mi } }
+    resources: { requests: { cpu: 50m, memory: 1Gi } }
   resque-pipeline-monitor:
-    resources: { requests: { cpu: 50m, memory: 384Mi } }
+    resources: { requests: { cpu: 50m, memory: 2Gi } }
   resque-result-monitor:
-    resources: { requests: { cpu: 50m, memory: 384Mi } }
+    resources: { requests: { cpu: 50m, memory: 2Gi } }
 
 # App pods run as the tightly-scoped preview IRSA role (fail-closed vs dev). The
 # ApplicationSet does not override serviceAccount.name, so it stays `seqtoid-web` --
@@ -48,20 +89,54 @@ preview:
   provisioner:
     serviceAccountName: seqtoid-web-provisioner
     roleArn: arn:aws:iam::491013321714:role/seqtoid-web-preview-provisioner
+  # S3 bucket a sandbox uploads samples to (becomes the sandbox's SAMPLES_BUCKET_NAME).
+  # From `terraform output preview_samples_bucket` (dev/web) -- a dedicated, terraformed bucket
+  # with a 14-day lifecycle expiry and the CORS the browser upload path needs.
+  #
+  # This is NOT `seqtoid-sandbox`. Despite the name, that bucket is not a throwaway: it holds
+  # ~4.8 TB of the team's research data (validation sets, time trials, taxid indexes), it is
+  # hand-created and un-terraformed, and its backup status is unknown. Sandboxes used to upload
+  # into it, and the preview role used to hold DeleteObject across the whole thing, with prefix
+  # isolation resting only on this value. The role's write/delete on it is now withdrawn
+  # (cypherid-web-infra #25), and sandbox:provision aborts if this is unset or set to
+  # seqtoid-sandbox -- so a wrong value fails loudly instead of polluting research data.
+  samplesBucket: seqtoid-preview-samples-dev-491013321714
+  # Give the sandbox its OWN Redis instead of dev's ElastiCache. Sandboxes copy dev's config, which
+  # put every one of them on DEV's Resque queues -- and the worker's queue list ends in `*`, so it
+  # consumes every queue. That is competing consumers in both directions, silently: dev's workers
+  # ate a sandbox's ResultMonitorLoader jobs (proven -- the sandbox's report could never render,
+  # even though its pipeline reached SUCCEEDED), and a sandbox's workers can eat DEV's scheduled
+  # jobs -- notably HandleSfnNotificationsTimeout, dev's failsafe for missed SFN notifications,
+  # without which a stalled dev pipeline has nothing to rescue it. Same hazard shoryuken is
+  # disabled here for; nobody had applied it to Resque. sandbox:provision now REQUIRES the URL the
+  # chart templates for this and writes it over the inherited value.
+  redis:
+    enabled: true
 
 # Seed app_configs after migrate so the sandbox has the (dev) SFN ARNs to dispatch with.
 # db:seed derives them from ENVIRONMENT (dev) + AWS_ACCOUNT_ID, so they point at the
 # shared dev state machines. Idempotent find_or_create-style seed.
 migrate:
-  command: ["rails", "db:migrate:with_data", "sandbox:seed_once"]
+  # taxon_lineage_slice:load_slice_if_needed is folded into the migrate hook (rather than
+  # left to the separate taxonLoad PreSync Job) on purpose: in a sandbox, TAXON_LINEAGE_REF_SCHEMA
+  # is set (below via chart default idseq_sandbox_ref), so that task takes the platform-overhaul-731
+  # branch -- it attaches taxon_lineages as a VIEW onto the shared full-lineage schema and SKIPS
+  # both the slice import and the ES rebuild. That attach does DDL on idseq_pr_<N> + SELECT on
+  # idseq_sandbox_ref, and MUST run under the provisioner SA (the app SA does not exist yet at
+  # PreSync on a brand-new namespace) -- exactly the context this migrate hook already runs in.
+  # The standalone taxonLoad Job runs as the app SA and would rebuild ES, so it stays OFF here.
+  # Order: migrate -> seed_once -> attach (drop the freshly-migrated empty table, replace with view).
+  command: ["rails", "db:migrate:with_data", "sandbox:seed_once", "taxon_lineage_slice:load_slice_if_needed"]
   # Run the migrate PreSync hook as the provisioner SA. On a brand-new sandbox namespace
   # the app SA (Sync phase) does not exist yet when this PreSync hook runs; the provisioner
   # SA is a PreSync hook that is already present and can read the sandbox SSM path.
   serviceAccountName: seqtoid-web-provisioner
 
-# Skip the multi-GB taxon-lineage import + ES index build -- reference data is shared
-# read-only and per-sandbox OpenSearch is out of scope (heatmap/taxon-search degraded in
-# preview; #619 gate item). taxonLoad/taxonRefresh OFF avoids writing to dev's ES.
+# The standalone taxonLoad/taxonRefresh Jobs stay OFF in preview: they run as the app SA
+# (absent at PreSync) and would import the multi-GB slice + write dev's shared ES index.
+# The sandbox instead gets the FULL lineage via a VIEW attached inside the migrate hook above
+# (platform-overhaul 731), and reads dev's shared taxon_lineages_alias for ES -- so it needs
+# no per-sandbox import or index build. (heatmap/taxon-search still per #619 gate item.)
 taxonLoad:
   enabled: false
 taxonRefresh:

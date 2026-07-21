@@ -9,11 +9,27 @@ spec:
   description: CZ ID stack delivery (blue/green via Argo Rollouts)
   sourceRepos:
     - https://github.com/thorvath-slower/seqtoid-web.git        # app chart
+    - https://github.com/IT-Academic-Research-Services/seqtoid-web.git  # transitional: IT-ARS (cutover #692); keep thorvath for rollback
     - https://github.com/thorvath-slower/cypherid-web-infra.git # env values + apps
+    - https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git  # transitional: IT-ARS (cutover #692); keep thorvath for rollback
     - https://argoproj.github.io/argo-helm                     # argo-rollouts controller chart
     - https://aws.github.io/eks-charts                         # AWS Load Balancer Controller chart (CZID #321)
     - https://sigstore.github.io/helm-charts                   # sigstore policy-controller chart (#77)
   destinations:
+    # The live workload namespaces are seqtoid-* (the czid-* names below predate the czid->seqtoid
+    # rebrand, which is on hold). Added ADDITIVELY -- the old names are kept, not renamed, so nothing
+    # live is disturbed and a rollback needs no project change. Without seqtoid-dev + argocd here, the
+    # czid AppProject cannot host the dev app (deploys to seqtoid-dev) or the app-of-apps root
+    # czid-root-dev (creates Application objects in argocd) -- which is exactly why the eks-v2
+    # bootstrap fell back to project: default. See platform-overhaul #698.
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-dev
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-staging
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-prod
+    - server: https://kubernetes.default.svc
+      namespace: argocd # the app-of-apps root (czid-root-dev) manages child Applications here
     - server: https://kubernetes.default.svc
       namespace: czid-dev
     - server: https://kubernetes.default.svc

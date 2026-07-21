@@ -22,6 +22,20 @@ locals {
   # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
   assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
   assets_url  = "https://${local.assets_fqdn}"
+
+  # Per-PR preview sandboxes serve on pr-<N>.dev.seqtoid.org (the preview ApplicationSet sets
+  # ingress.host = pr-{{.number}}.dev.seqtoid.org, #616/#619). PR numbers are unbounded, so the
+  # callback allowlist cannot enumerate them; Auth0 permits a single `*` in the LEFTMOST subdomain,
+  # which covers every current and future sandbox in one entry.
+  #
+  # DEV ONLY -- DO NOT COPY THIS TO staging/prod.
+  # A wildcard callback means ANY host under dev.seqtoid.org can receive an OAuth authorization
+  # code for this client, so a dangling or attacker-controlled subdomain in this zone becomes a
+  # code-theft path. That is an accepted risk in dev (we control the zone; external-dns only
+  # publishes records for our own ALBs, and the tenant holds no real user data) and an
+  # unacceptable one anywhere real. staging/prod must keep enumerating exact callback URLs.
+  # Approved by Tom 2026-07-16 for the dev tenant only.
+  preview_sandbox_wildcard_url = "https://*.${local.env_seqtoid_org_fqdn}"
 }
 
 resource "auth0_custom_domain" "auth_env_seqtoid_org" {
@@ -116,11 +130,14 @@ resource "auth0_client" "idseq_web" {
     local.env_seqtoid_org_url,
     # local.meta_env_seqtoid_org_url,
     "http://localhost:3000",
+    # Preview sandboxes (dev only) -- see preview_sandbox_wildcard_url in locals.
+    local.preview_sandbox_wildcard_url,
   ]
   allowed_origins = [
     local.env_seqtoid_org_url,
     # local.meta_env_seqtoid_org_url,
     "http://localhost:3000",
+    local.preview_sandbox_wildcard_url,
   ]
   app_type = "regular_web"
   callbacks = [
@@ -129,6 +146,12 @@ resource "auth0_client" "idseq_web" {
     "${local.env_seqtoid_org_url}/auth/auth0/callback",
     "${local.env_seqtoid_org_url}/login",
     # "${local.meta_env_seqtoid_org_url}/auth/auth0/callback",
+    # Preview sandboxes: pr-<N>.dev.seqtoid.org. The app derives redirect_uri from the request
+    # host + OmniAuth's callback_path (/auth/auth0/callback, config/initializers/auth0.rb), and
+    # the sandbox now serves on its own host (SERVER_DOMAIN, app 2e0fb6e2f) -- so login sent
+    # pr-23.dev.seqtoid.org and Auth0 rejected it with "Callback URL mismatch".
+    "${local.preview_sandbox_wildcard_url}/auth/auth0/callback",
+    "${local.preview_sandbox_wildcard_url}/login",
   ]
   initiate_login_uri = "${local.env_seqtoid_org_url}/login"
   logo_uri           = "${local.assets_url}/assets/logo-new.png"

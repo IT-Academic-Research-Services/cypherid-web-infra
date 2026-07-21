@@ -14,14 +14,14 @@ metadata:
 spec:
   project: czid
   sources:
-    - repoURL: https://github.com/thorvath-slower/seqtoid-web.git
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
       # Pin to a release tag/sha in practice; CI advances it on deploy.
       targetRevision: main
       path: deploy/charts/seqtoid-node-backend
       helm:
         valueFiles:
           - $values/deploy/argocd/values/seqtoid-node-backend/dev.yaml
-    - repoURL: https://github.com/thorvath-slower/cypherid-web-infra.git
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
       targetRevision: main
       ref: values
   destination:
