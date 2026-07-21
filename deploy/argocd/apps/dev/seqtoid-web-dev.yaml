@@ -29,6 +29,14 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    # Label the namespace so the AWS LB Controller injects pod readiness gates
+    # (platform-overhaul 782). With the gate, a web pod is not Ready until its ALB
+    # target is HEALTHY -- so the ping-pong Rollout won't shift weight / scale down
+    # the old color until the new color is actually serving from the ALB. This is
+    # what closes the ~30s 503 window blueGreen left on every promotion.
+    managedNamespaceMetadata:
+      labels:
+        elbv2.k8s.aws/pod-readiness-gate-inject: enabled
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true

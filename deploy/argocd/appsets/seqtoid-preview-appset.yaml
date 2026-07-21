@@ -91,6 +91,10 @@ spec:
         managedNamespaceMetadata:
           labels:
             seqtoid.io/preview: "true"
+            # Pod readiness gates for zero-downtime ping-pong cutovers (platform-
+            # overhaul 782). Harmless on single-replica sandboxes; keeps the sandbox
+            # topology consistent with dev so the fix is validated the same way.
+            elbv2.k8s.aws/pod-readiness-gate-inject: enabled
         automated:
           prune: true
           selfHeal: true
