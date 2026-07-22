@@ -62,6 +62,10 @@ metadata:
   name: chaos-monkey
   namespace: chaos-mesh
 spec:
+  # DISARMED DEFAULT: suspended so the randomized monkey never fires on its own. Arming is a
+  # deliberate two-key act -- set suspend:false AND label seqtoid-dev chaos-mesh.org/inject=enabled.
+  # (Even unsuspended it self-checks the namespace label and stands down if unarmed.)
+  suspend: true
   # 05:30 UTC weekdays (01:30 America/New_York) -- inside the overnight window, before the fixed E-series.
   schedule: "30 5 * * 1-5"
   concurrencyPolicy: Forbid

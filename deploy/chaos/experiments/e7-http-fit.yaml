@@ -1,18 +1,20 @@
 # E7 -- HTTPChaos -- request-level dependency fault injection (Netflix "FIT") (platform-overhaul #794).
 # See ../DESIGN.md.
 #
-# Hypothesis: failing a FRACTION of outbound calls to a single dependency (here OpenSearch on 443)
-# does not produce user-facing hard failures past tolerance -- retries / graceful degradation absorb
-# a partial dependency brownout. This is Netflix's Failure Injection Testing (FIT) pattern: not
-# "dependency down" (that is E2/E6) but "dependency flaky for a percentage of requests", which is the
-# far more common real-world mode and the one that exposes missing retry/timeout/circuit-breaker.
+# Hypothesis: impairing outbound calls to a single dependency (here OpenSearch on 443) does not
+# produce user-facing hard failures past tolerance -- retries / graceful degradation absorb a
+# dependency brownout. This is Netflix's Failure Injection Testing (FIT) pattern: not "dependency
+# down" (that is E2/E6) but "dependency impaired", the far more common real-world mode and the one
+# that exposes missing retry/timeout/circuit-breaker.
 #
-# `percent: 30` -> only ~30% of matching calls fault; `abort` -> the call fails fast (vs delay). Scope
-# is one web pod. Duration-bounded + auto-recovered. NOT DEPLOYED; arm the namespace first.
+# `abort` -> matching calls fail fast (vs `delay`, which adds latency). Chaos Mesh HTTPChaos has NO
+# percentage knob -- it faults ALL matching requests, so blast radius is bounded structurally: `mode:
+# one` restricts it to a SINGLE web pod, and `path` restricts WHICH routes fault. Duration-bounded +
+# auto-recovered. NOT DEPLOYED; arm the namespace first.
 #
-# Tuning: raise `percent` toward 100 to approach a full brownout; switch abort->delay (+ `delay`) to
-# test timeout budgets instead of hard failures. Point `port`/`path` at LocationIQ or Auth0 to probe
-# those dependencies instead (author as e7b/e7c rather than editing this one).
+# Tuning: to approximate a "flaky fraction", narrow `path` to a specific route rather than "*";
+# switch abort->delay (+ `delay`) to test timeout budgets instead of hard failures. Point `port`/`path`
+# at LocationIQ or Auth0 to probe those dependencies instead (author as e7b/e7c, don't edit this one).
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -63,7 +65,6 @@ spec:
           method: GET
           path: "*"
           abort: true
-          percent: 30
           duration: 3m
       - name: steady-state-during
         templateType: StatusCheck
