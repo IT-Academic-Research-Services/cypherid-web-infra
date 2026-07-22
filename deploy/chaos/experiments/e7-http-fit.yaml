@@ -1,0 +1,82 @@
+# E7 -- HTTPChaos -- request-level dependency fault injection (Netflix "FIT") (platform-overhaul #794).
+# See ../DESIGN.md.
+#
+# Hypothesis: failing a FRACTION of outbound calls to a single dependency (here OpenSearch on 443)
+# does not produce user-facing hard failures past tolerance -- retries / graceful degradation absorb
+# a partial dependency brownout. This is Netflix's Failure Injection Testing (FIT) pattern: not
+# "dependency down" (that is E2/E6) but "dependency flaky for a percentage of requests", which is the
+# far more common real-world mode and the one that exposes missing retry/timeout/circuit-breaker.
+#
+# `percent: 30` -> only ~30% of matching calls fault; `abort` -> the call fails fast (vs delay). Scope
+# is one web pod. Duration-bounded + auto-recovered. NOT DEPLOYED; arm the namespace first.
+#
+# Tuning: raise `percent` toward 100 to approach a full brownout; switch abort->delay (+ `delay`) to
+# test timeout budgets instead of hard failures. Point `port`/`path` at LocationIQ or Auth0 to probe
+# those dependencies instead (author as e7b/e7c rather than editing this one).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e7-http-fit
+  namespace: chaos-mesh
+spec:
+  schedule: "0 7 * * *" # 07:00 UTC
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e7
+    templates:
+      - name: e7
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - impair-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: impair-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - fault-fraction-of-dependency-calls
+          - steady-state-during
+      - name: fault-fraction-of-dependency-calls
+        templateType: HTTPChaos
+        httpChaos:
+          mode: one
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          target: Request
+          port: 443
+          method: GET
+          path: "*"
+          abort: true
+          percent: 30
+          duration: 3m
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 3m
+          intervalSeconds: 2
+          failureThreshold: 3
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"

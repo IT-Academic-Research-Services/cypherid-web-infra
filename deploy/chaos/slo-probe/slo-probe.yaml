@@ -1,0 +1,149 @@
+# Chaos SLO probe -- the metric-based steady-state gate (platform-overhaul #794/#797, "the ChAP leap").
+#
+# WHY: today every experiment's StatusCheck hits /health_check==200. That only proves "the app
+# answers", not "the app is within SLO". Chaos Mesh StatusCheck speaks HTTP only, so this tiny service
+# translates a set of PromQL steady-state assertions (RED metrics, ALB 5xx, queue depth, job success)
+# against the in-cluster LGTM/Mimir into a single HTTP verdict: GET /steady-state -> 200 iff ALL
+# assertions hold, 500 otherwise. Experiments then use THIS url as their pre-flight + continuous
+# in-flight StatusCheck, giving automatic metric-based pass/fail + inline abort -- no manual
+# morning-after review. This is the difference between "the app 200s" and "the system is healthy".
+#
+# NOT DEPLOYED. Lives in deploy/chaos/slo-probe/, applied on purpose after the LGTM stack + Chaos Mesh
+# are up. Read-only: it only issues PromQL queries; it cannot mutate anything.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-slo-probe
+  namespace: chaos-mesh
+data:
+  # Each assertion: a PromQL query that MUST evaluate to < threshold (or the query returns empty=OK).
+  # Tune thresholds to the dev SLO. `for` semantics are handled by the experiment's failureThreshold.
+  slo.yaml: |
+    prometheus_url: http://mimir-nginx.observability.svc.cluster.local/prometheus
+    assertions:
+      - name: http_5xx_rate
+        # fraction of web requests returning 5xx over the last 1m must stay under 1%
+        query: |
+          sum(rate(http_requests_total{namespace="seqtoid-dev",status=~"5.."}[1m]))
+          / clamp_min(sum(rate(http_requests_total{namespace="seqtoid-dev"}[1m])), 1)
+        max: 0.01
+      - name: alb_target_5xx
+        query: |
+          sum(rate(aws_applicationelb_httpcode_target_5xx_count_sum{namespace="seqtoid-dev"}[1m]))
+        max: 1
+      - name: p99_latency_seconds
+        query: |
+          histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="seqtoid-dev"}[1m])))
+        max: 2.0
+      - name: web_pods_ready
+        # at least 1 web pod must remain Ready (mode:one should never take the last one)
+        query: |
+          1 - min(kube_deployment_status_replicas_available{namespace="seqtoid-dev",deployment=~".*seqtoid-web"})
+        max: 0.5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-slo-probe
+  namespace: chaos-mesh
+  labels: { app: chaos-slo-probe }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: chaos-slo-probe } }
+  template:
+    metadata:
+      labels: { app: chaos-slo-probe }
+    spec:
+      containers:
+        - name: probe
+          image: python:3.12-slim
+          command: ["python", "/app/probe.py"]
+          ports: [{ containerPort: 8080 }]
+          volumeMounts:
+            - { name: cfg, mountPath: /etc/chaos }
+            - { name: code, mountPath: /app }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 64Mi }
+      volumes:
+        - { name: cfg, configMap: { name: chaos-slo-probe } }
+        - { name: code, configMap: { name: chaos-slo-probe-code } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-slo-probe
+  namespace: chaos-mesh
+spec:
+  selector: { app: chaos-slo-probe }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-slo-probe-code
+  namespace: chaos-mesh
+data:
+  probe.py: |
+    # Minimal, dependency-free (urllib only) PromQL steady-state evaluator.
+    # GET /steady-state -> 200 if every assertion's scalar result is <= its max, else 500 (+ which failed).
+    # GET /healthz      -> 200 (readiness). Reads /etc/chaos/slo.yaml.
+    import json, re, urllib.parse, urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    def load_cfg():
+        # tiny hand-parse of the flat slo.yaml (avoids a pyyaml dep in a slim image)
+        url, assertions, cur = None, [], None
+        for raw in open("/etc/chaos/slo.yaml"):
+            line = raw.rstrip("\n")
+            if line.startswith("prometheus_url:"):
+                url = line.split(":", 1)[1].strip()
+            elif re.match(r"\s*-\s*name:", line):
+                cur = {"name": line.split("name:", 1)[1].strip(), "query": "", "max": None}
+                assertions.append(cur)
+            elif re.match(r"\s*max:", line) and cur is not None:
+                cur["max"] = float(line.split("max:", 1)[1].strip())
+            elif re.match(r"\s*query:\s*\|", line):
+                cur["_inq"] = True
+            elif cur is not None and cur.get("_inq") and (line.startswith("          ") or line.strip() == ""):
+                cur["query"] += line.strip() + " "
+            else:
+                if cur is not None:
+                    cur["_inq"] = False
+        return url, assertions
+
+    def scalar(prom_url, q):
+        u = prom_url.rstrip("/") + "/api/v1/query?" + urllib.parse.urlencode({"query": q})
+        with urllib.request.urlopen(u, timeout=5) as r:
+            data = json.load(r)
+        res = data.get("data", {}).get("result", [])
+        if not res:
+            return 0.0  # empty result = nothing firing = OK
+        vals = [float(x["value"][1]) for x in res if "value" in x]
+        return max(vals) if vals else 0.0
+
+    class H(BaseHTTPRequestHandler):
+        def _send(self, code, body):
+            b = json.dumps(body).encode()
+            self.send_response(code); self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        def do_GET(self):
+            if self.path.startswith("/healthz"):
+                return self._send(200, {"ok": True})
+            url, assertions = load_cfg()
+            failed = []
+            for a in assertions:
+                try:
+                    v = scalar(url, a["query"])
+                except Exception as e:
+                    failed.append({"name": a["name"], "error": str(e)}); continue
+                if a["max"] is not None and v > a["max"]:
+                    failed.append({"name": a["name"], "value": v, "max": a["max"]})
+            self._send(200 if not failed else 500, {"steady_state": not failed, "failed": failed})
+        def log_message(self, *a):  # quiet
+            pass
+
+    HTTPServer(("0.0.0.0", 8080), H).serve_forever()

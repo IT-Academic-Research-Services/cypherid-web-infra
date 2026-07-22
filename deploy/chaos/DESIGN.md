@@ -148,3 +148,131 @@ dashboard, ALB 5xx CloudWatch panel), Loki (app logs during the fault), Tempo
 (traces showing where latency/errors propagate). The morning-after review is
 "overlay the experiment window on those dashboards." Alertmanager DELIVERY stays
 off until the SMTP secret exists (#700), so review is pull, not push, for now.
+
+---
+
+# EXPANSION -- toward "Netflix-grade, end-to-end" (platform-overhaul #794 follow-ups)
+
+Everything below is **authored and held** in the same BUILT-NOT-DEPLOYED style: new
+manifests are apply-on-purpose, nothing is armed until the checklist in section 13.
+The four expansion themes are (1) complete the fault catalog, (2) automate the
+hypothesis, (3) go continuous + CI-gated, (4) close the observability loop -- plus the
+single biggest gap: (5) bring the **genomics pipeline** into scope safely.
+
+## 8. Fault-catalog completion (E5-E8) -- AUTHORED
+
+The E1-E4 baseline covered pod/network/stress/node. These four complete the Chaos
+Mesh menu, each a `Schedule -> Workflow` with the same pre/in-flight StatusCheck
+guardrails, staggered across the overnight window, `mode: one`, duration-bounded.
+
+| # | File | Fault | Validates |
+|---|------|-------|-----------|
+| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
+| E6 | `experiments/e6-dns.yaml` | `DNSChaos` resolution failure for `*.es.amazonaws.com` / `*.rds.amazonaws.com` | dependency DNS failure degrades cleanly + recovers, no crashloop (the OpenSearch-timeout / sandbox-NXDOMAIN class) |
+| E7 | `experiments/e7-http-fit.yaml` | `HTTPChaos` abort 30% of outbound 443 calls | Netflix **FIT**: a partial dependency brownout is absorbed by retries/timeouts, not a user-facing storm |
+| E8 | `experiments/e8-time.yaml` | `TimeChaos` -10m clock skew | JWT/TLS/date-versioning tolerate drift or fail cleanly |
+
+Still to author (FIS-side, section 13 tickets): **AZ interruption** (Chaos Gorilla --
+`aws:ec2:stop-instances` scoped to one AZ) and **Aurora RDS failover**
+(`aws:rds:failover-db-cluster`) -- the managed-service faults Chaos Mesh cannot reach.
+
+## 9. Pipeline chaos -- the disposable sandbox (the end-to-end gap)
+
+The E-series targets the **web tier**. The genomics pipeline (S3 -> Step Functions ->
+Batch -> OpenSearch) -- the actual product, and where our real incidents live (NT/NR
+scratch exhaustion #799, spot interruptions) -- is deliberately **out of the web blast
+radius** and needs its own, safe approach. The rule: **never fault the shared dev
+pipeline in place; fault a disposable, isolated copy.**
+
+**Redundancy without HA replicas.** The pipeline is Infrastructure-as-Code (SFN
+definitions, Lambda code, Batch compute-envs/queues/job-defs in `cypherid-workflow-infra`
++ the swipe module). So "redundancy" for Lambda/SFN/Batch means: `terraform apply` an
+independently-named **`-chaos` copy** (own queues, own S3 scratch prefix, own SSM path),
+chaos-test *that*, and `terraform destroy` it. This extends the proven preview-sandbox
+pattern (per-PR isolated web + DB schema + S3 prefix) to the pipeline tier.
+
+**Four safety invariants make an unrecoverable break structurally impossible:**
+
+1. **Isolated target.** Experiments run only against the `-chaos` pipeline copy; the
+   shared dev pipeline is never selected.
+2. **Fault transient runtime state, never durable IaC or data.** Kill an *execution*
+   (a Batch job, a spot instance, an SFN task transition, a Lambda invocation) -- never
+   the SFN definition / Lambda code / Batch env (IaC-recreatable) and never persistent
+   data (S3 reference indexes, the taxon DB -- separately backed up; see the taxon
+   rollback). Transient fault -> re-run; durable infra -> `terraform apply`; data ->
+   backup/snapshot. All three recovery paths exist by construction.
+3. **Synthetic inputs only.** Drive chaos with the benchmark sample runs (#388), never
+   real user data.
+4. **The hypothesis is the AUPR gate.** Success = the pipeline **retries/resumes and
+   still produces AUPR >= 0.98** under fault. That single assertion proves end-to-end
+   pipeline resilience -- and doubles as validation of the "resume from partial failure"
+   behavior (one lane done, another failed) discussed for NT/NR.
+
+**Pipeline experiments (to author under the sandbox -- section 13 tickets):** P1 Batch
+job-kill mid-alignment (assert SFN retry); P2 spot-interrupt during a task (FIS, assert
+tolerance the pipeline must already have); P3 **scratch-volume exhaustion** (reproduce
+#799 on purpose, assert the split-volume fix holds); P4 S3 intermediate delay/`IOChaos`;
+P5 SFN task-transition fault (assert Retry/Catch); P6 ECR pull throttle. Each gated on
+the benchmark AUPR + a `terraform destroy`/re-apply recovery proof before enabling.
+
+## 10. Automate the hypothesis (the ChAP leap) -- probe AUTHORED
+
+Move the steady-state gate from "`/health_check`==200" to **metric-based canary
+analysis**, so runs self-verify and abort inline -- no manual morning review.
+
+- **SLO probe (AUTHORED, `slo-probe/slo-probe.yaml`).** A tiny read-only service that
+  evaluates PromQL steady-state assertions (5xx rate, ALB target 5xx, p99 latency, web
+  pods Ready) against the LGTM/Mimir stack and returns a single HTTP verdict
+  (`/steady-state` -> 200 iff all hold, else 500 + which failed). Experiments point their
+  pre-flight and continuous in-flight `StatusCheck` at this URL instead of
+  `/health_check`. This is the automatic pass/fail + inline abort the program has been
+  missing. (Extend the assertion set per experiment: E6/E7 add search-availability and
+  heatmap-render SLOs; pipeline experiments add job-success-rate + queue-depth.)
+- **Data-integrity assertion (to author).** After a fault clears, a Job runs a
+  content check and fails the experiment on any drift -- reuse the taxon-lineage
+  **CHECKSUM-fingerprint** idea (`taxonomy:fingerprint`) as the template. "No corruption"
+  becomes a machine-checked post-condition, not an assumption.
+- **Auto-ticket (to author).** On a failed hypothesis, a workflow step opens a Forgejo
+  ticket (what fired, which SLO broke, links to the Grafana window) -- closing the #794
+  loop exactly like the Sentry sweep.
+
+## 11. Continuous + randomized + CI-gated (to author)
+
+- **Randomized "chaos monkey."** A `Schedule -> Workflow` (`Task` templateType) that each
+  night draws ONE fault at random from the E1-E8 catalog and applies it, so coverage
+  compounds instead of testing the same four things. Same guardrails; the random pick is
+  logged so a failure is reproducible.
+- **CI-gated chaos (the "rock solid becomes structural" step).** A canonical fast fault
+  set (pod-kill + a dependency brownout) run against a preview/ephemeral env as a
+  **pre-promotion gate** in the deploy pipeline -- every release proves resilience before
+  it ships, not just periodically overnight.
+
+## 12. Close the observability loop (to author)
+
+- **Grafana overlay + run annotations.** A workflow step posts a Grafana annotation
+  (release-marker style) at fault start/stop, and a saved dashboard overlays the chaos
+  window on App RED + ALB 5xx + Loki/Tempo -> one-click morning review (#797).
+- **Templated experiment reports.** Auto-generate a per-run result doc (like the E1
+  pod-kill result) from the Workflow status + the SLO-probe verdicts.
+- **Sentry cross-check.** After a run, diff new Sentry issues in the window -> ties chaos
+  into the triage loop.
+
+## 13. Expanded un-hold / arm checklist
+
+Steps 1-7 (section 5) still gate the web baseline. The expansion adds, each still
+deliberate and reversible:
+
+8.  **Deploy the SLO probe:** `kubectl apply -f deploy/chaos/slo-probe/slo-probe.yaml`
+    (needs the LGTM/Mimir stack up). Verify `GET /steady-state` returns 200 on a healthy
+    system, then repoint experiment `StatusCheck` URLs from `/health_check` to the probe.
+9.  **Apply E5-E8** one at a time, morning-after review, ticket findings (as E1-E3).
+10. **FIS AZ + RDS-failover** templates (`terraform apply` via CI), run attended first.
+11. **Stand up the pipeline `-chaos` sandbox** (its own `terraform` workspace/prefix),
+    prove `destroy`+re-apply recovery, then apply pipeline experiments P1-P6 gated on the
+    benchmark AUPR. **Never** point a pipeline experiment at the shared dev pipeline.
+12. **Randomized monkey + CI-gate + Grafana overlay/auto-ticket** last, once the fixed
+    experiments are trusted.
+13. **Flip the switch:** arming remains the single `chaos-mesh.org/inject=enabled` label
+    (web) + applying the pipeline-sandbox experiments (pipeline). Disarm = remove the
+    label + `terraform destroy` the sandbox. Prod chaos stays OUT of scope until dev proves
+    the whole loop and a separate prod decision is made (canary + business-metric abort).

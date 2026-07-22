@@ -1,0 +1,83 @@
+# E6 -- DNSChaos -- dependency endpoint resolution failure (platform-overhaul #794). See ../DESIGN.md.
+#
+# Hypothesis: a transient DNS resolution failure for a managed dependency (OpenSearch / RDS / S3
+# endpoint) causes a CONTROLLED, self-healing degradation -- the app surfaces a clean error for the
+# affected feature, does NOT crashloop, and fully recovers within seconds of DNS restoring. This
+# targets the exact class we hit by accident: OpenSearch connect-timeouts on node rotation (the
+# taxon-indexing "N/0"), and DNS/NXDOMAIN flakiness in sandboxes. mode:one on a single web pod, so
+# blast radius is one replica while the other keeps serving.
+#
+# SAFETY: Schedule -> Workflow with pre-flight + continuous in-flight StatusCheck abort. Fires only
+# when seqtoid-dev is armed (chaos-mesh.org/inject=enabled). NOT DEPLOYED.
+#
+# NOTE on the steady-state gate: /health_check deliberately does NOT touch OpenSearch, so it can
+# stay 200 while search is impaired -- that is fine for proving "no crashloop / recovers", but the
+# STRONGER assertion ("the heatmap degrades gracefully") needs the metric/authed-page probe in
+# ../slo-probe/ (section 8). Wire that probe in once it is deployed.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e6-dns
+  namespace: chaos-mesh
+spec:
+  schedule: "40 6 * * *" # 06:40 UTC, staggered off E1/E5
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e6
+    templates:
+      - name: e6
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - impair-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: impair-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - dns-fail-dependency
+          - steady-state-during
+      # Resolution failures ONLY for the dependency domains, not everything. `error` -> the
+      # resolver returns failure; the app must handle it, not hang forever. Duration-bounded.
+      - name: dns-fail-dependency
+        templateType: DNSChaos
+        dnsChaos:
+          action: error
+          mode: one
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          patterns:
+            - "*.es.amazonaws.com"       # OpenSearch
+            - "*.rds.amazonaws.com"      # Aurora
+          duration: 2m
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 3m
+          intervalSeconds: 2
+          failureThreshold: 5   # more tolerant: a dependency-DNS blip may briefly wobble health
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
