@@ -22,7 +22,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Workflow
 metadata:
-  name: dual-gate-EXAMPLE   # <- rename per experiment, e.g. dual-gate-p3-scratch-exhaustion
+  name: dual-gate-example   # <- rename per experiment, e.g. dual-gate-p3-scratch-exhaustion
   namespace: chaos-mesh
 spec:
   entry: dual-gate
@@ -109,7 +109,7 @@ spec:
         container:
           name: verdict
           image: chaos-report:latest   # small image: posts Grafana annotation + opens a Forgejo ticket on fail
-          command: ["/report", "--experiment", "dual-gate-EXAMPLE"]
+          command: ["/report", "--experiment", "dual-gate-example"]
 ---
 # The ACCURACY probe -- the correctness half of the dual gate. GET /run-under-fault ->
 #   1. kicks a benchmark sample run through the pipeline (the disposable -chaos copy for pipeline
