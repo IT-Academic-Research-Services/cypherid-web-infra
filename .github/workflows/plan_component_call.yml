@@ -5,9 +5,19 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: Both Github Environment and AWS Environment
+        description: AWS Environment (dev/staging/prod) -- selects the role ARN, profile and terraform/envs/<env> path.
         type: string
         required: true
+      github_environment:
+        # Decoupled from the AWS env so PLAN can run on feature branches through a
+        # looser `dev-plan` deploy-branch policy, while APPLY stays gated to `main`
+        # via the `dev` environment. The AWS env (role/path/profile) is unchanged --
+        # this only picks which GitHub Environment's branch policy gates the job.
+        # Empty -> falls back to `environment` (staging/prod keep their main-only gate).
+        description: GitHub Environment used only for the deploy-branch gate. Defaults to the AWS environment.
+        type: string
+        required: false
+        default: ''
       component:
         description: 'Stack directory under terraform/envs/<environment>/<component>'
         type: string
@@ -46,7 +56,7 @@ env:
 jobs:
   plan-component:
     name: Terraform Plan Component - ${{ inputs.component }}
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.github_environment || inputs.environment }}
     runs-on: ubuntu-latest
     outputs:
       plan-artifact-id: ${{ steps.upload-plan.outputs.artifact-id }}

@@ -113,6 +113,10 @@ jobs:
     uses: ./.github/workflows/plan_component_call.yml
     with:
       environment: ${{ needs.should-plan.outputs.environment }}
+      # Plan is read-only, so it can safely run on any branch for PR review. dev
+      # routes through the `dev-plan` environment (all-branches policy); staging/prod
+      # keep their env's main-only gate. Apply is unaffected -- it still uses `dev`.
+      github_environment: ${{ needs.should-plan.outputs.environment == 'dev' && 'dev-plan' || needs.should-plan.outputs.environment }}
       component: ${{ matrix.component }}
     secrets: inherit
 
