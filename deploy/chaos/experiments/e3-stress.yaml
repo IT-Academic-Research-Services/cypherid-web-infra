@@ -1,0 +1,82 @@
+# E3 -- resource stress (platform-overhaul #794/#796). See ../DESIGN.md.
+#
+# Hypothesis: CPU + memory pressure on ONE web pod stays contained -- the pod's limits
+# hold, it is not OOMKilled into a crashloop, and pressure does NOT cascade into a kubelet
+# eviction storm that takes neighbors down. This probes the #709 memory-pressure history
+# (workers under-requested -> kubelet evicting -> web pods evicted with them -> brief 503s)
+# on demand, and checks the web pod's own 2Gi limit + 1280Mi request are right.
+#
+# SAFETY: Schedule -> Workflow, pre/in-flight StatusCheck, mode: one, 120s, armed-ns-only.
+# NOT DEPLOYED.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e3-stress
+  namespace: chaos-mesh
+spec:
+  schedule: "0 8 * * *" # 08:00 UTC = 04:00 America/New_York; staggered after E2
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e3
+    templates:
+      - name: e3
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - stress-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: stress-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - stress-one-web-pod
+          - steady-state-during
+      # 2 CPU workers + ~400MB of memory pressure on one web pod for 120s. Memory stays
+      # under the 2Gi limit on purpose: we are testing "does the limit contain it", not
+      # "can we force an OOMKill". Raise `size` toward the limit deliberately to test the
+      # OOMKill path once the containment path is proven.
+      - name: stress-one-web-pod
+        templateType: StressChaos
+        stressChaos:
+          mode: one
+          duration: 120s
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          stressors:
+            cpu:
+              workers: 2
+              load: 80
+            memory:
+              workers: 2
+              size: "400MB"
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 2m
+          intervalSeconds: 2
+          failureThreshold: 5
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"

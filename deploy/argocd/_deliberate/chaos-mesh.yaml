@@ -1,0 +1,59 @@
+# Chaos Mesh -- the chaos-engineering operator for dev resilience testing
+# (platform-overhaul #794/#795). See ../../chaos/DESIGN.md.
+#
+# BUILT, NOT DEPLOYED. This is deliberate (see ./README.md): applying it installs a
+# cluster-wide operator with a privileged DaemonSet (chaos-daemon mounts the container
+# runtime socket to inject faults), so it is applied and observed by hand, never by a
+# root app. It does NOTHING on its own -- no experiment runs until (a) an experiment
+# manifest is applied AND (b) the target namespace carries chaos-mesh.org/inject=enabled.
+#
+# BLAST-RADIUS GUARDRAIL (the important line): controllerManager.enableFilterNamespace=true.
+# With it on, chaos can be injected ONLY into namespaces labeled
+# `chaos-mesh.org/inject=enabled`. We label ONLY seqtoid-dev, only during an authorized
+# window. argocd / monitoring / kube-system / the LB controller / other tenants are
+# physically un-targetable. Removing the label is the global disarm switch.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chaos-mesh
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.chaos-mesh.org
+    chart: chaos-mesh
+    targetRevision: 2.7.2 # app: Chaos Mesh 2.7.2. Pinned; bump deliberately.
+    helm:
+      values: |
+        # EKS runs containerd. chaos-daemon must point at the containerd socket to
+        # inject pod/network/stress faults; the docker default would silently no-op.
+        chaosDaemon:
+          runtime: containerd
+          socketPath: /run/containerd/containerd.sock
+        controllerManager:
+          # THE guardrail: no namespace can be targeted unless it is labeled
+          # chaos-mesh.org/inject=enabled. Default off in the chart; we force it on.
+          enableFilterNamespace: true
+          replicaCount: 1 # dev: single controller is fine (the operator, not the app)
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+        # Dashboard for authoring/observing experiments. Not exposed publicly here:
+        # reach it via `kubectl port-forward`, or front it with the same ingress-auth
+        # pattern as Grafana when we want a URL. securityMode on = it enforces RBAC
+        # tokens rather than trusting the network.
+        dashboard:
+          create: true
+          securityMode: true
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chaos-mesh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

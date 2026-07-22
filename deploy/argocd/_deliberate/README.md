@@ -13,6 +13,7 @@ path**. Each has a rollout that must be driven deliberately, so auto-sync is wro
 | `tempo.yaml` | Observability Phase 2a: Grafana Tempo (traces backend), single-binary + local gp2 storage, OTLP receiver. The OTel collector (Phase 3) exports spans here. |
 | `loki.yaml` | Observability Phase 2b: Grafana Loki (logs backend), SingleBinary + filesystem gp2 storage. The OTel collector exports app logs here; pod-log shipping is Phase 5. |
 | `grafana-lgtm-datasources.yaml` | Observability Phase 2: sidecar-loaded ConfigMap adding the Tempo + Loki Grafana datasources. A raw resource (not an Application) so provisioning stays decoupled from the kps chart sync. |
+| `chaos-mesh.yaml` | Chaos engineering operator for dev resilience testing (#794/#795, see `../../chaos/DESIGN.md`). Installs a cluster-wide operator + a privileged chaos-daemon DaemonSet, so it is applied deliberately. Comes up with `enableFilterNamespace=true`: chaos can only touch namespaces labeled `chaos-mesh.org/inject=enabled`, and does NOTHING until an experiment manifest (`../../chaos/experiments/`) is applied AND `seqtoid-dev` is armed with that label. Dev-only. |
 
 ## To apply one (deliberately)
 
