@@ -1,0 +1,147 @@
+name: Terraform Targeted Apply
+run-name: "Targeted apply: ${{ inputs.environment }}/${{ inputs.component }} targets=[${{ inputs.targets }}] by ${{ github.actor }}"
+
+# Scoped `terraform apply -target=...` of a SUBSET of a component's resources, from ANY
+# branch, gated by a human approval instead of the branch policy.
+#
+# WHY: the normal apply path (apply_all -> apply_component_call) applies a WHOLE component
+# and is pinned to `main` (the `dev` GitHub Environment permits only main). That is correct
+# for routine rollouts, but it cannot apply just one new resource without also sweeping in
+# any unrelated in-place drift the component has accumulated (e.g. eks-v2 carries ~9 add-on
+# IAM drift updates alongside a new FIS template). This workflow lets you apply exactly the
+# addresses you name -- nothing else -- after a required reviewer approves the run.
+#
+# SAFETY MODEL (three gates):
+#   1. `targets` is REQUIRED and validated non-empty. An empty -target set would be a full
+#      apply; this workflow refuses that (use apply_all for a full apply).
+#   2. GitHub Environment `<env>-targeted-apply` carries a REQUIRED REVIEWER, so a human must
+#      approve each run in the GitHub UI before AWS creds are ever issued. This replaces the
+#      branch-policy guardrail with human approval, which is why any-branch is safe here.
+#   3. The run prints the scoped plan and BLOCKS on approval between plan and apply is not
+#      automatic -- the reviewer sees the run and its plan output before approving.
+#
+# ONE-TIME SETUP (per env): create the reviewer-gated environment, e.g. for dev:
+#   gh api --method PUT repos/<owner>/<repo>/environments/dev-targeted-apply \
+#     -f 'reviewers[][type]=User' -F "reviewers[][id]=$(gh api users/<reviewer> --jq .id)"
+# All-branches (no deployment_branch_policy) + required reviewer = any-branch, human-gated.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: AWS environment (selects the apply role, profile and terraform/envs/<env> path)
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+        required: true
+      component:
+        description: Stack directory under terraform/envs/<environment>/<component>
+        type: string
+        required: true
+      targets:
+        description: Space-separated terraform resource addresses to -target (REQUIRED; scoped apply only)
+        type: string
+        required: true
+      reason:
+        description: Why this scoped apply is being run (recorded in the run summary for audit)
+        type: string
+        required: true
+
+env:
+  AWS_REGION: us-west-2
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  # Never let two targeted applies of the same component/env race on the state lock.
+  group: targeted-apply-${{ inputs.environment }}-${{ inputs.component }}
+  cancel-in-progress: false
+
+jobs:
+  targeted-apply:
+    name: Targeted apply ${{ inputs.component }}
+    # Reviewer-gated environment (see ONE-TIME SETUP above). AWS env (role/path/profile)
+    # comes from inputs.environment; this only picks the human-approval gate.
+    environment: ${{ inputs.environment }}-targeted-apply
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate targets (refuse an unscoped apply)
+        run: |
+          targets="${{ inputs.targets }}"
+          if [[ -z "${targets// /}" ]]; then
+            echo "::error::targets is empty. This workflow only does SCOPED applies; use apply_all for a full apply."
+            exit 1
+          fi
+          echo "## Targeted apply" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **env:** ${{ inputs.environment }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **component:** ${{ inputs.component }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **reason:** ${{ inputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **actor:** ${{ github.actor }} on ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **targets:**" >> "$GITHUB_STEP_SUMMARY"
+          for t in $targets; do echo "  - \`$t\`" >> "$GITHUB_STEP_SUMMARY"; done
+      - name: Git clone the repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Reconfigure Git to use HTTP authentication
+        run: |
+          git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+      - name: Install AWS CLI
+        uses: unfor19/install-aws-cli-action@f5b46b7f32cf5e7ebd652656c5036bf83dd1e60c # v1
+        with:
+          version: 2
+          verbose: false
+          arch: amd64
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/czid-${{ inputs.environment }}-gh-actions-apply
+          output-env-credentials: true
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ env.AWS_REGION }}
+          aws-profile: idseq-${{ inputs.environment }}
+      - name: Read Terraform version (SSOT = .terraform-version)
+        id: tfver
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
+      - name: Verify AWS auth + terraform
+        run: |
+          aws sts get-caller-identity --profile "idseq-${{ inputs.environment }}" --no-cli-pager --no-cli-auto-prompt
+          terraform version
+      - name: Build -target args
+        id: targetargs
+        run: |
+          args=""
+          for t in ${{ inputs.targets }}; do
+            args="$args -target=$t"
+          done
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "Scoped to:$args"
+      - name: Terraform Init
+        working-directory: "./terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/"
+        run: terraform init -input=false
+      - name: Terraform Plan (scoped)
+        working-directory: "./terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/"
+        env:
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+        run: |
+          terraform plan -input=false ${{ steps.targetargs.outputs.args }} -out=tf.plan
+          echo '### Scoped plan' >> "$GITHUB_STEP_SUMMARY"
+          terraform show -no-color tf.plan | tail -c 60000 >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Terraform Apply (scoped plan)
+        working-directory: "./terraform/envs/${{ inputs.environment }}/${{ inputs.component }}/"
+        env:
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+        run: |
+          # Apply exactly the saved scoped plan (which already encodes the -targets).
+          terraform apply -input=false -auto-approve tf.plan
