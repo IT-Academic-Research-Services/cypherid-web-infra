@@ -1,5 +1,12 @@
 # Pipeline-chaos sandbox -- the disposable IaC copy (platform-overhaul #794/#808)
 
+> **NOT APPLIED -- awaiting Tom sign-off.** Every artifact here (the `dev-chaos` environment in
+> `cypherid-workflow-infra`, the P1-P6 experiments, the FIS templates, the target guard) is
+> **authored and wired to run behind a single flip, but nothing is deployed**: no `terraform apply`,
+> no `kubectl apply`, no FIS start, no benchmark run. Arming is deliberate and staged (see
+> "Stand-up / Run / Tear-down" and `../DESIGN.md` section 13). Disarm is always `terraform destroy`
+> the sandbox + remove the experiment manifests.
+
 The end-to-end half of the Chaos Engine: how we chaos-test the genomics pipeline
 (S3 -> Step Functions -> Batch -> results) **without ever risking the one shared dev
 pipeline.** This is the concrete answer to "test the prod pipeline, but don't break the
@@ -57,28 +64,101 @@ an experiment. Destroy the sandbox between campaigns.
 - **Global-unique names**: buckets/ECR are env-scoped (`-dev-chaos` is unique); confirm no
   resource uses a hardcoded (non-env) global name.
 
-## The P-series experiments (instantiate templates/dual-gate.yaml)
+## The P-series experiments (authored -- `experiments/`)
 
-Each is a `dual-gate` Workflow (availability SLO + accuracy AUPR/integrity), targeting the
-sandbox only:
+Each is a full `dual-gate` Workflow (availability SLO + accuracy AUPR/integrity), targeting the
+sandbox only, with the fail-closed target guard (`experiments/_sandbox-guard.yaml`) as the first
+step of its inject node. Faults are AWS-native (the pipeline is SFN + Batch, not in-cluster): P1/P3
+are guarded Batch-side scripts, P2/P4/P5/P6 start tag-scoped AWS FIS templates
+(`fis/fis-experiment-templates.tf`).
 
-| P | Fault | Asserts |
-|---|-------|---------|
-| P1 | kill a Batch job mid-alignment | SFN Retry re-runs it; AUPR holds |
-| P2 | FIS spot-interrupt during a task | pipeline tolerates interruption it must already survive |
-| P3 | **scratch-volume exhaustion** (reproduce #799 on the sandbox) | the per-DB split-volume fix holds; run completes |
-| P4 | S3 intermediate delay / IOChaos | timeouts/retries absorb it; no wrong output |
-| P5 | SFN task-transition fault | Retry/Catch config is actually correct |
-| P6 | ECR pull throttle | run slows, does not fail (cached layers) |
+| P | File | Fault | Asserts |
+|---|------|-------|---------|
+| P1 | `experiments/p1-batch-job-kill.yaml`     | terminate a Batch job mid-alignment       | SFN Retry re-runs it; AUPR holds |
+| P2 | `experiments/p2-spot-interrupt.yaml`     | FIS spot-interrupt during a task          | pipeline tolerates interruption it must already survive |
+| P3 | `experiments/p3-scratch-exhaustion.yaml` | **scratch-volume exhaustion** (repro #799) | the per-DB split-volume fix holds; run completes; AUPR holds |
+| P4 | `experiments/p4-s3-fault.yaml`           | FIS S3 API errors on the sandbox job role | retries absorb it; no wrong output |
+| P5 | `experiments/p5-sfn-task-fault.yaml`     | FIS Batch-API throttle -> SFN task fault  | Retry/Catch config is actually correct |
+| P6 | `experiments/p6-ecr-throttle.yaml`       | FIS ECR API throttle on the instance role | run slows, does not fail (cached layers) |
 
 P3 is the flagship: it turns the NT/NR disk incident (#799) from "found in production" into
 "proven fixed, on a schedule, on a disposable copy."
 
-## Build order (#808)
+## Stand-up / Run / Tear-down (the one-flip procedure)
 
-1. Add a `dev-chaos` env to workflow-infra (tfvars + state key); tag all its resources
-   `seqtoid.io/chaos-sandbox=true`.
-2. Prove `destroy`/`apply`/benchmark recovery.
-3. Author P1-P6 as `dual-gate` instances with the sandbox-tag target guard.
-4. Wire the accuracy probe (templates/dual-gate.yaml) at the sandbox SFN.
-5. Only then arm, one experiment at a time, per DESIGN.md section 13.
+All commands run in `cypherid-workflow-infra` (the pipeline IaC) except the `kubectl apply` of the
+experiments, which run in this repo. **Nothing below has been run.**
+
+### (a) Stand up the sandbox
+
+```
+# in cypherid-workflow-infra (branch: chaos-engineering-dev)
+source environment.dev-chaos          # DEPLOYMENT_ENVIRONMENT=dev-chaos, same dev account, own state key
+make deploy                            # package-lambdas + templates + init-tf (own backend) + terraform apply
+```
+
+`make deploy` stands up a parallel `idseq-dev-chaos-*` pipeline (own SFN, Batch queues/compute-envs,
+Lambdas, VPC, buckets) under terraform state key `idseqdev-chaos` in the dev-account `-test` tfstate
+bucket. The shared `idseq-dev-*` pipeline is **never in the target set**.
+
+### (b) Prove recovery BEFORE arming any fault (safety invariant 4)
+
+```
+terraform destroy                      # tear the sandbox down
+make deploy                            # stand it back up from code
+# then run ONE clean benchmark on the sandbox SFN and confirm AUPR >= 0.98 (no fault)
+```
+
+This proves the whole pipeline is reconstructable from code. Only after a clean AUPR pass do you arm.
+
+### (c) Apply the FIS templates (needed by P2/P4/P5/P6 only)
+
+```
+# in cypherid-web-infra/deploy/chaos/pipeline-sandbox/fis (apply via CI into the dev account)
+terraform apply -var enable_chaos_fis=true -var deployment_environment=dev-chaos \
+  -var 'sandbox_batch_job_role_arn=<from sandbox outputs>' \
+  -var 'sandbox_sfn_execution_role_arn=<from sandbox outputs>' \
+  -var 'sandbox_batch_instance_role_arn=<from sandbox outputs>'
+```
+
+### (d) Run one experiment (arm, one at a time)
+
+```
+# in cypherid-web-infra (Chaos Mesh + SLO probe + accuracy probe must already be up)
+kubectl apply -f deploy/chaos/pipeline-sandbox/experiments/_sandbox-guard.yaml
+kubectl apply -f deploy/chaos/pipeline-sandbox/experiments/p3-scratch-exhaustion.yaml   # e.g. the flagship
+# watch: kubectl -n chaos-mesh get workflow dual-gate-p3-scratch-exhaustion -w
+```
+
+Each experiment self-verifies (dual gate) and the verdict node annotates Grafana + opens a Forgejo
+ticket on failure. Repeat per P-file. Swap `p3-...` for any of P1-P6.
+
+### (e) Tear down (disarm + stop the meter)
+
+```
+# remove the experiments (in cypherid-web-infra)
+kubectl delete -f deploy/chaos/pipeline-sandbox/experiments/    # all P* + the guard
+# destroy the FIS templates (in .../fis)
+terraform destroy -var enable_chaos_fis=true -var deployment_environment=dev-chaos
+# destroy the sandbox itself (in cypherid-workflow-infra, with environment.dev-chaos sourced)
+terraform destroy
+```
+
+Idle cost is near-zero (Batch compute-envs sit at `minvCpus=0`; SFN/Lambda/bucket definitions are
+free at rest), so leaving the sandbox up between runs is cheap -- but `terraform destroy` between
+campaigns removes even that. The sandbox buckets are `force_destroy` (dev-chaos is in the
+`data_force_destroy` list) so `destroy` leaves no orphaned billed buckets.
+
+## Build order (#808) -- status
+
+1. **DONE (authored).** `dev-chaos` env in workflow-infra (`environment.dev-chaos` + state-key
+   routing in `environment`); all its resources tagged `seqtoid.io/chaos-sandbox=true` via the
+   conditional `default_tags` local in `main.tf`; buckets made `force_destroy`.
+2. **TODO (run).** Prove `destroy`/`apply`/benchmark recovery -- requires an apply, held for sign-off.
+3. **DONE (authored).** P1-P6 as `dual-gate` instances with the sandbox-tag target guard
+   (`experiments/`) + the FIS templates (`fis/`).
+4. **DONE (authored) / TODO (wire).** The accuracy probe contract points `BENCHMARK_TRIGGER_URL` at
+   the sandbox SFN (`../templates/dual-gate.yaml` ConfigMap). Fill the SFN ARN once the sandbox exists.
+5. **TODO (arm).** Only then arm, one experiment at a time, per DESIGN.md section 13.
+
+See `RUNBOOK.md` for the on-call one-pager.
