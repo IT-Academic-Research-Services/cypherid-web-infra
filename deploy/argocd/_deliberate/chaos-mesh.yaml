@@ -57,3 +57,10 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # ServerSideApply is REQUIRED for this chart: the schedules/workflows/workflownodes
+      # CRDs exceed the 262144-byte client-side apply limit (the last-applied-configuration
+      # annotation overflows), so a normal apply fails with "metadata.annotations: Too long"
+      # and those 3 CRDs never install -- which silently disables the Workflow/Schedule
+      # features the whole Chaos Engine (E1-E8 Schedules, dual-gate Workflow) depends on.
+      # Server-side apply doesn't write that annotation, so it installs them cleanly.
+      - ServerSideApply=true
