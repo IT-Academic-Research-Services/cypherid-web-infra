@@ -19,27 +19,22 @@ data:
   # Each assertion: a PromQL query that MUST evaluate to < threshold (or the query returns empty=OK).
   # Tune thresholds to the dev SLO. `for` semantics are handled by the experiment's failureThreshold.
   slo.yaml: |
-    prometheus_url: http://mimir-nginx.observability.svc.cluster.local/prometheus
+    # v1: gates on INFRA SLOs that actually exist in the dev kube-prometheus-stack (kube-state-metrics).
+    # NOTE (honest scope): the Rails app does NOT export HTTP metrics (5xx rate / latency) to Prometheus
+    # -- those live in OTel/Tempo/Loki. So app-5xx/latency SLOs are a follow-up (needs a Rails Prometheus
+    # exporter or a CloudWatch->Prom exporter for the ALB). Experiments keep /health_check for app-liveness;
+    # this probe adds the infra layer (crashloops, failed/not-ready pods) that /health_check cannot see.
+    prometheus_url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
     assertions:
-      - name: http_5xx_rate
-        # fraction of web requests returning 5xx over the last 1m must stay under 1%
-        query: |
-          sum(rate(http_requests_total{namespace="seqtoid-dev",status=~"5.."}[1m]))
-          / clamp_min(sum(rate(http_requests_total{namespace="seqtoid-dev"}[1m])), 1)
-        max: 0.01
-      - name: alb_target_5xx
-        query: |
-          sum(rate(aws_applicationelb_httpcode_target_5xx_count_sum{namespace="seqtoid-dev"}[1m]))
-        max: 1
-      - name: p99_latency_seconds
-        query: |
-          histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="seqtoid-dev"}[1m])))
-        max: 2.0
-      - name: web_pods_ready
-        # at least 1 web pod must remain Ready (mode:one should never take the last one)
-        query: |
-          1 - min(kube_deployment_status_replicas_available{namespace="seqtoid-dev",deployment=~".*seqtoid-web"})
-        max: 0.5
+      - name: pod_restarts_5m
+        query: 'sum(increase(kube_pod_container_status_restarts_total{namespace="seqtoid-dev"}[5m]))'
+        max: 3
+      - name: pods_failed
+        query: 'count(kube_pod_status_phase{namespace="seqtoid-dev",phase=~"Failed|Unknown"} == 1) or vector(0)'
+        max: 0
+      - name: pods_not_ready
+        query: 'count(kube_pod_status_ready{namespace="seqtoid-dev",condition="false"} == 1) or vector(0)'
+        max: 2
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -106,13 +101,9 @@ data:
                 assertions.append(cur)
             elif re.match(r"\s*max:", line) and cur is not None:
                 cur["max"] = float(line.split("max:", 1)[1].strip())
-            elif re.match(r"\s*query:\s*\|", line):
-                cur["_inq"] = True
-            elif cur is not None and cur.get("_inq") and (line.startswith("          ") or line.strip() == ""):
-                cur["query"] += line.strip() + " "
-            else:
-                if cur is not None:
-                    cur["_inq"] = False
+            elif re.match(r"\s*query:", line) and cur is not None:
+                # single-line query value (quoted); strip the wrapping quotes
+                cur["query"] = line.split("query:", 1)[1].strip().strip("'\"")
         return url, assertions
 
     def scalar(prom_url, q):
