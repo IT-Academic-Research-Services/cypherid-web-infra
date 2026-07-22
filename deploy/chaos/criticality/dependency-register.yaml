@@ -58,7 +58,7 @@ dependencies:
     retry: "sdk-default (adaptive)"
     fallback: none
     safe_to_fail: false
-    chaos: "pipeline-sandbox: S3 intermediate delay/IOChaos (P4); API throttle (FIS)"
+    chaos: "pipeline-sandbox/experiments/p4-s3-fault.yaml (FIS S3 errors on the dev-chaos Batch job role)"
     notes: "Reference-data reads are read-only; the write path (uploads) is the risk. Idempotent retries assumed -- verify."
 
   - name: step-functions
@@ -69,7 +69,7 @@ dependencies:
     retry: "Retry/Catch per state"
     fallback: "SFN retry + resume"
     safe_to_fail: true             # SFN Retry/Catch is the designed fallback
-    chaos: "pipeline-sandbox P5: task-transition fault -> assert Retry/Catch"
+    chaos: "pipeline-sandbox/experiments/p5-sfn-task-fault.yaml (FIS Batch-API throttle on the dev-chaos SFN role)"
     notes: "This SHOULD hold -- the experiment proves the Retry/Catch config is actually correct."
 
   - name: aws-batch
@@ -80,7 +80,7 @@ dependencies:
     retry: "attempts>1 + spot-interruption handling"
     fallback: "on-demand fallback (some queues)"
     safe_to_fail: true             # spot interruption is a fault the pipeline must already tolerate
-    chaos: "pipeline-sandbox P1 job-kill, P2 spot-interrupt, P3 scratch-exhaustion (repro #799)"
+    chaos: "pipeline-sandbox/experiments: p1-batch-job-kill, p2-spot-interrupt, p3-scratch-exhaustion (repro #799) -- all on dev-chaos"
     notes: "P3 is the highest-value: reproduce the NT/NR scratch-disk exhaustion on purpose + assert the split-volume fix holds."
 
   - name: auth0
@@ -102,7 +102,7 @@ dependencies:
     retry: "kubelet/Batch pull backoff"
     fallback: "image cache on node"
     safe_to_fail: true
-    chaos: "pipeline-sandbox P6: ECR pull throttle"
+    chaos: "pipeline-sandbox/experiments/p6-ecr-throttle.yaml (FIS ECR throttle on the dev-chaos instance role)"
     notes: "A throttle should slow, not break, a run (cached layers). Assert no run failure, only latency."
 
   - name: locationiq
