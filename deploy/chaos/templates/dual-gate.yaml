@@ -1,0 +1,136 @@
+# Chaos Engine -- the DUAL-GATE experiment template (platform-overhaul #794/#815).
+#
+# THE spine of "better than Netflix." Netflix's ChAP gates on availability alone ("streams still
+# start"). A Chaos Engine experiment passes ONLY if the system stayed UP *and* RIGHT under the fault:
+#
+#   preflight (both gates healthy)
+#        |
+#   INJECT fault  ---- in parallel ----+---- AVAILABILITY gate: SLO probe (PromQL vs LGTM), continuous,
+#        |                             |         aborts the workflow the instant an SLO breaks
+#        |                             +---- ACCURACY gate: run a benchmark under the fault, assert
+#        |                                     AUPR >= 0.98 (#388) AND a checksum-fingerprint shows zero
+#        |                                     data corruption -- aborts if either fails
+#   pass ONLY if BOTH gates held; auto-ticket + Grafana-annotate the verdict either way.
+#
+# This file is a TEMPLATE. Instantiate it per fault: copy it, set `metadata.name`, and replace the
+# `inject-fault` node's body with the real fault (PodChaos / NetworkChaos / IOChaos / a pipeline P-series
+# Batch-kill, etc.). The two gate nodes stay identical -- that uniformity is the point.
+#
+# NOT DEPLOYED. Requires: Chaos Mesh installed, the SLO probe deployed (slo-probe/), the accuracy probe
+# deployed (see the ConfigMap below), and -- for the ACCURACY gate -- the benchmark harness reachable
+# (#388) and, for pipeline experiments, the disposable pipeline-chaos sandbox (#808). Arm per DESIGN.md.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: dual-gate-EXAMPLE   # <- rename per experiment, e.g. dual-gate-p3-scratch-exhaustion
+  namespace: chaos-mesh
+spec:
+  entry: dual-gate
+  templates:
+    - name: dual-gate
+      templateType: Serial
+      deadline: 40m   # accuracy gate = a benchmark run; give it room
+      children:
+        - preflight-both-gates
+        - inject-and-assert
+        - verdict
+
+    # 1) Do not inject unless BOTH gates are green to start: availability (SLO probe) AND accuracy
+    #    (a fresh benchmark baseline is within spec). If either is already broken, abort before any fault.
+    - name: preflight-both-gates
+      templateType: StatusCheck
+      deadline: 3m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        http:
+          url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    # 2) Inject the fault while BOTH gates watch in parallel. Any child failing aborts the parallel
+    #    node (Chaos Mesh removes the fault early) -> the experiment fails closed.
+    - name: inject-and-assert
+      templateType: Parallel
+      deadline: 35m
+      children:
+        - inject-fault
+        - availability-gate
+        - accuracy-gate
+
+    # ---- REPLACE THIS NODE with the real fault when instantiating. Example: kill one web pod. ----
+    - name: inject-fault
+      templateType: PodChaos
+      podChaos:
+        action: pod-kill
+        mode: one
+        selector:
+          namespaces: [seqtoid-dev]
+          labelSelectors:
+            app.kubernetes.io/component: web
+
+    # ---- AVAILABILITY gate (unchanged across experiments): metric SLOs via the SLO probe ----
+    - name: availability-gate
+      templateType: StatusCheck
+      deadline: 32m
+      statusCheck:
+        mode: Continuous
+        type: HTTP
+        duration: 30m
+        intervalSeconds: 5
+        failureThreshold: 3
+        recordsHistoryLimit: 200
+        http:
+          url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    # ---- ACCURACY gate (unchanged across experiments): the accuracy probe runs a benchmark under the
+    #      fault and asserts AUPR + data integrity. A single Synchronous StatusCheck: 200 iff correct. ----
+    - name: accuracy-gate
+      templateType: StatusCheck
+      deadline: 34m
+      statusCheck:
+        mode: Synchronous   # one long call: trigger benchmark -> wait -> assert AUPR + integrity
+        type: HTTP
+        timeoutSeconds: 1800
+        http:
+          url: http://chaos-accuracy-probe.chaos-mesh.svc.cluster.local/run-under-fault
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    # 3) Record the verdict regardless of outcome (auto-ticket on failure, Grafana annotation always).
+    - name: verdict
+      templateType: Task
+      task:
+        container:
+          name: verdict
+          image: chaos-report:latest   # small image: posts Grafana annotation + opens a Forgejo ticket on fail
+          command: ["/report", "--experiment", "dual-gate-EXAMPLE"]
+---
+# The ACCURACY probe -- the correctness half of the dual gate. GET /run-under-fault ->
+#   1. kicks a benchmark sample run through the pipeline (the disposable -chaos copy for pipeline
+#      experiments; the shared dev pipeline is NEVER the target),
+#   2. waits for it, computes AUPR against ground truth, requires AUPR >= 0.98 (#388),
+#   3. runs the checksum-fingerprint integrity check (the taxonomy:fingerprint pattern) to prove zero
+#      corruption of reference data / results,
+#   4. returns 200 iff BOTH hold, else 500.
+# The command is a placeholder wired to the benchmark harness (sw-aupr-gate / #388); fill the trigger +
+# AUPR endpoints when the harness API is pinned. NOT DEPLOYED.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-accuracy-probe-spec
+  namespace: chaos-mesh
+data:
+  README.md: |
+    Accuracy probe contract (to implement under #815 alongside the pipeline sandbox #808):
+      GET /run-under-fault -> 200 iff (AUPR >= 0.98 on a benchmark run completed under the active fault)
+                                  AND (post-run checksum-fingerprint == expected; zero data corruption)
+                              else 500 with {aupr, integrity_ok, failed:[...]}.
+    Inputs (env): BENCHMARK_TRIGGER_URL, GROUND_TRUTH_KEY, AUPR_MIN=0.98, INTEGRITY_TABLES=taxon_lineages,...
+    Reuse: sw-aupr-gate (AUPR compute), lib/taxonomy_rollback_support.rb compute_fingerprint (integrity).
+    Pipeline experiments point BENCHMARK_TRIGGER_URL at the -chaos sandbox SFN, never shared dev.
