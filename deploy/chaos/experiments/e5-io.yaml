@@ -54,6 +54,7 @@ spec:
       # mode:one -> a single web pod, duration-bounded, auto-recovered when the workflow ends.
       - name: slow-local-io
         templateType: IOChaos
+        deadline: 3m  # was chaos duration (illegal inside a Workflow); bounds the fault node
         ioChaos:
           action: latency
           mode: one
@@ -66,7 +67,6 @@ spec:
           path: "/tmp/**/*"
           delay: "100ms"
           percent: 100
-          duration: 3m
       - name: steady-state-during
         templateType: StatusCheck
         deadline: 4m

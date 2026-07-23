@@ -50,6 +50,7 @@ spec:
           - steady-state-during
       - name: clock-skew
         templateType: TimeChaos
+        deadline: 3m  # was chaos duration (illegal inside a Workflow); bounds the fault node
         timeChaos:
           mode: one
           selector:
@@ -58,7 +59,6 @@ spec:
             labelSelectors:
               app.kubernetes.io/component: web
           timeOffset: "-10m"
-          duration: 3m
       - name: steady-state-during
         templateType: StatusCheck
         deadline: 4m

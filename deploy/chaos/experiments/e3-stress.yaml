@@ -50,9 +50,9 @@ spec:
       # OOMKill path once the containment path is proven.
       - name: stress-one-web-pod
         templateType: StressChaos
+        deadline: 120s  # was chaos duration (illegal inside a Workflow); bounds the fault node
         stressChaos:
           mode: one
-          duration: 120s
           selector:
             namespaces:
               - seqtoid-dev

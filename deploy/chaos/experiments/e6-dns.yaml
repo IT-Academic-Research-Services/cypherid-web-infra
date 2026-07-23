@@ -54,6 +54,7 @@ spec:
       # resolver returns failure; the app must handle it, not hang forever. Duration-bounded.
       - name: dns-fail-dependency
         templateType: DNSChaos
+        deadline: 2m  # was chaos duration (illegal inside a Workflow); bounds the fault node
         dnsChaos:
           action: error
           mode: one
@@ -65,7 +66,6 @@ spec:
           patterns:
             - "*.es.amazonaws.com"       # OpenSearch
             - "*.rds.amazonaws.com"      # Aurora
-          duration: 2m
       - name: steady-state-during
         templateType: StatusCheck
         deadline: 4m

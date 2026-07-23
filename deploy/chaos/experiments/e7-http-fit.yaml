@@ -53,6 +53,7 @@ spec:
           - steady-state-during
       - name: fault-fraction-of-dependency-calls
         templateType: HTTPChaos
+        deadline: 3m  # was chaos duration (illegal inside a Workflow); bounds the fault node
         httpChaos:
           mode: one
           selector:
@@ -65,7 +66,6 @@ spec:
           method: GET
           path: "*"
           abort: true
-          duration: 3m
       - name: steady-state-during
         templateType: StatusCheck
         deadline: 4m

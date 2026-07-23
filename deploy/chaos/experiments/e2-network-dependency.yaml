@@ -54,10 +54,10 @@ spec:
       # full `partition` (action: partition, direction: to) to test hard-down instead of slow.
       - name: delay-to-dependency
         templateType: NetworkChaos
+        deadline: 60s  # was chaos duration (illegal inside a Workflow); bounds the fault node
         networkChaos:
           action: delay
           mode: all
-          duration: 60s
           direction: to
           selector:
             namespaces:
