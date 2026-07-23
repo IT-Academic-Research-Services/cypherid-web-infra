@@ -31,15 +31,11 @@ resource "aws_fis_experiment_template" "terminate_one_web_node" {
   role_arn    = module.chaos_fis_role.role_arn
   tags        = merge(local.tags, { "seqtoid.io/chaos" = "e4-terminate-web-node" })
 
-  # Fail-safe: halt the experiment if this CloudWatch alarm goes ALARM (e.g. ALB 5xx
-  # spike). TODO before running: replace source with "aws:cloudwatch:alarm" and value
-  # with the ALB 5xx alarm ARN (the observability stack, #700, has the CW alerts). Left
-  # as "none" so this plans clean while held; running with "none" means no auto-halt, so
-  # wire the alarm before the first real run.
+  # Fail-safe: halt the experiment the moment the seqtoid-web tier throws 5xx (the resilience
+  # this test validates actually broke). Wired to the web 5xx alarm (see chaos-fis-stop-alarm.tf).
   stop_condition {
-    source = "none"
-    # source = "aws:cloudwatch:alarm"
-    # value  = "arn:aws:cloudwatch:us-west-2:491013321714:alarm:<alb-5xx-alarm-name>"
+    source = "aws:cloudwatch:alarm"
+    value  = aws_cloudwatch_metric_alarm.web_5xx_chaos_stop.arn
   }
 
   # Target: exactly ONE instance in the seqtoid-web Karpenter pool.

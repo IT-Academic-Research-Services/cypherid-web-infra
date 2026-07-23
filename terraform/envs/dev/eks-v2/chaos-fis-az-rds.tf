@@ -29,7 +29,8 @@ resource "aws_fis_experiment_template" "interrupt_one_az" {
   tags        = merge(local.tags, { "seqtoid.io/chaos" = "e-az-interruption" })
 
   stop_condition {
-    source = "none" # TODO wire the ALB 5xx CloudWatch alarm (see chaos-fis.tf) before the first real run
+    source = "aws:cloudwatch:alarm"
+    value  = aws_cloudwatch_metric_alarm.web_5xx_chaos_stop.arn
   }
 
   target {
@@ -77,8 +78,13 @@ resource "aws_fis_experiment_template" "aurora_failover" {
   role_arn    = module.chaos_fis_role.role_arn
   tags        = merge(local.tags, { "seqtoid.io/chaos" = "e-rds-failover" })
 
+  # A botched failover surfaces as app 5xx (DB-connection errors -> 500s), which the web 5xx alarm
+  # catches via its target-5xx term. NOTE: this template is inert until the cluster has a reader to
+  # promote (dev Aurora is single-instance today -- see FJ#845 / SMP-1465); the stop-condition is
+  # ready for when staging/prod run instance_count=2.
   stop_condition {
-    source = "none" # TODO wire a DB-connection-errors CloudWatch alarm before the first real run
+    source = "aws:cloudwatch:alarm"
+    value  = aws_cloudwatch_metric_alarm.web_5xx_chaos_stop.arn
   }
 
   target {
