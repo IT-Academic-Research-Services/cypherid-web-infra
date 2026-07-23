@@ -1,5 +1,14 @@
 # E5 -- IOChaos -- local disk latency (platform-overhaul #794/#807-class). See ../DESIGN.md.
 #
+# DEFERRED (supervised game-day 2026-07-22): this experiment CANNOT run against the web tier as
+# authored. Chaos Mesh IOChaos injects a FUSE layer over a VOLUME MOUNT, and the dev web pods have
+# (a) NO writable data volume -- `/tmp` is container rootfs, not a mount -- and (b) the nodes lack
+# the `/dev/fuse` device the chaos-daemon needs ("fail to find device cgroup"). So IOChaos here
+# fails to apply. The web tier is stateless (hot path = DB/OpenSearch/S3, not local disk), so
+# there is little to test anyway. The HIGH-VALUE disk experiment already lives where the real disk
+# failure class is: the pipeline-sandbox P3 scratch-exhaustion (AWS Batch EBS). Keep this paused/
+# unscheduled until either a volume-backed target is chosen or fuse is enabled on the nodes.
+#
 # Hypothesis: slow local filesystem I/O on a web pod (logging, tmp, session scratch) does NOT
 # turn into user-facing 503s -- request handling tolerates a degraded local disk because the hot
 # path is DB/OpenSearch/S3, not local disk. This is the app-tier cousin of the failure class that

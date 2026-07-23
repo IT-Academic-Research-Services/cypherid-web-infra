@@ -63,9 +63,13 @@ spec:
               - seqtoid-dev
             labelSelectors:
               app.kubernetes.io/component: web
+          # Exact host, not a wildcard: Chaos Mesh's DNS-chaos schema rejects "*.es.amazonaws.com"
+          # ("insert into schema selector"). Scoped to OpenSearch ONLY for the supervised run --
+          # deliberately NOT the Aurora/*.rds host, since failing DB name resolution can break the
+          # app's reconnects (add rds back only under close watch). Makes OpenSearch DNS lookups
+          # fail for one web pod for 2m; validate search/heatmap degrades, not the whole app.
           patterns:
-            - "*.es.amazonaws.com"       # OpenSearch
-            - "*.rds.amazonaws.com"      # Aurora
+            - "vpc-czid-dev-heatmap-es-5ixjn2y6cndlbnwlymxnqo5jpq.us-west-2.es.amazonaws.com"
       - name: steady-state-during
         templateType: StatusCheck
         deadline: 4m

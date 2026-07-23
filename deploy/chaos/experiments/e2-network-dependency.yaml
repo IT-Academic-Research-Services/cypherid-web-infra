@@ -71,11 +71,13 @@ spec:
           loss:
             loss: "25"
             correlation: "50"
-          # TODO before use: set the real dependency endpoint(s). Impairs ONLY traffic to
-          # these hosts, nothing else. e.g. the OpenSearch domain endpoint, or the
-          # ElastiCache/Redis primary endpoint. Placeholder so this cannot mis-fire.
+          # Impairs ONLY traffic to these hosts, nothing else. Wired to the dev OpenSearch
+          # (heatmap/search) domain endpoint. Dev has NO Redis (ElastiCache is sandbox-only),
+          # so OpenSearch is the sole external dependency target here. This brownouts search/
+          # heatmap latency + 25% loss for 60s; validate the app degrades (slow/empty results)
+          # rather than 500ing. /health_check will NOT show this -- watch the heatmap UI.
           externalTargets:
-            - "REPLACE-with-opensearch-or-redis-endpoint.dev.internal"
+            - "vpc-czid-dev-heatmap-es-5ixjn2y6cndlbnwlymxnqo5jpq.us-west-2.es.amazonaws.com"
       - name: steady-state-during
         templateType: StatusCheck
         deadline: 5m
