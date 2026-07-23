@@ -1,0 +1,93 @@
+# E5 -- IOChaos -- local disk latency (platform-overhaul #794/#807-class). See ../DESIGN.md.
+#
+# DEFERRED (supervised game-day 2026-07-22): this experiment CANNOT run against the web tier as
+# authored. Chaos Mesh IOChaos injects a FUSE layer over a VOLUME MOUNT, and the dev web pods have
+# (a) NO writable data volume -- `/tmp` is container rootfs, not a mount -- and (b) the nodes lack
+# the `/dev/fuse` device the chaos-daemon needs ("fail to find device cgroup"). So IOChaos here
+# fails to apply. The web tier is stateless (hot path = DB/OpenSearch/S3, not local disk), so
+# there is little to test anyway. The HIGH-VALUE disk experiment already lives where the real disk
+# failure class is: the pipeline-sandbox P3 scratch-exhaustion (AWS Batch EBS). Keep this paused/
+# unscheduled until either a volume-backed target is chosen or fuse is enabled on the nodes.
+#
+# Hypothesis: slow local filesystem I/O on a web pod (logging, tmp, session scratch) does NOT
+# turn into user-facing 503s -- request handling tolerates a degraded local disk because the hot
+# path is DB/OpenSearch/S3, not local disk. This is the app-tier cousin of the failure class that
+# bit the pipeline for real: the NT/NR scratch-volume exhaustion (#799). NOTE: that pipeline
+# failure lives on AWS Batch scratch (EBS), NOT a k8s pod -- so the HIGH-VALUE disk experiment
+# (fill/slow the index-generation scratch and assert the SFN retries + AUPR still holds) is a
+# PIPELINE-SANDBOX experiment (see ../DESIGN.md section 9), not this one. This E5 proves only the
+# web tier's tolerance of slow local I/O; keep the two distinct.
+#
+# SAFETY: Schedule -> Workflow, gated by a pre-flight StatusCheck (do not inject into an unhealthy
+# system) and a continuous in-flight StatusCheck that aborts the moment /health_check breaks past
+# tolerance. mode: one -> a single pod. Fires only when seqtoid-dev is labeled
+# chaos-mesh.org/inject=enabled. NOT DEPLOYED -- apply only after Chaos Mesh is installed + the
+# namespace is armed (../DESIGN.md "What deploying takes").
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e5-io
+  namespace: chaos-mesh
+spec:
+  schedule: "20 6 * * *" # 06:20 UTC = 02:20 America/New_York -- overnight window, staggered off E1
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e5
+    templates:
+      - name: e5
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - impair-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: impair-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - slow-local-io
+          - steady-state-during
+      # Inject I/O latency on the pod's writable scratch path. attr-based delay on all operations;
+      # mode:one -> a single web pod, duration-bounded, auto-recovered when the workflow ends.
+      - name: slow-local-io
+        templateType: IOChaos
+        deadline: 3m  # was chaos duration (illegal inside a Workflow); bounds the fault node
+        ioChaos:
+          action: latency
+          mode: one
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          volumePath: /tmp
+          path: "/tmp/**/*"
+          delay: "100ms"
+          percent: 100
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 3m
+          intervalSeconds: 2
+          failureThreshold: 3
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"

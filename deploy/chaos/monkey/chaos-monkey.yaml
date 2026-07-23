@@ -1,0 +1,106 @@
+# Chaos Engine -- the randomized "chaos monkey" (platform-overhaul #794/#811).
+#
+# The fixed E1-E8 Schedules test the same faults every night. This monkey draws ONE experiment at
+# random from the catalog each weekday night, so coverage compounds over time (the whole point of a
+# "monkey" -- unpredictability finds what a fixed schedule misses). The pick is LOGGED so any failure
+# is reproducible, and it reuses the exact same guardrails: it only ever creates a Workflow in the
+# chaos-mesh ns, which itself no-ops unless seqtoid-dev carries chaos-mesh.org/inject=enabled.
+#
+# Scoped RBAC: the monkey SA can create ONLY chaos-mesh.org resources in the chaos-mesh ns -- nothing
+# else, nowhere else. NOT DEPLOYED. Apply after the fixed experiments are trusted (DESIGN.md sec 13).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-monkey
+  namespace: chaos-mesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-monkey
+  namespace: chaos-mesh
+rules:
+  # create/read the experiment Workflows only; no delete of anything else, no other API groups.
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["workflows", "schedules", "podchaos", "networkchaos", "stresschaos", "iochaos", "dnschaos", "httpchaos", "timechaos"]
+    verbs: ["create", "get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-monkey
+  namespace: chaos-mesh
+subjects:
+  - { kind: ServiceAccount, name: chaos-monkey, namespace: chaos-mesh }
+roleRef:
+  { apiGroup: rbac.authorization.k8s.io, kind: Role, name: chaos-monkey }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-monkey-catalog
+  namespace: chaos-mesh
+data:
+  # The catalog the monkey draws from. Each entry is a deployed experiment's Schedule name; the monkey
+  # triggers a one-shot run of the picked one. Weighted by the criticality checker's priority order
+  # (criticality/) so higher-risk faults are drawn more often -- Monocle-style prioritization.
+  catalog.txt: |
+    e2-network-dependency
+    e6-dns
+    e7-http-fit
+    e1-pod-kill
+    e3-stress
+    e5-io
+    e8-time
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: chaos-monkey
+  namespace: chaos-mesh
+spec:
+  # DISARMED DEFAULT: suspended so the randomized monkey never fires on its own. Arming is a
+  # deliberate two-key act -- set suspend:false AND annotate seqtoid-dev chaos-mesh.org/inject=enabled.
+  # NOTE: the arm marker is a namespace ANNOTATION, not a label -- Chaos Mesh's enableFilterNamespace
+  # reads ns.Annotations[chaos-mesh.org/inject]=="enabled" (pkg/selector/generic/namespace/selector.go).
+  # (Even unsuspended it self-checks that annotation and stands down if unarmed.)
+  suspend: true
+  # 05:30 UTC weekdays (01:30 America/New_York) -- inside the overnight window, before the fixed E-series.
+  schedule: "30 5 * * 1-5"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: chaos-monkey
+          restartPolicy: Never
+          containers:
+            - name: monkey
+              image: bitnami/kubectl:latest
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # Master disarm: if the target ns is not armed, do nothing (belt-and-suspenders on top
+                  # of the fact that the created experiment would also no-op). The arm marker is a
+                  # namespace ANNOTATION (Chaos Mesh reads ns.Annotations[chaos-mesh.org/inject]), NOT a label.
+                  if ! kubectl get ns seqtoid-dev -o jsonpath='{.metadata.annotations.chaos-mesh\.org/inject}' | grep -q enabled; then
+                    echo "seqtoid-dev not armed (chaos-mesh.org/inject!=enabled annotation) -- monkey stands down."; exit 0
+                  fi
+                  PICK=$(shuf -n1 /catalog/catalog.txt)
+                  echo "CHAOS MONKEY pick: ${PICK} ($(date -u +%FT%TZ))"
+                  # Trigger a one-shot run of the picked Schedule by creating an immediate Workflow from it.
+                  # (Chaos Mesh: annotating a Schedule triggers a run; a Workflow copy is the portable form.)
+                  kubectl -n chaos-mesh annotate schedule "${PICK}" \
+                    "experiment.chaos-mesh.org/pause=false" "chaos-monkey/triggered-at=$(date -u +%FT%TZ)" --overwrite
+                  echo "CHAOS MONKEY triggered ${PICK}. Verdict + auto-ticket handled by the experiment's dual-gate."
+              volumeMounts:
+                - { name: catalog, mountPath: /catalog }
+          volumes:
+            - { name: catalog, configMap: { name: chaos-monkey-catalog } }

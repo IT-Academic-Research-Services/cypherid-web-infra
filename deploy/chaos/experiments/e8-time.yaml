@@ -1,0 +1,76 @@
+# E8 -- TimeChaos -- clock skew (platform-overhaul #794). See ../DESIGN.md.
+#
+# Hypothesis: a modest clock skew on a web pod does not break the app -- token validation (Auth0/JWT
+# exp/nbf), TLS handshakes, and our date-based taxonomy versioning (lineage_version compared as
+# %Y-%m-%d) all tolerate a few minutes of drift, or fail CLEANLY and recover. Clock skew is a cheap,
+# high-signal fault: it is a common real cause of "works on one node, 401s on another", and nothing
+# else in the catalog exercises time assumptions.
+#
+# `timeOffset: "-10m"` -> the pod's clock jumps 10 minutes into the past for the duration. mode:one,
+# a single web pod, duration-bounded, auto-recovered. NOT DEPLOYED; arm the namespace first.
+#
+# WATCH: if this experiment fails the steady-state gate, the finding is usually a too-tight JWT clock
+# skew tolerance or a naive timestamp comparison -- exactly the kind of latent bug the program exists
+# to surface on a schedule instead of in an incident.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e8-time
+  namespace: chaos-mesh
+spec:
+  schedule: "20 7 * * *" # 07:20 UTC
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e8
+    templates:
+      - name: e8
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - skew-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: skew-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - clock-skew
+          - steady-state-during
+      - name: clock-skew
+        templateType: TimeChaos
+        deadline: 3m  # was chaos duration (illegal inside a Workflow); bounds the fault node
+        timeChaos:
+          mode: one
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          timeOffset: "-10m"
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 3m
+          intervalSeconds: 2
+          failureThreshold: 3
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"

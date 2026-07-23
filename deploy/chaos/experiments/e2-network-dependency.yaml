@@ -1,0 +1,101 @@
+# E2 -- dependency impairment (platform-overhaul #794/#796). See ../DESIGN.md.
+#
+# Hypothesis: when a backing dependency (OpenSearch / Redis) is slow or unreachable,
+# the web app degrades CLEANLY -- it does not 5xx-storm, hang every request, or take the
+# whole page down. This directly probes the failure classes we already hit in the wild:
+# the Redis Errno::EALREADY connect race (#790) and OpenSearch connect-timeouts on node
+# rotation (taxon-indexing "N/0"). NetworkChaos lets us reproduce those on demand instead
+# of waiting for a node to rotate at 3am.
+#
+# HOW: NetworkChaos `delay` + `partition` applied to the web pods' egress toward the
+# dependency ENDPOINTS (externalTargets), so we impair the dependency WITHOUT touching
+# the managed OpenSearch domain or ElastiCache. Fill in the real endpoints before use
+# (see the TODO markers) -- left as placeholders so this cannot fire against the wrong host.
+#
+# SAFETY: Schedule -> Workflow with pre/in-flight StatusCheck (same pattern as E1). 60s
+# fault, single direction, target namespace must be armed. NOT DEPLOYED.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e2-network-dependency
+  namespace: chaos-mesh
+spec:
+  schedule: "0 7 * * *" # 07:00 UTC = 03:00 America/New_York; staggered after E1
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e2
+    templates:
+      - name: e2
+        templateType: Serial
+        deadline: 12m
+        children:
+          - preflight-health
+          - impair-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: impair-and-watch
+        templateType: Parallel
+        deadline: 6m
+        children:
+          - delay-to-dependency
+          - steady-state-during
+      # 500ms delay + 25% loss toward the dependency endpoint for 60s. Swap `delay` for a
+      # full `partition` (action: partition, direction: to) to test hard-down instead of slow.
+      - name: delay-to-dependency
+        templateType: NetworkChaos
+        deadline: 60s  # was chaos duration (illegal inside a Workflow); bounds the fault node
+        networkChaos:
+          action: delay
+          # mode: one -- NetworkChaos injects reliably on healthy nodes. mode:all fails the whole
+          # batch if ANY targeted pod is on a node that can't program ipset in the pod netns
+          # (node ip-10-132-131-112 currently does -- see FJ#836). One pod's OpenSearch path is
+          # enough to prove the app degrades gracefully; widen to all once the node is fixed.
+          mode: one
+          direction: to
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          delay:
+            latency: "500ms"
+            correlation: "50"
+            jitter: "100ms"
+          loss:
+            loss: "25"
+            correlation: "50"
+          # Impairs ONLY traffic to these hosts, nothing else. Wired to the dev OpenSearch
+          # (heatmap/search) domain endpoint. Dev has NO Redis (ElastiCache is sandbox-only),
+          # so OpenSearch is the sole external dependency target here. This brownouts search/
+          # heatmap latency + 25% loss for 60s; validate the app degrades (slow/empty results)
+          # rather than 500ing. /health_check will NOT show this -- watch the heatmap UI.
+          externalTargets:
+            - "vpc-czid-dev-heatmap-es-5ixjn2y6cndlbnwlymxnqo5jpq.us-west-2.es.amazonaws.com"
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 5m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 2m
+          intervalSeconds: 2
+          # More tolerant than E1: some slow responses are EXPECTED while the dependency
+          # is impaired. We are asserting "no hard-down / no 5xx storm", not "no latency".
+          failureThreshold: 10
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
