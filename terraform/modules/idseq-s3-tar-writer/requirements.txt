@@ -8,7 +8,8 @@ botocore==1.43.37
 colorama==0.4.6
 docutils==0.19
 jmespath==1.1.0
-pyasn1==0.6.3
+# pyasn1 patch-bumped 0.6.3->0.6.4 to clear CVE-2026-59885/59886 (HIGH; ASN.1 DoS), fixed in 0.6.4.
+pyasn1==0.6.4
 pycryptodome==3.23.0
 python-dateutil==2.9.0.post0
 rsa==4.7.2
