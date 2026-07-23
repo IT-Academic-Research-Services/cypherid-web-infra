@@ -1,0 +1,226 @@
+# Chaos ACCURACY probe -- the correctness half of the dual gate (platform-overhaul #794/#810/#815).
+#
+# WHY: Netflix's ChAP gates on availability alone -- "streams still start" under a fault. The Chaos
+# Engine's differentiator is that an experiment passes ONLY if the system stayed UP *and* RIGHT: a
+# genomics pipeline that keeps answering while silently returning wrong taxonomy calls is a WORSE
+# outcome than one that fails loudly. This service is the accuracy gate the dual-gate template
+# (templates/dual-gate.yaml) calls in parallel with the SLO/availability probe.
+#
+# Chaos Mesh StatusCheck speaks HTTP only, so this tiny service exposes the accuracy verdict as HTTP:
+#   GET /run-under-fault -> 200 iff a benchmark run completed UNDER THE ACTIVE FAULT with
+#                             (every per-sample NT/NR AUPR >= AUPR_MIN, #388)  AND
+#                             (post-run checksum-fingerprint integrity == expected; zero corruption),
+#                           else 500 with {aupr_regressions:[...], integrity_ok:false, ...}.
+#   GET /steady-state    -> 200 iff the LAST recorded baseline is within spec (cheap; used by the
+#                             template's preflight so we never inject when accuracy is already broken).
+#   GET /healthz         -> 200 (readiness).
+#
+# It NEVER targets the shared dev pipeline. BENCHMARK_TRIGGER_URL points at the disposable
+# idseq-dev-chaos-* Step Functions sandbox (#808) for pipeline experiments; for web-tier experiments
+# it points at the benchmark harness (#388). Read-only w.r.t. anything it does not itself create: it
+# triggers a benchmark, polls it, and reads AUPR + an integrity fingerprint the app computes.
+#
+# NOT DEPLOYED. Applied on purpose after Chaos Mesh + the LGTM stack + the -chaos sandbox are up.
+# Arm per DESIGN.md. Companion of slo-probe/slo-probe.yaml -- same shape, same dependency-free style.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-accuracy-probe
+  namespace: chaos-mesh
+data:
+  # Flat, hand-parsed config (mirrors slo.yaml -- avoids a pyyaml dep in the slim image). URLs and the
+  # ground-truth key are environment-specific; secrets/tokens come from the chaos-reporter secret via
+  # envFrom on the Deployment, never here.
+  accuracy.yaml: |
+    # AUPR floor -- the same 0.98 that blocks a regressing taxonomy/index refresh (#388).
+    aupr_min: 0.98
+    # POST here to start a benchmark run under the active fault. For pipeline experiments this is the
+    # -chaos sandbox SFN start endpoint (idseq-dev-chaos-*), NEVER the shared idseq-dev-* pipeline.
+    benchmark_trigger_url: http://chaos-benchmark-trigger.chaos-mesh.svc.cluster.local/start
+    # GET here (optionally with ?handle=<id> from the trigger response) -> {state, results?} until the
+    # run reaches a terminal state. results = {sample: {NT_aupr, NR_aupr, ...}, ...}.
+    benchmark_status_url: http://chaos-benchmark-trigger.chaos-mesh.svc.cluster.local/status
+    # GET here -> {"integrity_ok": bool, "mismatches": [...]}. The app computes this with the same
+    # compute_fingerprint (lib/taxonomy_rollback_support.rb) used to prove a taxonomy rollback: a
+    # deterministic CHECKSUM TABLE over reference-data content, compared to the pre-fault expected value.
+    integrity_url: http://seqtoid-web.seqtoid-dev.svc.cluster.local/internal/chaos/integrity
+    # How long a single /run-under-fault may take (must be <= the template accuracy-gate timeoutSeconds).
+    run_timeout_seconds: 1700
+    poll_interval_seconds: 20
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-accuracy-probe-code
+  namespace: chaos-mesh
+data:
+  probe.py: |
+    # Minimal, dependency-free (urllib only) accuracy gate.
+    #
+    #   GET /run-under-fault -> trigger a benchmark under the active fault, poll to completion, then
+    #                           200 iff (no AUPR regressions vs the floor) AND (integrity_ok), else 500.
+    #   GET /steady-state    -> 200 iff the last baseline results clear the floor AND integrity_ok
+    #                           (cheap preflight; does NOT trigger a run).
+    #   GET /healthz         -> 200.
+    #
+    # Reads /etc/chaos/accuracy.yaml. AUPR gate logic is a faithful copy of the canonical
+    # aupr_regressions() in seqtoid-workflows .../auto_benchmark/harvest.py (SSOT; unit-tested in
+    # test_harvest_aupr_gate.py). Integrity reuses the app's compute_fingerprint via integrity_url.
+    import json, os, re, time, urllib.parse, urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    CFG_PATH = "/etc/chaos/accuracy.yaml"
+
+    def load_cfg():
+        cfg = {}
+        for raw in open(CFG_PATH):
+            line = raw.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            cfg[k.strip()] = v.strip().strip("'\"")
+        cfg["aupr_min"] = float(cfg.get("aupr_min", "0.98"))
+        cfg["run_timeout_seconds"] = int(cfg.get("run_timeout_seconds", "1700"))
+        cfg["poll_interval_seconds"] = int(cfg.get("poll_interval_seconds", "20"))
+        return cfg
+
+    def aupr_regressions(results, min_aupr):
+        # Faithful copy of harvest.aupr_regressions (SSOT). Returns [(sample, metric, value), ...] for
+        # every *_aupr metric below the floor; ignores non-metric keys and non-numeric values.
+        regressions = []
+        for sample, metrics in (results or {}).items():
+            if not isinstance(metrics, dict):
+                continue
+            for key, value in metrics.items():
+                if key.endswith("_aupr") and isinstance(value, (int, float)) and value < min_aupr:
+                    regressions.append([sample, key, value])
+        return regressions
+
+    def http_json(url, method="GET", timeout=10, headers=None):
+        req = urllib.request.Request(url, method=method)
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read().decode() or "{}"
+        return json.loads(body)
+
+    def integrity(cfg):
+        # The app-side integrity endpoint (Internal::ChaosController) is bearer-token gated and fail
+        # closed. The token rides in from the chaos-reporter secret (envFrom) as CHAOS_INTEGRITY_TOKEN;
+        # without it the app returns 503 and this gate fails closed, which is the correct default.
+        headers = {}
+        token = os.environ.get("CHAOS_INTEGRITY_TOKEN", "")
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        try:
+            d = http_json(cfg["integrity_url"], timeout=30, headers=headers)
+            return bool(d.get("integrity_ok")), d.get("mismatches", [])
+        except Exception as e:
+            return False, [{"error": str(e)}]
+
+    def run_benchmark_under_fault(cfg):
+        # Start a run, then poll status until terminal or timeout. Returns (results_dict, error_or_None).
+        started = http_json(cfg["benchmark_trigger_url"], method="POST", timeout=30)
+        handle = started.get("handle") or started.get("execution_arn") or ""
+        status_url = cfg["benchmark_status_url"]
+        if handle:
+            status_url += ("&" if "?" in status_url else "?") + urllib.parse.urlencode({"handle": handle})
+        deadline = time.time() + cfg["run_timeout_seconds"]
+        while time.time() < deadline:
+            try:
+                st = http_json(status_url, timeout=30)
+            except Exception as e:
+                return None, "status poll failed: %s" % e
+            state = str(st.get("state", "")).upper()
+            if state in ("SUCCEEDED", "COMPLETED", "DONE"):
+                return st.get("results", {}), None
+            if state in ("FAILED", "ABORTED", "TIMED_OUT", "ERROR"):
+                return None, "benchmark run %s" % state
+            time.sleep(cfg["poll_interval_seconds"])
+        return None, "benchmark run timed out after %ss" % cfg["run_timeout_seconds"]
+
+    def baseline_results(cfg):
+        # Cheap preflight: read the most recent completed run's results without triggering a new one.
+        st = http_json(cfg["benchmark_status_url"], timeout=15)
+        return st.get("results", {})
+
+    class H(BaseHTTPRequestHandler):
+        def _send(self, code, body):
+            b = json.dumps(body).encode()
+            self.send_response(code); self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+        def do_GET(self):
+            if self.path.startswith("/healthz"):
+                return self._send(200, {"ok": True})
+            cfg = load_cfg()
+            try:
+                if self.path.startswith("/run-under-fault"):
+                    results, err = run_benchmark_under_fault(cfg)
+                    if err:
+                        return self._send(500, {"pass": False, "stage": "benchmark", "error": err})
+                else:  # /steady-state (preflight)
+                    results = baseline_results(cfg)
+                regs = aupr_regressions(results, cfg["aupr_min"])
+                integ_ok, mismatches = integrity(cfg)
+                ok = (not regs) and integ_ok
+                return self._send(200 if ok else 500, {
+                    "pass": ok,
+                    "aupr_min": cfg["aupr_min"],
+                    "aupr_regressions": regs,
+                    "integrity_ok": integ_ok,
+                    "integrity_mismatches": mismatches,
+                })
+            except Exception as e:
+                return self._send(500, {"pass": False, "error": str(e)})
+
+        def log_message(self, *a):  # quiet
+            pass
+
+    HTTPServer(("0.0.0.0", 8080), H).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-accuracy-probe
+  namespace: chaos-mesh
+  labels: { app: chaos-accuracy-probe }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: chaos-accuracy-probe } }
+  template:
+    metadata:
+      labels: { app: chaos-accuracy-probe }
+    spec:
+      containers:
+        - name: probe
+          image: python:3.12-slim
+          command: ["python", "/app/probe.py"]
+          ports: [{ containerPort: 8080 }]
+          # Tokens/endpoints that must stay secret (e.g. an app internal-auth token for integrity_url)
+          # come from the chaos-reporter secret; plain URLs live in the accuracy.yaml ConfigMap.
+          envFrom:
+            - secretRef:
+                name: chaos-reporter
+                optional: true
+          volumeMounts:
+            - { name: cfg, mountPath: /etc/chaos }
+            - { name: code, mountPath: /app }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 64Mi }
+      volumes:
+        - { name: cfg, configMap: { name: chaos-accuracy-probe } }
+        - { name: code, configMap: { name: chaos-accuracy-probe-code } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-accuracy-probe
+  namespace: chaos-mesh
+spec:
+  selector: { app: chaos-accuracy-probe }
+  ports: [{ port: 80, targetPort: 8080 }]
