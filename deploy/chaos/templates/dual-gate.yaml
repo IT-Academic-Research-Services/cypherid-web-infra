@@ -36,8 +36,16 @@ spec:
         - verdict
 
     # 1) Do not inject unless BOTH gates are green to start: availability (SLO probe) AND accuracy
-    #    (a fresh benchmark baseline is within spec). If either is already broken, abort before any fault.
+    #    (the last benchmark baseline is within spec). If EITHER is already broken, abort before any
+    #    fault -- a Serial of two StatusChecks (Chaos Mesh StatusCheck speaks one URL at a time).
     - name: preflight-both-gates
+      templateType: Serial
+      deadline: 5m
+      children:
+        - preflight-availability
+        - preflight-accuracy
+
+    - name: preflight-availability
       templateType: StatusCheck
       deadline: 3m
       statusCheck:
@@ -45,6 +53,18 @@ spec:
         type: HTTP
         http:
           url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: preflight-accuracy
+      templateType: StatusCheck
+      deadline: 3m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        http:
+          url: http://chaos-accuracy-probe.chaos-mesh.svc.cluster.local/steady-state
           method: GET
           criteria:
             statusCode: "200"
@@ -117,27 +137,8 @@ spec:
           envFrom:
             - secretRef:
                 name: chaos-reporter
----
-# The ACCURACY probe -- the correctness half of the dual gate. GET /run-under-fault ->
-#   1. kicks a benchmark sample run through the pipeline (the disposable -chaos copy for pipeline
-#      experiments; the shared dev pipeline is NEVER the target),
-#   2. waits for it, computes AUPR against ground truth, requires AUPR >= 0.98 (#388),
-#   3. runs the checksum-fingerprint integrity check (the taxonomy:fingerprint pattern) to prove zero
-#      corruption of reference data / results,
-#   4. returns 200 iff BOTH hold, else 500.
-# The command is a placeholder wired to the benchmark harness (sw-aupr-gate / #388); fill the trigger +
-# AUPR endpoints when the harness API is pinned. NOT DEPLOYED.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: chaos-accuracy-probe-spec
-  namespace: chaos-mesh
-data:
-  README.md: |
-    Accuracy probe contract (to implement under #815 alongside the pipeline sandbox #808):
-      GET /run-under-fault -> 200 iff (AUPR >= 0.98 on a benchmark run completed under the active fault)
-                                  AND (post-run checksum-fingerprint == expected; zero data corruption)
-                              else 500 with {aupr, integrity_ok, failed:[...]}.
-    Inputs (env): BENCHMARK_TRIGGER_URL, GROUND_TRUTH_KEY, AUPR_MIN=0.98, INTEGRITY_TABLES=taxon_lineages,...
-    Reuse: sw-aupr-gate (AUPR compute), lib/taxonomy_rollback_support.rb compute_fingerprint (integrity).
-    Pipeline experiments point BENCHMARK_TRIGGER_URL at the -chaos sandbox SFN, never shared dev.
+# The ACCURACY probe referenced above (chaos-accuracy-probe /run-under-fault + /steady-state) is now
+# implemented as a real service in accuracy-probe/accuracy-probe.yaml (#810/#815): a dependency-free
+# HTTP gate that triggers a benchmark under the active fault, asserts every per-sample AUPR >= 0.98
+# (the canonical harvest.aupr_regressions logic), and asserts checksum-fingerprint integrity (the
+# compute_fingerprint pattern) -- 200 iff both hold. Apply it alongside slo-probe/ before arming.

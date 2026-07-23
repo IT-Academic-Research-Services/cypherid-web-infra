@@ -27,6 +27,13 @@ spec:
         - verdict
 
     - name: preflight-both-gates
+      templateType: Serial
+      deadline: 5m
+      children:
+        - preflight-availability
+        - preflight-accuracy
+
+    - name: preflight-availability
       templateType: StatusCheck
       deadline: 3m
       statusCheck:
@@ -34,6 +41,18 @@ spec:
         type: HTTP
         http:
           url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: preflight-accuracy
+      templateType: StatusCheck
+      deadline: 3m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        http:
+          url: http://chaos-accuracy-probe.chaos-mesh.svc.cluster.local/steady-state
           method: GET
           criteria:
             statusCode: "200"
