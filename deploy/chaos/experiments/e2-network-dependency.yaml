@@ -57,7 +57,11 @@ spec:
         deadline: 60s  # was chaos duration (illegal inside a Workflow); bounds the fault node
         networkChaos:
           action: delay
-          mode: all
+          # mode: one -- NetworkChaos injects reliably on healthy nodes. mode:all fails the whole
+          # batch if ANY targeted pod is on a node that can't program ipset in the pod netns
+          # (node ip-10-132-131-112 currently does -- see FJ#836). One pod's OpenSearch path is
+          # enough to prove the app degrades gracefully; widen to all once the node is fixed.
+          mode: one
           direction: to
           selector:
             namespaces:
