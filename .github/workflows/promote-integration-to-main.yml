@@ -61,10 +61,23 @@ jobs:
             echo "integration is $ahead commit(s) ahead of main."
           fi
 
+      # IT-ARS forbids the default GITHUB_TOKEN from opening PRs ("GitHub Actions is not permitted to
+      # create or approve pull requests"), so `gh pr create` below failed and integration never reached
+      # main -- the roll-up reported success while silently doing nothing. Mint an App token instead, the
+      # same mechanism gitops-promote.yml / sync-main-to-integration.yml already use (#683). On a fork with
+      # no app installed the step is skipped and the token falls back to GITOPS_TOKEN, then github.token.
+      - name: Generate app token
+        id: app_token
+        if: ${{ steps.diff.outputs.ahead != '0' && vars.CI_APP_ENABLED == 'true' }}
+        uses: chanzuckerberg/github-app-token@365b1f2db827eb8f17288ec335b1a7e3c03ff683 # v1.1.4
+        with:
+          app_id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private_key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+
       - name: Open or reuse the promotion PR + enable auto-merge
         if: steps.diff.outputs.ahead != '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN || github.token }}
           REASON: ${{ github.event.inputs.reason }}
           TRIGGER: ${{ github.event_name }}
         run: |
