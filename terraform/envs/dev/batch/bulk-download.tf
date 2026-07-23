@@ -18,11 +18,32 @@ data "aws_ecr_repository" "s3_tar_writer" {
 # The task (job) role the tar container assumes: read sample results + references, write the
 # archive back to the samples bucket. Least-privilege; independent of the Batch instance role.
 data "aws_iam_policy_document" "bulk_download_job_trust" {
+  # Transitional: the ECS-task trust is for the Batch launcher (Phase 2, being retired).
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "Service"
       identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+  # IRSA: the tar Job's ServiceAccount (seqtoid-dev/seqtoid-web-bulk-download on eks-v2) assumes
+  # this role via the cluster OIDC provider -- the K8s-Job launcher (latency follow-up). dev-scoped
+  # OIDC ARN; mirror per env when staging/prod land.
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::491013321714:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/8BA8D002F1153454A70ADEE48679D311"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "oidc.eks.us-west-2.amazonaws.com/id/8BA8D002F1153454A70ADEE48679D311:sub"
+      values   = ["system:serviceaccount:seqtoid-dev:seqtoid-web-bulk-download"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "oidc.eks.us-west-2.amazonaws.com/id/8BA8D002F1153454A70ADEE48679D311:aud"
+      values   = ["sts.amazonaws.com"]
     }
   }
 }
