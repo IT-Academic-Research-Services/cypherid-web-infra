@@ -54,6 +54,13 @@ resource "aws_iam_role" "bulk_download_job" {
   tags               = var.tags
 }
 
+# The AWS-managed aws/s3 key that SSE-KMS-encrypts the sample buckets by default (dev buckets use
+# the managed key, not a customer CMK -- verified via get-bucket-encryption). Referenced by alias so
+# no key UUID is hardcoded.
+data "aws_kms_alias" "s3" {
+  name = "alias/aws/s3"
+}
+
 data "aws_iam_policy_document" "bulk_download_job" {
   statement {
     sid     = "ListSourceBuckets"
@@ -80,6 +87,23 @@ data "aws_iam_policy_document" "bulk_download_job" {
     sid       = "WriteArchive"
     actions   = ["s3:PutObject"]
     resources = ["arn:aws:s3:::${var.s3_bucket_samples_v1}/*"]
+  }
+  statement {
+    # The sample objects (and the archive written back) are SSE-KMS encrypted with the AWS-managed
+    # aws/s3 key, so reading a source and writing the tar need KMS, not just S3. Without this the
+    # presigned GET returns a 403 (KMS AccessDenied); s3_tar_writer does not raise on 403 and streams
+    # the short error body, failing with "unexpected end of data". kms:Decrypt reads the SSE-KMS
+    # sources; kms:GenerateDataKey encrypts the archive on PutObject. The legacy aegea/ECS task role
+    # carried this grant; the aegea -> Batch/EKS migration dropped it (#846 / SMP-1477). Scoped via
+    # kms:ViaService so the role can only use the key through S3, never call KMS directly.
+    sid       = "SseKmsViaS3"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+    resources = [data.aws_kms_alias.s3.target_key_arn]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.${data.aws_region.current.name}.amazonaws.com"]
+    }
   }
 }
 
