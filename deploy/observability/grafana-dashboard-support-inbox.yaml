@@ -1,7 +1,5 @@
-# Support Inbox (Option A, Forgejo #828/#440): surfaces the app's structured
-# [support_request] log lines (SupportRequestsController#create) as a Grafana inbox on Loki.
-# No new service -- reuses the LGTM stack. Loaded by the kube-prometheus-stack Grafana sidecar
-# (watches ConfigMaps labelled grafana_dashboard: "1"). Hot-reloads within seconds.
+# Support Inbox (Option A, Forgejo #828/#440): the app's structured [support_request] log lines
+# (SupportRequestsController#create) as a Grafana queue on Loki. Sidecar-provisioned; hot-reloads.
 # Apply: kubectl apply -f deploy/observability/grafana-dashboard-support-inbox.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -21,10 +19,10 @@ data:
         "loki"
       ],
       "schemaVersion": 39,
-      "version": 2,
+      "version": 3,
       "refresh": "1m",
       "time": {
-        "from": "now-90d",
+        "from": "now-7d",
         "to": "now"
       },
       "timepicker": {},
@@ -50,13 +48,13 @@ data:
           {
             "name": "ticket",
             "type": "textbox",
-            "label": "Ticket (trace id)",
+            "label": "Selected ticket",
             "query": ".*",
             "current": {
               "text": ".*",
               "value": ".*"
             },
-            "description": "Set automatically when you click a row; .* shows all tickets."
+            "description": "Set when you click a row. Reset to .* to show all tickets."
           }
         ]
       },
@@ -211,13 +209,13 @@ data:
         {
           "id": 4,
           "type": "table",
-          "title": "Support queue  -  click any row to open its detail below",
+          "title": "Support queue  -  click a row to load it in Ticket detail below",
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
           "gridPos": {
-            "h": 12,
+            "h": 9,
             "w": 24,
             "x": 0,
             "y": 4
@@ -236,7 +234,10 @@ data:
           ],
           "options": {
             "showHeader": true,
-            "cellHeight": "md",
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
             "sortBy": [
               {
                 "displayName": "submitted",
@@ -256,7 +257,7 @@ data:
               },
               "links": [
                 {
-                  "title": "Show this ticket below (and scroll to Ticket detail)",
+                  "title": "Show this ticket in the detail panel below",
                   "url": "/d/seqtoid-support-inbox/seqtoid-support-inbox?var-ticket=${__data.fields.trace_id}&${__url_time_range}",
                   "targetBlank": false
                 }
@@ -266,24 +267,12 @@ data:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "description"
+                  "options": "submitted"
                 },
                 "properties": [
                   {
                     "id": "custom.width",
-                    "value": 360
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "summary"
-                },
-                "properties": [
-                  {
-                    "id": "custom.width",
-                    "value": 420
+                    "value": 150
                   }
                 ]
               },
@@ -295,26 +284,74 @@ data:
                 "properties": [
                   {
                     "id": "custom.width",
-                    "value": 200
+                    "value": 195
                   }
                 ]
               },
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "submitted"
+                  "options": "error"
                 },
                 "properties": [
                   {
                     "id": "custom.width",
-                    "value": 165
+                    "value": 115
                   }
                 ]
               },
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "runbook_label"
+                  "options": "task"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 135
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "description"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 300
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "trace id"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 250
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
                 },
                 "properties": [
                   {
@@ -362,23 +399,24 @@ data:
                   "id": true,
                   "labels": true,
                   "Line": true,
+                  "labelTypes": true,
                   "__error__": true,
                   "__error_details__": true,
                   "runbook_url": true,
+                  "role": true,
+                  "project": true,
                   "account": true,
-                  "summary": true
+                  "summary": true,
+                  "environment": true
                 },
                 "indexByName": {
                   "submitted": 0,
                   "email": 1,
-                  "role": 2,
-                  "error": 3,
-                  "task": 4,
-                  "project": 5,
-                  "description": 6,
-                  "runbook_label": 7,
-                  "environment": 8,
-                  "trace_id": 9
+                  "error": 2,
+                  "task": 3,
+                  "description": 4,
+                  "runbook_label": 5,
+                  "trace_id": 6
                 },
                 "renameByName": {
                   "trace_id": "trace id",
@@ -391,26 +429,26 @@ data:
         {
           "id": 5,
           "type": "logs",
-          "title": "Ticket detail  -  expand the line for all fields + clickable links   (showing: $ticket)",
+          "title": "Ticket detail  -  clean view of the selected ticket   (showing: $ticket)",
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
           "gridPos": {
-            "h": 14,
+            "h": 15,
             "w": 24,
             "x": 0,
-            "y": 16
+            "y": 13
           },
           "options": {
-            "showTime": true,
-            "wrapLogMessage": true,
-            "enableLogDetails": true,
-            "prettifyLogMessage": true,
-            "dedupStrategy": "none",
-            "sortOrder": "Descending",
+            "showTime": false,
             "showLabels": false,
-            "showCommonLabels": false
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
           },
           "targets": [
             {
@@ -428,16 +466,17 @@ data:
         {
           "id": 6,
           "type": "text",
-          "title": "How to use / next steps",
+          "title": "",
+          "transparent": true,
           "gridPos": {
-            "h": 4,
+            "h": 3,
             "w": 24,
             "x": 0,
-            "y": 30
+            "y": 28
           },
           "options": {
             "mode": "markdown",
-            "content": "**Click any row** in the queue to load that ticket in **Ticket detail** below, then expand the log line to see every field (summary, journey, diagnostics) and click the runbook / CloudWatch / OTel links. Reset by setting the **Ticket** variable back to `.*`.\\n\\n*Deep-links resolve once `OTEL_DASHBOARD_BASE_URL` + `SUPPORT_LOG_GROUP` are set (#472). To assign / status / close tickets (not just view), route them to Jira or Forgejo (Option B) - Grafana is read-only.*"
+            "content": "**Click a row** in the queue to load that ticket below, then **expand the line** to see every field (summary, journey, diagnostics) and click the runbook / CloudWatch / OTel links. Reset the **Selected ticket** variable to `.*` to show all.  \\n*History is limited to Loki's 7-day retention. Deep-links resolve once `OTEL_DASHBOARD_BASE_URL` + `SUPPORT_LOG_GROUP` are set (#472).*"
           }
         }
       ],
