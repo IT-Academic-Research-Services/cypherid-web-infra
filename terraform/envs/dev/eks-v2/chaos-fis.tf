@@ -21,6 +21,9 @@ module "chaos_fis_role" {
 
   cluster_name = local.cluster_name
   tags         = local.tags
+  # Lockstep with the terminate_one_web_node target below: the role may terminate only
+  # instances tagged karpenter.sh/nodepool=seqtoid-web (the web NodePool).
+  terminate_target_tag_values = ["seqtoid-web"]
 }
 
 resource "aws_fis_experiment_template" "terminate_one_web_node" {
