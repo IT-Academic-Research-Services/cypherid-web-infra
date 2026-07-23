@@ -23,6 +23,10 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 data "aws_iam_policy_document" "permissions" {
+  # checkov:skip=CKV_AWS_356: The only constrainable action here, ec2:TerminateInstances, IS
+  # scoped (instance ARN + an ec2:ResourceTag condition below). The remaining wildcard resources
+  # are on ec2:DescribeInstances and cloudwatch:DescribeAlarms, which have NO resource-level
+  # permissions in IAM -- AWS requires resources=["*"] for them -- so they cannot be narrowed.
   # Read instance state (FIS resolves the tag-filtered target set).
   statement {
     sid       = "DescribeInstances"
