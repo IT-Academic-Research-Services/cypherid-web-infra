@@ -9,7 +9,7 @@
 # behind a StatusCheck (dev must be healthy BEFORE we inject) and runs a second
 # StatusCheck in parallel with the fault (if /health_check breaks past tolerance, the
 # workflow aborts and the fault is removed early). mode: one -> a single pod. Nothing
-# fires unless seqtoid-dev is labeled chaos-mesh.org/inject=enabled.
+# fires unless seqtoid-dev is annotated chaos-mesh.org/inject=enabled (ANNOTATION, not a label).
 #
 # NOT DEPLOYED. `kubectl apply` this only after Chaos Mesh is installed and the target
 # namespace is armed (see ../DESIGN.md "What deploying takes").

@@ -63,8 +63,10 @@ metadata:
   namespace: chaos-mesh
 spec:
   # DISARMED DEFAULT: suspended so the randomized monkey never fires on its own. Arming is a
-  # deliberate two-key act -- set suspend:false AND label seqtoid-dev chaos-mesh.org/inject=enabled.
-  # (Even unsuspended it self-checks the namespace label and stands down if unarmed.)
+  # deliberate two-key act -- set suspend:false AND annotate seqtoid-dev chaos-mesh.org/inject=enabled.
+  # NOTE: the arm marker is a namespace ANNOTATION, not a label -- Chaos Mesh's enableFilterNamespace
+  # reads ns.Annotations[chaos-mesh.org/inject]=="enabled" (pkg/selector/generic/namespace/selector.go).
+  # (Even unsuspended it self-checks that annotation and stands down if unarmed.)
   suspend: true
   # 05:30 UTC weekdays (01:30 America/New_York) -- inside the overnight window, before the fixed E-series.
   schedule: "30 5 * * 1-5"
@@ -86,9 +88,10 @@ spec:
                 - |
                   set -eu
                   # Master disarm: if the target ns is not armed, do nothing (belt-and-suspenders on top
-                  # of the fact that the created experiment would also no-op).
-                  if ! kubectl get ns seqtoid-dev -o jsonpath='{.metadata.labels.chaos-mesh\.org/inject}' | grep -q enabled; then
-                    echo "seqtoid-dev not armed (chaos-mesh.org/inject!=enabled) -- monkey stands down."; exit 0
+                  # of the fact that the created experiment would also no-op). The arm marker is a
+                  # namespace ANNOTATION (Chaos Mesh reads ns.Annotations[chaos-mesh.org/inject]), NOT a label.
+                  if ! kubectl get ns seqtoid-dev -o jsonpath='{.metadata.annotations.chaos-mesh\.org/inject}' | grep -q enabled; then
+                    echo "seqtoid-dev not armed (chaos-mesh.org/inject!=enabled annotation) -- monkey stands down."; exit 0
                   fi
                   PICK=$(shuf -n1 /catalog/catalog.txt)
                   echo "CHAOS MONKEY pick: ${PICK} ($(date -u +%FT%TZ))"

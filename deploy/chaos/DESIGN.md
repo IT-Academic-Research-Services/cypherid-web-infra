@@ -69,11 +69,16 @@ Four independent controls, each sufficient on its own:
 
 1. **Namespace filtering (physical).** Chaos Mesh installs with
    `controllerManager.enableFilterNamespace: true`. With that on, chaos can ONLY
-   be injected into a namespace carrying the label
-   `chaos-mesh.org/inject=enabled`. We label **only `seqtoid-dev`**, and only when
-   an experiment window is authorized. `argocd`, `monitoring`, `kube-system`, the
-   AWS LB controller, other tenants -- all physically un-targetable. Remove the
-   label and every experiment no-ops.
+   be injected into a namespace carrying the **annotation**
+   `chaos-mesh.org/inject=enabled`. (It is an ANNOTATION, not a label -- Chaos Mesh
+   reads `ns.Annotations[chaos-mesh.org/inject]=="enabled"`, verified in
+   `pkg/selector/generic/namespace/selector.go`; a label is silently ignored and the
+   guardrail fails closed.) We annotate **only `seqtoid-dev`**, and only when an
+   experiment window is authorized. `argocd`, `monitoring`, `kube-system`, the AWS LB
+   controller, other tenants -- all physically un-targetable. Remove the annotation
+   and every experiment no-ops. Proven 2026-07-22: with a label instead of the
+   annotation, E1 fail-closed ("namespace is not enabled for chaos-mesh") and no pod
+   was touched.
 
 2. **Overnight-only schedule.** Every experiment is wrapped in a Chaos Mesh
    `Schedule` (cron, **UTC**) firing in a 2-6am America/New_York window
@@ -118,8 +123,10 @@ Nothing below has run. To go live, deliberately and in order:
    (creates the Argo Application; it syncs the operator into the `chaos-mesh` ns).
    Verify `enableFilterNamespace` is on and the dashboard is up (behind the Grafana
    ingress auth pattern, not public).
-3. **Arm the target namespace:** label `seqtoid-dev` with
-   `chaos-mesh.org/inject=enabled`. Until this label exists, every experiment is a
+3. **Arm the target namespace:** annotate `seqtoid-dev` with
+   `chaos-mesh.org/inject=enabled`
+   (`kubectl annotate ns seqtoid-dev chaos-mesh.org/inject=enabled --overwrite`).
+   ANNOTATION, not label. Until this annotation exists, every experiment is a
    no-op -- this is the master arm/disarm switch.
 4. **Apply E1 only:** `kubectl apply -f deploy/chaos/experiments/e1-pod-kill.yaml`.
    Let it fire once overnight. Read the Workflow status + Grafana the next morning.
@@ -127,10 +134,11 @@ Nothing below has run. To go live, deliberately and in order:
 6. **AWS FIS (E4):** `terraform apply` the `chaos-fis.tf` template + role via CI
    (Rosetta wall -- no local apply), then run the FIS experiment manually the first
    time before scheduling it.
-7. **Disarm:** remove the `chaos-mesh.org/inject=enabled` label (instant global
-   stop) and/or `kubectl delete -f deploy/chaos/experiments/` to stop scheduling.
+7. **Disarm:** remove the `chaos-mesh.org/inject=enabled` annotation
+   (`kubectl annotate ns seqtoid-dev chaos-mesh.org/inject-`) for an instant global
+   stop, and/or `kubectl delete -f deploy/chaos/experiments/` to stop scheduling.
 
-Rollback is trivial: delete the label to disarm, delete the `_deliberate` app to
+Rollback is trivial: delete the inject annotation to disarm, delete the `_deliberate` app to
 remove the operator. No app code, no chart, no CD pipeline touched.
 
 ## 6. Steady-state definition (the hypothesis)
@@ -272,7 +280,7 @@ deliberate and reversible:
     benchmark AUPR. **Never** point a pipeline experiment at the shared dev pipeline.
 12. **Randomized monkey + CI-gate + Grafana overlay/auto-ticket** last, once the fixed
     experiments are trusted.
-13. **Flip the switch:** arming remains the single `chaos-mesh.org/inject=enabled` label
+13. **Flip the switch:** arming remains the single `chaos-mesh.org/inject=enabled` annotation
     (web) + applying the pipeline-sandbox experiments (pipeline). Disarm = remove the
     label + `terraform destroy` the sandbox. Prod chaos stays OUT of scope until dev proves
     the whole loop and a separate prod decision is made (canary + business-metric abort).
