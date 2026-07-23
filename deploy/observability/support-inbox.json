@@ -7,10 +7,10 @@
     "loki"
   ],
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "1m",
   "time": {
-    "from": "now-30d",
+    "from": "now-90d",
     "to": "now"
   },
   "timepicker": {},
@@ -32,6 +32,17 @@
             "selected": true
           }
         ]
+      },
+      {
+        "name": "ticket",
+        "type": "textbox",
+        "label": "Ticket (trace id)",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "description": "Set automatically when you click a row; .* shows all tickets."
       }
     ]
   },
@@ -39,14 +50,14 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Tickets (selected range)",
+      "title": "Tickets (range)",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 8,
         "x": 0,
         "y": 0
       },
@@ -88,15 +99,15 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Tickets (last 24h)",
+      "title": "Tickets (24h)",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 8,
+        "x": 8,
         "y": 0
       },
       "options": {
@@ -137,15 +148,15 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Tickets (last 7d)",
+      "title": "Tickets (7d)",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 8,
+        "x": 16,
         "y": 0
       },
       "options": {
@@ -185,54 +196,8 @@
     },
     {
       "id": 4,
-      "type": "timeseries",
-      "title": "Tickets over time",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 24,
-        "x": 0,
-        "y": 4
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 60,
-            "lineWidth": 1
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": false
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"[support_request]\" [$__interval]))",
-          "editorMode": "code",
-          "queryType": "range"
-        }
-      ]
-    },
-    {
-      "id": 5,
       "type": "table",
-      "title": "Support inbox (newest first)",
+      "title": "Support queue  -  click any row to open its detail below",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -241,7 +206,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 4
       },
       "targets": [
         {
@@ -250,13 +215,14 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{namespace=\"$namespace\"} |= \"[support_request]\" | regexp \"(?P<payload>\\\\{.*\\\\})\" | line_format \"{{ .payload }}\" | json submitted=\"submitted_at\", email=\"user_email\", role=\"user_role\", error=\"error\", task=\"task\", project=\"project\", account=\"account_name\", description=\"description\", correlation_id=\"correlation_id\", runbook=\"runbook.label\", environment=\"environment\" | line_format \"{{.description}}\"",
+          "expr": "{namespace=\"$namespace\"} |= \"[support_request]\" | regexp \"(?P<payload>\\\\{.*\\\\})\" | line_format \"{{ .payload }}\" | json submitted=\"submitted_at\", email=\"user_email\", role=\"user_role\", error=\"error\", task=\"task\", project=\"project\", account=\"account_name\", description=\"description\", summary=\"summary\", trace_id=\"correlation_id\", runbook_label=\"runbook.label\", runbook_url=\"runbook.runbook\", environment=\"environment\"",
           "editorMode": "code",
           "queryType": "range"
         }
       ],
       "options": {
         "showHeader": true,
+        "cellHeight": "md",
         "sortBy": [
           {
             "displayName": "submitted",
@@ -268,8 +234,19 @@
         "defaults": {
           "custom": {
             "align": "left",
-            "filterable": true
-          }
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto",
+              "wrapText": true
+            }
+          },
+          "links": [
+            {
+              "title": "Show this ticket below (and scroll to Ticket detail)",
+              "url": "/d/seqtoid-support-inbox/seqtoid-support-inbox?var-ticket=${__data.fields.trace_id}&${__url_time_range}",
+              "targetBlank": false
+            }
+          ]
         },
         "overrides": [
           {
@@ -280,7 +257,19 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 340
+                "value": 360
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "summary"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 420
               }
             ]
           },
@@ -293,6 +282,36 @@
               {
                 "id": "custom.width",
                 "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "submitted"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "runbook_label"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open runbook",
+                    "url": "${__data.fields.runbook_url}",
+                    "targetBlank": true
+                  }
+                ]
               }
             ]
           }
@@ -312,8 +331,10 @@
               "project",
               "account",
               "description",
-              "correlation_id",
-              "runbook",
+              "summary",
+              "trace_id",
+              "runbook_label",
+              "runbook_url",
               "environment"
             ]
           }
@@ -326,9 +347,12 @@
               "tsNs": true,
               "id": true,
               "labels": true,
-              "Line": false,
+              "Line": true,
               "__error__": true,
-              "__error_details__": true
+              "__error_details__": true,
+              "runbook_url": true,
+              "account": true,
+              "summary": true
             },
             "indexByName": {
               "submitted": 0,
@@ -338,39 +362,41 @@
               "task": 4,
               "project": 5,
               "description": 6,
-              "runbook": 7,
-              "correlation_id": 8,
-              "environment": 9
+              "runbook_label": 7,
+              "environment": 8,
+              "trace_id": 9
             },
             "renameByName": {
-              "correlation_id": "trace id",
-              "Line": "summary"
+              "trace_id": "trace id",
+              "runbook_label": "runbook"
             }
           }
         }
       ]
     },
     {
-      "id": 6,
+      "id": 5,
       "type": "logs",
-      "title": "Ticket detail (expand a line for the full enriched payload + deep-links)",
+      "title": "Ticket detail  -  expand the line for all fields + clickable links   (showing: $ticket)",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
-        "h": 12,
+        "h": 14,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 16
       },
       "options": {
         "showTime": true,
         "wrapLogMessage": true,
         "enableLogDetails": true,
+        "prettifyLogMessage": true,
         "dedupStrategy": "none",
         "sortOrder": "Descending",
-        "prettifyLogMessage": true
+        "showLabels": false,
+        "showCommonLabels": false
       },
       "targets": [
         {
@@ -379,11 +405,26 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{namespace=\"$namespace\"} |= \"[support_request]\"",
+          "expr": "{namespace=\"$namespace\"} |= \"[support_request]\" |~ \"$ticket\" | regexp \"(?P<payload>\\\\{.*\\\\})\" | line_format \"{{ .payload }}\"",
           "editorMode": "code",
           "queryType": "range"
         }
       ]
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "title": "How to use / next steps",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Click any row** in the queue to load that ticket in **Ticket detail** below, then expand the log line to see every field (summary, journey, diagnostics) and click the runbook / CloudWatch / OTel links. Reset by setting the **Ticket** variable back to `.*`.\\n\\n*Deep-links resolve once `OTEL_DASHBOARD_BASE_URL` + `SUPPORT_LOG_GROUP` are set (#472). To assign / status / close tickets (not just view), route them to Jira or Forgejo (Option B) - Grafana is read-only.*"
+      }
     }
   ],
   "annotations": {
