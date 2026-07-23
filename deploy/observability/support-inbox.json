@@ -1,0 +1,393 @@
+{
+  "uid": "seqtoid-support-inbox",
+  "title": "seqtoid - Support Inbox",
+  "tags": [
+    "seqtoid",
+    "support",
+    "loki"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "custom",
+        "label": "Namespace",
+        "query": "seqtoid-dev",
+        "current": {
+          "text": "seqtoid-dev",
+          "value": "seqtoid-dev"
+        },
+        "options": [
+          {
+            "text": "seqtoid-dev",
+            "value": "seqtoid-dev",
+            "selected": true
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Tickets (selected range)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"[support_request]\" [$__range]))",
+          "editorMode": "code",
+          "queryType": "instant"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Tickets (last 24h)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"[support_request]\" [24h]))",
+          "editorMode": "code",
+          "queryType": "instant"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Tickets (last 7d)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"[support_request]\" [7d]))",
+          "editorMode": "code",
+          "queryType": "instant"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Tickets over time",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({namespace=\"$namespace\"} |= \"[support_request]\" [$__interval]))",
+          "editorMode": "code",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Support inbox (newest first)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{namespace=\"$namespace\"} |= \"[support_request]\" | regexp \"(?P<payload>\\\\{.*\\\\})\" | line_format \"{{ .payload }}\" | json submitted=\"submitted_at\", email=\"user_email\", role=\"user_role\", error=\"error\", task=\"task\", project=\"project\", account=\"account_name\", description=\"description\", correlation_id=\"correlation_id\", runbook=\"runbook.label\", environment=\"environment\" | line_format \"{{.description}}\"",
+          "editorMode": "code",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "submitted",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "description"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 340
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "email"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "keepLabels": [
+              "submitted",
+              "email",
+              "role",
+              "error",
+              "task",
+              "project",
+              "account",
+              "description",
+              "correlation_id",
+              "runbook",
+              "environment"
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "tsNs": true,
+              "id": true,
+              "labels": true,
+              "Line": false,
+              "__error__": true,
+              "__error_details__": true
+            },
+            "indexByName": {
+              "submitted": 0,
+              "email": 1,
+              "role": 2,
+              "error": 3,
+              "task": 4,
+              "project": 5,
+              "description": 6,
+              "runbook": 7,
+              "correlation_id": 8,
+              "environment": 9
+            },
+            "renameByName": {
+              "correlation_id": "trace id",
+              "Line": "summary"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "logs",
+      "title": "Ticket detail (expand a line for the full enriched payload + deep-links)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending",
+        "prettifyLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{namespace=\"$namespace\"} |= \"[support_request]\"",
+          "editorMode": "code",
+          "queryType": "range"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "editable": true
+}
