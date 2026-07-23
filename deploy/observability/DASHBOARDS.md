@@ -14,6 +14,8 @@ ConfigMap YAML, and `kubectl apply` it; the sidecar hot-reloads within seconds.
 | `seqtoid-dev-chaos.json` | Dashboard model (edit this) |
 | `grafana-dashboard-seqtoid-dev-platform.yaml` | ConfigMap wrapping the platform JSON |
 | `grafana-dashboard-seqtoid-dev-chaos.yaml` | ConfigMap wrapping the chaos JSON |
+| `support-inbox.json` | Dashboard model (edit this) |
+| `grafana-dashboard-support-inbox.yaml` | ConfigMap wrapping the support-inbox JSON |
 
 Regenerate the ConfigMap from the JSON (indent the JSON 4 spaces under a `<name>.json: |`
 block key, namespace `monitoring`, label `grafana_dashboard: "1"`). Apply with:
