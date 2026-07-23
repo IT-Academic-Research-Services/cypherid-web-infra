@@ -22,11 +22,16 @@ spec:
   source:
     repoURL: https://charts.chaos-mesh.org
     chart: chaos-mesh
-    targetRevision: 2.7.2 # app: Chaos Mesh 2.7.2. Pinned; bump deliberately.
+    targetRevision: 2.8.3 # app: Chaos Mesh 2.8.3 (was 2.7.2). Bumped to pick up the daemon
+    # fixes for the AL2023 cgroup v2 / containerd 2.x path that blocks E2/E5/E6/E7
+    # (network/DNS/HTTP/IO) -- see the chaos-daemon startup error on 2.7.2:
+    #   "grant access to /dev/fuse: fail to find device cgroup" (pkg/fusedev, cgroup-v1 assumption).
+    # Forgejo ticket 836. Pinned; bump deliberately, apply in an authorized chaos window.
     helm:
       values: |
-        # EKS runs containerd. chaos-daemon must point at the containerd socket to
-        # inject pod/network/stress faults; the docker default would silently no-op.
+        # EKS/AL2023 runs containerd 2.x. chaos-daemon must point at the containerd socket to
+        # inject pod/network/stress faults; the docker default would silently no-op. containerd
+        # 2.x keeps the same default socket path.
         chaosDaemon:
           runtime: containerd
           socketPath: /run/containerd/containerd.sock

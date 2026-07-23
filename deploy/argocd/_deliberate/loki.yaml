@@ -37,6 +37,12 @@ spec:
                   period: 24h
           limits_config:
             retention_period: 168h   # 7d
+            # Bound peak query memory: split a long-range query into 24h sub-queries processed in
+            # series rather than decompressing the whole range at once. This is what crash-looped
+            # loki-0 (OOMKilled at 512Mi) under wide-range dashboard queries (support-inbox /
+            # logs-overview count_over_time). Pairs with the memory bump below.
+            split_queries_by_interval: 24h
+            max_query_parallelism: 8
           # Single-binary needs the ingester WAL + a small target; the chart wires the rest.
         singleBinary:
           replicas: 1
@@ -45,8 +51,8 @@ spec:
             storageClass: gp2
             size: 20Gi
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
-            limits: { memory: 512Mi }
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 2Gi }
         # Disable the SimpleScalable components + dev-unneeded extras.
         read:
           replicas: 0

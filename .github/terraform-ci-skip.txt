@@ -29,3 +29,10 @@ terraform/modules/ecs-service-with-alb-v0.421.0
 # providers configured only by the calling stack; standalone validate fails "Provider
 # configuration not present". Validated transitively via {dev,staging,sandbox,prod}/eks.
 terraform/modules/aws-eks-cluster-v0.104.2
+#
+# static-site (STATIC-001): provisions its CloudFront ACM certificate through an
+# injected aws.us-east-1 provider configured only by the calling stack; standalone
+# validate fails "Provider configuration not present". Validated via its .validate/
+# harness and transitively by the consuming env stacks
+# {dev,staging,prod}/{web-assets,helpcenter} added in STATIC-002.
+terraform/modules/static-site
