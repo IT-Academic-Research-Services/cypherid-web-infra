@@ -64,8 +64,10 @@ resource "aws_iam_role_policy" "bulk_download_job" {
 }
 
 resource "aws_cloudwatch_log_group" "bulk_download" {
+  # checkov:skip=CKV_AWS_158:Dev bulk-download operational logs (tar progress/errors) carry no PII or
+  # secrets; unencrypted is consistent with the other dev log groups. KMS CMK is a staging/prod concern.
   name              = "/seqtoid/${var.env}/bulk-download"
-  retention_in_days = 30
+  retention_in_days = 365 # CKV_AWS_338 (>= 1y)
   tags              = var.tags
 }
 

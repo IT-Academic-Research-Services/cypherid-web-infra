@@ -20,6 +20,9 @@ locals {
 }
 
 data "aws_iam_policy_document" "seqtoid_web_bulk_download" {
+  # checkov:skip=CKV_AWS_356:batch:DescribeJobs has no resource-level support in IAM (must be "*"); the
+  # only other unscoped action is TerminateJob, which is addressed by runtime job id. SubmitJob + PassRole are fully scoped.
+  # checkov:skip=CKV_AWS_111:Same rationale -- DescribeJobs/TerminateJob cannot be ARN-constrained; all write-capable grants (SubmitJob, PassRole) are scoped.
   statement {
     sid       = "SubmitBulkDownloadJobs"
     actions   = ["batch:SubmitJob"]
