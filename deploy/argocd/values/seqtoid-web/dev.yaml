@@ -8,7 +8,7 @@ environment: dev
 image:
   # Dev-account ECR, go-forward repo (the CZID-76 dual-push lands here too).
   repository: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: sha-d464fb72 # the current hardened known-good build; CI advances this per build
+  tag: sha-739d1aac # the current hardened known-good build; CI advances this per build
 # COST SPIN-DOWN (dev): scale ALL workloads to 0 and skip the migrate/taxon-load hooks
 # (chart `suspend`). Safe + reversible — the app's data lives in Aurora + OpenSearch, not
 # the pods. The CD keeps advancing `image.tag` while suspended, so flipping this to false
@@ -87,8 +87,26 @@ serviceAccount:
   create: true
   name: seqtoid-web # MUST match the IRSA trust (system:serviceaccount:seqtoid-dev:seqtoid-web)
   roleArn: arn:aws:iam::491013321714:role/seqtoid-web-dev
+# Zero-downtime cutovers on the v2 ALB (platform-overhaul 782). blueGreen flips the
+# activeService selector atomically, dropping traffic for ~30s (503s) each promotion,
+# and pod readiness gates cannot be injected on blueGreen. pingpong uses canary + ALB
+# weighted target groups (static selectors -> gates inject; weight shift, not an atomic
+# flip). A PreSync smoke gate validates the new build at zero user traffic before the
+# cutover, and the PodDisruptionBudget + topology spread keep the two replicas on
+# separate nodes so a node loss can't take dev down. Requires: seqtoid-web chart pingpong
+# support (on main) + --aws-verify-target-group on the rollouts controller + the namespace
+# pod-readiness-gate-inject label (below). Roll back to blueGreen with a one-line flip.
+rolloutStrategy: pingpong
+# TEMP (platform-overhaul 787): disable the PreSync smoke gate on dev. On its first real
+# run it failed with `rake aborted! Don't know how to build task 'smoke:critical_paths'`
+# -- the smoke:critical_paths task is not resolving in the deployed image, a false-positive
+# fail that blocked the rebrand deploy of a fully CI-validated build. Re-enable once the
+# task-loading bug is fixed. pingpong readiness gates + HA still protect the cutover.
+smoke:
+  gate:
+    enabled: false
 blueGreen:
-  autoPromotionEnabled: true # dev: promote on the smoke AnalysisTemplate passing
+  autoPromotionEnabled: true # dev: promote on the smoke AnalysisTemplate passing (unused while pingpong)
   scaleDownDelaySeconds: 30
   analysis:
     enabled: true

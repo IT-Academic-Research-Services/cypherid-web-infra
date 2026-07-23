@@ -1,0 +1,99 @@
+{
+  "uid": "seqtoid-dev-chaos",
+  "title": "Seqtoid Dev - Chaos Engine",
+  "tags": ["seqtoid", "dev", "chaos", "chaos-mesh"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      { "builtIn": 1, "datasource": { "type": "grafana", "uid": "-- Grafana --" }, "enable": true, "hide": true, "name": "Annotations & Alerts", "type": "dashboard" },
+      { "datasource": { "type": "grafana", "uid": "-- Grafana --" }, "enable": true, "hide": false, "iconColor": "red", "name": "Chaos fault window", "type": "dashboard", "tags": ["chaos"] }
+    ]
+  },
+  "panels": [
+    { "id": 100, "type": "row", "title": "Chaos Mesh operator health (chaos-mesh ns)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "id": 1, "type": "stat", "title": "Chaos-mesh pods ready",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(kube_pod_status_ready{namespace=\"chaos-mesh\",condition=\"true\"})" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Chaos-mesh pods NOT ready",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "count(kube_pod_status_ready{namespace=\"chaos-mesh\",condition=\"true\"} == 0)" } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Chaos-mesh pod ready state by pod",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kube_pod_status_ready{namespace=\"chaos-mesh\",condition=\"true\"}", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Chaos-mesh restarts (total) by pod",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kube_pod_container_status_restarts_total{namespace=\"chaos-mesh\"}", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Chaos-mesh pods by phase",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "stacking": { "mode": "normal" }, "fillOpacity": 30 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(kube_pod_status_phase{namespace=\"chaos-mesh\"}) by (phase)", "legendFormat": "{{phase}}" } ]
+    },
+    { "id": 200, "type": "row", "title": "Blast radius on seqtoid-dev (overlay chaos fault windows here)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 } },
+    {
+      "id": 10, "type": "text", "title": "How to use this row",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 18 },
+      "options": { "mode": "markdown", "content": "These panels show the **impact of chaos experiments** on the `seqtoid-dev` workload. Run an experiment from `deploy/chaos/experiments/` (e.g. `e1-pod-kill`, `e3-stress`) and watch pods drop out of ready, restart, or spike CPU/memory here, then recover.\n\n**Fault-window overlay:** add a Grafana region annotation tagged `chaos` (or wire your chaos runner to POST to the Grafana annotations API with that tag) so every panel shows the exact experiment window. The `Chaos fault window` annotation layer (top of dashboard) is pre-configured to render tag `chaos`.\n\n**SLO probe (deferred):** the steady-state gate at `chaos-slo-probe.chaos-mesh` returns a JSON verdict on-demand and is **not** scraped by Prometheus - see `DASHBOARDS.md` for the follow-up to graph `steady_state` here." }
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "seqtoid-dev pod ready state by pod (drops == fault impact)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kube_pod_status_ready{namespace=\"seqtoid-dev\",condition=\"true\"}", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "seqtoid-dev restart rate (5m) by pod",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kube_pod_container_status_restarts_total{namespace=\"seqtoid-dev\"}[5m])) by (pod)", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "seqtoid-dev CPU cores by pod (stress-cpu impact)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"seqtoid-dev\",container!=\"\"}[5m])) by (pod)", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "seqtoid-dev memory working set by pod (stress-mem impact)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(container_memory_working_set_bytes{namespace=\"seqtoid-dev\",container!=\"\"}) by (pod)", "legendFormat": "{{pod}}" } ]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Argo Rollout available replicas (recovery after fault)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 38 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "rollout_info_replicas_available{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}", "legendFormat": "available" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "rollout_info_replicas_desired{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}", "legendFormat": "desired" }
+      ]
+    }
+  ]
+}

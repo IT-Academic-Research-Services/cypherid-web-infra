@@ -1,0 +1,132 @@
+# P3 -- scratch-volume exhaustion (platform-overhaul #794/#808). THE FLAGSHIP. Instantiates ../../templates/dual-gate.yaml.
+#
+# Turns the NT/NR scratch-disk exhaustion incident (#799) from "found in production" into "proven
+# fixed, on a schedule, on a disposable copy." Hypothesis: filling the index-generation scratch EBS
+# near-full during a sandbox run does NOT fail the run or corrupt output, because the per-DB
+# split-volume fix isolates NT from NR -- the run completes and still holds AUPR >= 0.98.
+#
+# FAULT: a guarded, sandbox-only Batch "disk-filler" job that dd's the scratch mount toward full on
+# the idseq-dev-chaos index-generation compute environment while a benchmark index-generation runs.
+# The inject container sources the fail-closed guard (_sandbox-guard.yaml): it refuses to submit onto
+# any queue that is not idseq-dev-chaos-* AND tagged seqtoid.io/chaos-sandbox=true.
+#
+# TRANSIENT ONLY: fills a scratch volume on a running instance; the volume is reclaimed when the job
+# ends / the instance scales in. Never touches the job definition, the compute env, or persistent data.
+#
+# NOT DEPLOYED. Apply only after the split-volume fix is confirmed present on the sandbox job def and
+# recovery is proven (README build order).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: dual-gate-p3-scratch-exhaustion
+  namespace: chaos-mesh
+spec:
+  entry: dual-gate
+  templates:
+    - name: dual-gate
+      templateType: Serial
+      deadline: 55m # index-generation + a filler job; the longest P-series run
+      children:
+        - preflight-both-gates
+        - inject-and-assert
+        - verdict
+
+    - name: preflight-both-gates
+      templateType: StatusCheck
+      deadline: 3m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        http:
+          url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: inject-and-assert
+      templateType: Parallel
+      deadline: 50m
+      children:
+        - guard-then-exhaust-scratch
+        - availability-gate
+        - accuracy-gate
+
+    # ---- FAULT: guard first, then submit a sandbox-only disk-filler onto the index-gen queue. ----
+    - name: guard-then-exhaust-scratch
+      templateType: Task
+      task:
+        container:
+          name: inject
+          image: chaos-pipeline-inject:latest
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              source /guard/guard.sh
+              # TODO: pin the exact sandbox index-generation queue + job definition names once the
+              # sandbox is applied. Both are deterministic mirrors of dev:
+              #   queue  = idseq-dev-chaos-<index-generation-queue-suffix>
+              #   jobdef = idseq-dev-chaos-<index-generation-jobdef-suffix>
+              QUEUE="idseq-dev-chaos-REPLACE-index-generation-queue"
+              JOBDEF="idseq-dev-chaos-REPLACE-index-generation-jobdef"
+              QUEUE_ARN="$(aws batch describe-job-queues --job-queues "$QUEUE" \
+                             --query 'jobQueues[0].jobQueueArn' --output text)"
+              # Fail-closed guard: refuse unless this is a dev-chaos, tagged queue.
+              assert_sandbox_target "$QUEUE_ARN"
+              # Submit a filler that dd's the scratch mount toward full. Container command override
+              # only; no job-definition mutation. --reason marks it as a chaos artifact.
+              aws batch submit-job \
+                --job-name "chaos-p3-scratch-filler" \
+                --job-queue "$QUEUE" \
+                --job-definition "$JOBDEF" \
+                --tags "seqtoid.io/chaos-sandbox=true,seqtoid.io/chaos-experiment=p3" \
+                --container-overrides '{
+                  "command": ["/bin/sh","-c",
+                    "df -h /scratch || true; dd if=/dev/zero of=/scratch/chaos-p3-fill bs=1M count=200000 || true; sleep 600; rm -f /scratch/chaos-p3-fill"]
+                }'
+              echo "submitted scratch-filler onto $QUEUE; split-volume fix must keep the run alive" >&2
+          volumeMounts:
+            - name: guard
+              mountPath: /guard
+        volumes:
+          - name: guard
+            configMap:
+              name: chaos-sandbox-guard
+              defaultMode: 0555
+
+    - name: availability-gate
+      templateType: StatusCheck
+      deadline: 48m
+      statusCheck:
+        mode: Continuous
+        type: HTTP
+        duration: 46m
+        intervalSeconds: 10
+        failureThreshold: 3
+        recordsHistoryLimit: 300
+        http:
+          url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state?scope=pipeline-dev-chaos
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: accuracy-gate
+      templateType: StatusCheck
+      deadline: 50m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        timeoutSeconds: 2700
+        http:
+          url: http://chaos-accuracy-probe.chaos-mesh.svc.cluster.local/run-under-fault?scope=dev-chaos
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: verdict
+      templateType: Task
+      task:
+        container:
+          name: verdict
+          image: chaos-report:latest
+          command: ["/report", "--experiment", "dual-gate-p3-scratch-exhaustion"]

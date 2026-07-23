@@ -113,6 +113,13 @@ jobs:
     uses: ./.github/workflows/plan_component_call.yml
     with:
       environment: ${{ needs.should-plan.outputs.environment }}
+      # Plan is read-only, so it can safely run on any branch for PR review. On a
+      # FEATURE branch, dev routes through the all-branches `dev-plan` environment so
+      # the branch-gate doesn't block it. On `main` it stays on the `dev` environment
+      # -- which keeps env-scoped secrets (e.g. auth0's AUTH0_* Management-API creds,
+      # unavailable under dev-plan) reachable, so the on-main dev plan is unchanged.
+      # staging/prod always keep their env's main-only gate. Apply is unaffected.
+      github_environment: ${{ (needs.should-plan.outputs.environment == 'dev' && github.ref_name != 'main') && 'dev-plan' || needs.should-plan.outputs.environment }}
       component: ${{ matrix.component }}
     secrets: inherit
 

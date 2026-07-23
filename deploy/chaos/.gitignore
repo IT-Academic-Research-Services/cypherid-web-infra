@@ -1,0 +1,4 @@
+
+# Python bytecode caches (chaos report/checker helpers)
+__pycache__/
+*.pyc

@@ -91,6 +91,11 @@ spec:
         managedNamespaceMetadata:
           labels:
             seqtoid.io/preview: "true"
+            # Pod readiness gates for zero-downtime ping-pong cutovers (platform-
+            # overhaul 782). A web pod is not Ready until its ALB target is healthy, so
+            # the Rollout won't shift weight / scale down the old color until the new
+            # color serves. Harmless on single-replica sandboxes / blueGreen charts.
+            elbv2.k8s.aws/pod-readiness-gate-inject: enabled
         automated:
           prune: true
           selfHeal: true

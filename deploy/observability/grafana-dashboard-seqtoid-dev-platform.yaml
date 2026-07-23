@@ -1,0 +1,900 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-seqtoid-dev-platform
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  seqtoid-dev-platform.json: |
+    {
+      "uid": "seqtoid-dev-platform",
+      "title": "Seqtoid Dev - Platform Overview",
+      "tags": [
+        "seqtoid",
+        "dev",
+        "platform",
+        "overview"
+      ],
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "region",
+            "type": "custom",
+            "query": "us-west-2",
+            "current": {
+              "text": "us-west-2",
+              "value": "us-west-2"
+            }
+          },
+          {
+            "name": "alb",
+            "type": "custom",
+            "query": "app/k8s-seqtoidd-cziddevs-c4552c1c21/f5632d3be5837a88",
+            "current": {
+              "text": "dev-web-alb",
+              "value": "app/k8s-seqtoidd-cziddevs-c4552c1c21/f5632d3be5837a88"
+            },
+            "label": "Dev web ALB"
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 100,
+          "type": "row",
+          "title": "Workload health (kube-state-metrics)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Pods ready (seqtoid-dev)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(kube_pod_status_ready{namespace=\"seqtoid-dev\",condition=\"true\"})"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Rollout available replicas (web)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "colorMode": "value",
+            "graphMode": "area"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rollout_info_replicas_available{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Pod ready state by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 16,
+            "x": 8,
+            "y": 1
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "max": 1,
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 15
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "kube_pod_status_ready{namespace=\"seqtoid-dev\",condition=\"true\"}",
+              "legendFormat": "{{pod}}"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Container restarts (total) by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "kube_pod_container_status_restarts_total{namespace=\"seqtoid-dev\"}",
+              "legendFormat": "{{pod}}/{{container}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Container restart rate (15m) by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(kube_pod_container_status_restarts_total{namespace=\"seqtoid-dev\"}[15m])) by (pod)",
+              "legendFormat": "{{pod}}"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Pods by phase",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 9
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "stacking": {
+                  "mode": "normal"
+                },
+                "fillOpacity": 30
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(kube_pod_status_phase{namespace=\"seqtoid-dev\"}) by (phase)",
+              "legendFormat": "{{phase}}"
+            }
+          ]
+        },
+        {
+          "id": 200,
+          "type": "row",
+          "title": "Argo Rollout (czid-dev-seqtoid-web)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Rollout replicas (available / desired / updated / unavailable)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rollout_info_replicas_available{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}",
+              "legendFormat": "available"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rollout_info_replicas_desired{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}",
+              "legendFormat": "desired"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rollout_info_replicas_updated{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}",
+              "legendFormat": "updated"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rollout_info_replicas_unavailable{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}",
+              "legendFormat": "unavailable"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Rollout phase (active == 1)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "max": 1,
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "fillOpacity": 20
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rollout_phase{exported_namespace=\"seqtoid-dev\",name=\"czid-dev-seqtoid-web\"}",
+              "legendFormat": "{{phase}}"
+            }
+          ]
+        },
+        {
+          "id": 300,
+          "type": "row",
+          "title": "Resource usage (cAdvisor)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 26
+          }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "CPU cores by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 27
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"seqtoid-dev\",container!=\"\"}[5m])) by (pod)",
+              "legendFormat": "{{pod}}"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Memory working set by pod",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 27
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"seqtoid-dev\",container!=\"\"}) by (pod)",
+              "legendFormat": "{{pod}}"
+            }
+          ]
+        },
+        {
+          "id": 400,
+          "type": "row",
+          "title": "Node health (node-exporter)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 35
+          }
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Node CPU %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 36
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * (1 - avg by(instance)(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+              "legendFormat": "{{instance}}"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Node memory used %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 36
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+              "legendFormat": "{{instance}}"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Node root disk used %",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 36
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"})",
+              "legendFormat": "{{instance}}"
+            }
+          ]
+        },
+        {
+          "id": 500,
+          "type": "row",
+          "title": "Dev web ALB (CloudWatch AWS/ApplicationELB)",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 44
+          }
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "Request count",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 45
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "RequestCount",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "Sum",
+              "matchExact": true,
+              "period": "300",
+              "label": "requests"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Target response time (p50 / p90 / p99)",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 45
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "TargetResponseTime",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "p50",
+              "matchExact": true,
+              "period": "300",
+              "label": "p50"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "TargetResponseTime",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "p90",
+              "matchExact": true,
+              "period": "300",
+              "label": "p90"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "TargetResponseTime",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "p99",
+              "matchExact": true,
+              "period": "300",
+              "label": "p99"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "5xx (target + ELB)",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 53
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "HTTPCode_Target_5XX_Count",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "Sum",
+              "matchExact": true,
+              "period": "300",
+              "label": "target 5xx"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "HTTPCode_ELB_5XX_Count",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "Sum",
+              "matchExact": true,
+              "period": "300",
+              "label": "elb 5xx"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Healthy / unhealthy hosts",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 53
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "HealthyHostCount",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "Average",
+              "matchExact": true,
+              "period": "300",
+              "label": "healthy"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "cloudwatch",
+                "uid": "cloudwatch"
+              },
+              "region": "$region",
+              "namespace": "AWS/ApplicationELB",
+              "metricName": "UnHealthyHostCount",
+              "dimensions": {
+                "LoadBalancer": "$alb"
+              },
+              "statistic": "Average",
+              "matchExact": true,
+              "period": "300",
+              "label": "unhealthy"
+            }
+          ]
+        }
+      ]
+    }
