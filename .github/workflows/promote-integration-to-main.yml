@@ -96,9 +96,29 @@ jobs:
             echo "Reusing open promotion PR #${existing}."
           fi
 
-          # Enable auto-merge so the PR lands when main's required checks pass. But on infra, main's
-          # required checks frequently all skip -> the PR is immediately CLEAN and `gh pr merge --auto`
-          # errors ("Pull request is in clean status"), leaving the roll-up open. Fall back to a direct
-          # merge so a check-free promotion still lands unattended. Rock solid, not flaky.
-          gh pr merge integration --auto --merge --subject "${title}" \
-            || gh pr merge integration --merge --subject "${title}"
+          # Land the promotion PR unattended. Two distinct failure modes have to be handled:
+          #   1. When main's required checks all skip, the PR is immediately CLEAN and
+          #      `gh pr merge --auto` is REJECTED ("Pull request is in clean status").
+          #   2. A freshly-opened PR briefly reports clean BEFORE its checks register, so falling
+          #      straight through to a direct merge races the queue and fails with
+          #      "N of N required status checks are queued".
+          # So: try auto-merge first; if it is rejected, RETRY the direct merge until branch
+          # protection actually allows it. Retrying is safe -- protection refuses the merge while
+          # checks are queued/running/failing, so this can only succeed once main's gates are
+          # genuinely satisfied. It never force-merges a red PR; it just stops racing the queue.
+          if gh pr merge integration --auto --merge --subject "${title}"; then
+            echo "auto-merge enabled; the PR will land when main's required checks pass."
+            exit 0
+          fi
+
+          echo "auto-merge unavailable (PR already clean); waiting for branch protection to allow the merge..."
+          for attempt in $(seq 1 40); do
+            if gh pr merge integration --merge --subject "${title}"; then
+              echo "promotion merged on attempt ${attempt}."
+              exit 0
+            fi
+            echo "not mergeable yet (checks queued/running); retrying in 30s [${attempt}/40]"
+            sleep 30
+          done
+          echo "::error::promotion PR was still not mergeable after ~20 minutes -- check its required checks."
+          exit 1
