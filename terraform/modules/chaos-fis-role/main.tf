@@ -32,11 +32,21 @@ data "aws_iam_policy_document" "permissions" {
   }
   # The actual fault: terminate a targeted instance. Karpenter re-provisions; the PDB +
   # topology spread keep the app serving. This is the whole point of E4.
+  #
+  # SCOPED: terminate is allowed ONLY on instances carrying the tag the FIS experiment
+  # template targets (var.terminate_target_tag_*). Even if a template were misconfigured,
+  # this role physically cannot terminate an instance that is not tagged for chaos -- the
+  # IAM condition and the template's target filter are the same tag, kept in lockstep.
   statement {
-    sid       = "TerminateInstances"
+    sid       = "TerminateTaggedInstances"
     effect    = "Allow"
     actions   = ["ec2:TerminateInstances"]
-    resources = ["*"]
+    resources = ["arn:aws:ec2:*:*:instance/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:ResourceTag/${var.terminate_target_tag_key}"
+      values   = var.terminate_target_tag_values
+    }
   }
   # Read the CloudWatch alarm used as the experiment stop-condition (halts the experiment
   # if the ALB starts throwing 5xx -- the fail-safe for the infra layer).
