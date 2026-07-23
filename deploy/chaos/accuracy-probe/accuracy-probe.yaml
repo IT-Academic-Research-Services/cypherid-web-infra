@@ -66,7 +66,7 @@ data:
     # Reads /etc/chaos/accuracy.yaml. AUPR gate logic is a faithful copy of the canonical
     # aupr_regressions() in seqtoid-workflows .../auto_benchmark/harvest.py (SSOT; unit-tested in
     # test_harvest_aupr_gate.py). Integrity reuses the app's compute_fingerprint via integrity_url.
-    import json, re, time, urllib.parse, urllib.request
+    import json, os, re, time, urllib.parse, urllib.request
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     CFG_PATH = "/etc/chaos/accuracy.yaml"
@@ -96,15 +96,24 @@ data:
                     regressions.append([sample, key, value])
         return regressions
 
-    def http_json(url, method="GET", timeout=10):
+    def http_json(url, method="GET", timeout=10, headers=None):
         req = urllib.request.Request(url, method=method)
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
         with urllib.request.urlopen(req, timeout=timeout) as r:
             body = r.read().decode() or "{}"
         return json.loads(body)
 
     def integrity(cfg):
+        # The app-side integrity endpoint (Internal::ChaosController) is bearer-token gated and fail
+        # closed. The token rides in from the chaos-reporter secret (envFrom) as CHAOS_INTEGRITY_TOKEN;
+        # without it the app returns 503 and this gate fails closed, which is the correct default.
+        headers = {}
+        token = os.environ.get("CHAOS_INTEGRITY_TOKEN", "")
+        if token:
+            headers["Authorization"] = "Bearer " + token
         try:
-            d = http_json(cfg["integrity_url"], timeout=30)
+            d = http_json(cfg["integrity_url"], timeout=30, headers=headers)
             return bool(d.get("integrity_ok")), d.get("mismatches", [])
         except Exception as e:
             return False, [{"error": str(e)}]
