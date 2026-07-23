@@ -39,6 +39,7 @@ data "aws_iam_policy_document" "bulk_download_job" {
     actions = ["s3:ListBucket"]
     resources = [
       "arn:aws:s3:::${var.s3_bucket_samples}",
+      "arn:aws:s3:::${var.s3_bucket_samples_v1}",
       "arn:aws:s3:::${var.s3_bucket_public_references}",
     ]
   }
@@ -47,13 +48,17 @@ data "aws_iam_policy_document" "bulk_download_job" {
     actions = ["s3:GetObject"]
     resources = [
       "arn:aws:s3:::${var.s3_bucket_samples}/*",
+      "arn:aws:s3:::${var.s3_bucket_samples_v1}/*",
       "arn:aws:s3:::${var.s3_bucket_public_references}/*",
     ]
   }
   statement {
+    # Downloads are written to SAMPLES_BUCKET_NAME_V1 (the app's download_bucket_name =
+    # s3_bucket_samples_v1), NOT the plain samples bucket. Verified on dev:
+    # SAMPLES_BUCKET_NAME_V1=czi-infectious-disease-dev-samples-<acct>.
     sid       = "WriteArchive"
     actions   = ["s3:PutObject"]
-    resources = ["arn:aws:s3:::${var.s3_bucket_samples}/*"]
+    resources = ["arn:aws:s3:::${var.s3_bucket_samples_v1}/*"]
   }
 }
 
