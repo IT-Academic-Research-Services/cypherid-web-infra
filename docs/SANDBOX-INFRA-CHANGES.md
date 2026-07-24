@@ -28,22 +28,37 @@ sandbox must not be able to write real data. Widen it only with intent.
 ## Adding S3 permissions
 
 1. Edit the role's inline policy in
-   `terraform/envs/dev/web/eks-irsa-preview.tf`. Add the specific
-   `arn:aws:s3:::<bucket>` and `arn:aws:s3:::<bucket>/<prefix>/*` ARNs and the
-   exact actions you need (e.g. `s3:GetObject`, `s3:PutObject`). Do not broaden to
-   whole buckets or `*` -- the reviewer will bounce it.
+   `terraform/envs/dev/web/eks-irsa-preview.tf`. Find
+   `resource "aws_iam_role_policy" "seqtoid_web_preview_s3"` and add a statement
+   with the specific ARNs and the exact actions you need. Do not broaden to whole
+   buckets or `*` -- the reviewer will bounce it. `s3:ListBucket` takes the BUCKET
+   arn; object actions take the `/<prefix>/*` arn:
+
+   ```hcl
+   statement {
+     sid       = "MySandboxExtraBuckets"
+     effect    = "Allow"
+     actions   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+     resources = [
+       "arn:aws:s3:::your-bucket",             # ListBucket -> bucket arn
+       "arn:aws:s3:::your-bucket/your/prefix/*" # Get/Put   -> object arn
+     ]
+   }
+   ```
 2. Open a PR into `integration` like any other change.
 3. After merge, an admin applies it via the **reviewer-gated targeted-apply**
-   workflow (`.github/workflows/targeted-apply.yml`):
-   - `environment`: `dev`
-   - `component`: `web`
-   - `targets`: the resource address(es), e.g.
-     `aws_iam_role_policy.seqtoid_web_preview_s3` (whatever your edit touches)
-   - `reason`: a one-line audit note
-   IAM changes need admin credentials (CI is blocked from self-modifying IAM by
-   `DenyCIIdentitySelfModification`), so ping the infra owner to run the apply --
-   you cannot run it yourself. Confirm the plan is **adds/changes only, no
-   destroys** before it is approved.
+   workflow. IAM changes need admin credentials (CI is blocked from self-modifying
+   IAM by `DenyCIIdentitySelfModification`), so you cannot run it yourself -- ping
+   the infra owner to run:
+
+   ```bash
+   gh workflow run targeted-apply.yml -R IT-Academic-Research-Services/cypherid-web-infra \
+     -f environment=dev -f component=web \
+     -f targets=aws_iam_role_policy.seqtoid_web_preview_s3 \
+     -f reason="grant pr-<N> sandbox S3 access to your-bucket/your/prefix"
+   ```
+
+   Confirm the plan is **adds/changes only, no destroys** before it is approved.
 4. Re-provision or restart your sandbox pods so they pick up the widened role
    (the role is assumed at pod start).
 
