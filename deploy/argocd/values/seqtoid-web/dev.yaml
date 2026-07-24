@@ -165,3 +165,15 @@ ingress:
   certificateArn: arn:aws:acm:us-west-2:491013321714:certificate/9881060c-5652-40b6-9132-72a94171e18b
   annotations:
     alb.ingress.kubernetes.io/subnets: subnet-06bfffadf91e2c189,subnet-0f94623d782341d71
+
+# Dev runs RAILS_ENV=development, whose deployed-logging block defaults to :debug.
+# At :debug ActiveRecord echoes every statement WITH its bound values, so the resque
+# worker wrote whole `INSERT INTO contigs` statements including the `sequence`
+# column -- measured single lines up to 484 KB, a 12 KB mean against a 106 B median,
+# and about three quarters of all container log bytes in the namespace from that one
+# process. Beyond the volume, that puts sample sequence content verbatim into a log
+# stream that ships to an aggregator and would ship to a third-party log vendor.
+# sandbox/staging/prod are already :info and never had this.
+extraEnv:
+  - name: RAILS_LOG_LEVEL
+    value: "info"
