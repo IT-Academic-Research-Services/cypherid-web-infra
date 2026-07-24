@@ -175,7 +175,7 @@ guardrails, staggered across the overnight window, `mode: one`, duration-bounded
 
 | # | File | Fault | Validates |
 |---|------|-------|-----------|
-| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
+| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. **Requires a volume-backed target**: IOChaos wraps a volume MOUNT in FUSE and cannot touch a container's overlay filesystem, so the web Rollout must mount the chart's `scratchVolume` emptyDir at `/tmp` (enabled for dev) or this experiment has nothing to attach to. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
 | E6 | `experiments/e6-dns.yaml` | `DNSChaos` resolution failure for `*.es.amazonaws.com` / `*.rds.amazonaws.com` | dependency DNS failure degrades cleanly + recovers, no crashloop (the OpenSearch-timeout / sandbox-NXDOMAIN class) |
 | E7 | `experiments/e7-http-fit.yaml` | `HTTPChaos` abort 30% of outbound 443 calls | Netflix **FIT**: a partial dependency brownout is absorbed by retries/timeouts, not a user-facing storm |
 | E8 | `experiments/e8-time.yaml` | `TimeChaos` -10m clock skew | JWT/TLS/date-versioning tolerate drift or fail cleanly |
@@ -273,6 +273,16 @@ deliberate and reversible:
 8.  **Deploy the SLO probe:** `kubectl apply -f deploy/chaos/slo-probe/slo-probe.yaml`
     (needs the LGTM/Mimir stack up). Verify `GET /steady-state` returns 200 on a healthy
     system, then repoint experiment `StatusCheck` URLs from `/health_check` to the probe.
+8b. **Deploy the benchmark trigger (arms the AUPR half of the accuracy gate):**
+    `kubectl apply -f deploy/chaos/benchmark-trigger/benchmark-trigger.yaml`. It needs
+    `GITHUB_TOKEN` in the `chaos-reporter` secret (`actions:read` + `actions:write` +
+    `contents:read` on `IT-Academic-Research-Services/seqtoid-workflows`); without it the
+    service answers 503 and the gate fails closed. Verify the FREE path first --
+    `GET /status` with no handle returns the last successful benchmark's per-sample AUPR and
+    dispatches nothing -- before flipping `require_aupr: true` in
+    `accuracy-probe/accuracy-probe.yaml`. Note `POST /start` runs a REAL benchmark
+    (pipeline per sample); never put it on a frequent schedule, and calibrate `aupr_min`
+    against a known-good run first.
 9.  **Apply E5-E8** one at a time, morning-after review, ticket findings (as E1-E3).
 10. **FIS AZ + RDS-failover** templates (`terraform apply` via CI), run attended first.
 11. **Stand up the pipeline `-chaos` sandbox** (its own `terraform` workspace/prefix),

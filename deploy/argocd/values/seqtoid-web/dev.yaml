@@ -124,6 +124,33 @@ resources:
     memory: 1280Mi
   limits:
     memory: 2Gi
+# Chaos E5 (IOChaos): give the web pod a REAL volume mount for its temp writes.
+#
+# Chaos Mesh IOChaos injects a FUSE layer over a VOLUME MOUNT; it cannot intercept a
+# container's overlay/root filesystem. The web pod had no volume at all -- verified live, its
+# only volumes were the projected service-account tokens -- so /tmp was overlay and E5 had
+# nothing to attach to. This mounts an emptyDir at /tmp so the experiment has a target.
+#
+# /tmp is the meaningful path, not a synthetic one: TMPDIR is unset in the image, so Ruby's
+# Dir.tmpdir resolves to /tmp and every Tempfile lands there (phylo tree export, AMR BAI/BAM
+# slicing, mngs read-stats load), as does Rack's multipart buffering; PipelineRun's
+# LOCAL_JSON_PATH (/tmp/results_json) and the bulk-download TSV/BIOM writers hardcode it.
+#
+# Safe: Rails tmp is already ephemeral and the pod is stateless (data lives in Aurora /
+# OpenSearch / S3), so an emptyDir is exactly the storage semantics the app already assumes.
+# The chart's init container keeps behavior identical -- see the scratchVolume comment in the
+# chart's values.yaml for why TMPDIR must point at a 0700 subdir of the mount (the kubelet
+# creates emptyDir 0777 non-sticky and Ruby's Dir.tmpdir rejects that).
+#
+# DEV ONLY and deliberately not enabled anywhere else. This does NOT arm any experiment --
+# arming is a separate namespace annotation, and seqtoid-dev carries none.
+scratchVolume:
+  enabled: true
+  # 2Gi is generous on purpose: exceeding an emptyDir sizeLimit EVICTS the pod, and these
+  # same writes are unbounded against node ephemeral storage today, so a tight cap would be a
+  # regression, not a safeguard. Web-tier temp writes are small; the large bulk-download
+  # assembly runs in the resque workers, which are untouched.
+  sizeLimit: 2Gi
 autoscaling:
   enabled: false
 ingress:
