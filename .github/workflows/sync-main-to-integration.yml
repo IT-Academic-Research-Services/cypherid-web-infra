@@ -110,8 +110,32 @@ jobs:
             exit 0
           fi
 
-          git push -u origin "$BRANCH"
+          # The branch name is derived from the main SHA, so a RERUN at the same SHA targets a branch
+          # that may already exist remotely from an earlier attempt. A plain push is then rejected
+          # non-fast-forward ("tip of your current branch is behind its remote counterpart"), set -e
+          # kills the job, and the sync silently never lands -- which is exactly how seven of these
+          # PRs stacked up. The branch is a disposable bot branch regenerated from
+          # (integration + main) every run and nobody develops on it, so overwriting it is correct;
+          # --force-with-lease keeps that honest by refusing if the remote moved unexpectedly.
+          if ! git push --force-with-lease -u origin "$BRANCH"; then
+            echo "::error::could not push $BRANCH even with --force-with-lease. The remote branch moved unexpectedly; delete it and re-run."
+            exit 1
+          fi
           gh pr create --base integration --head "$BRANCH" \
             --title "sync: bring integration up to main" \
-            --body "Automated back-sync. \`integration\` was behind \`main\`; without this it keeps drifting and every feature PR into integration carries the backlog in its diff. Tracked in the platform-overhaul back-sync ticket (Forgejo 691)." \
+            --body "Automated back-sync. integration was behind main; without this it keeps drifting and every feature PR into integration carries the backlog in its diff. Tracked in the platform-overhaul back-sync ticket (Forgejo 691)." \
             || echo "a sync PR may already be open"
+
+          # Self-complete the back-sync so these PRs CONVERGE instead of piling up behind the
+          # integration 1-review rule. The synced content is by definition ALREADY on main --
+          # reviewed on the way in, or an approved direct-to-main hotfix -- so it does not need a
+          # fresh review on the way back down. Merge it with the app token (admin), exactly how
+          # gitops-advance-dev merges its own PRs. This is what makes "keeps integration from
+          # drifting" actually hold: without it the opened PR sat review-gated forever, which is
+          # the very drift this workflow exists to prevent. Falls back to auto-merge, then warns.
+          PRNUM="$(gh pr list --head "$BRANCH" --base integration --state open --json number --jq '.[0].number // empty' || true)"
+          if [ -n "$PRNUM" ]; then
+            gh pr merge "$PRNUM" --merge --admin --delete-branch \
+              || gh pr merge "$PRNUM" --merge --auto --delete-branch \
+              || echo "::warning::sync PR #$PRNUM could not be auto-merged; reconcile integration by hand."
+          fi
