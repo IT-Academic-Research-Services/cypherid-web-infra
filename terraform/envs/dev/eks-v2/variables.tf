@@ -33,8 +33,7 @@ locals {
     data.terraform_remote_state.access-management.outputs.gh_actions_plan_role.name,
   ]
 
-  cluster_name            = var.eks_cluster_name
-  iam_cluster_name_prefix = null
+  cluster_name = var.eks_cluster_name
 
   # Public API endpoint allow-list. During bring-up this defaults to 0.0.0.0/0
   # (see var.eks_public_access_cidrs in terraform.tf) so kubectl/Argo can reach the
