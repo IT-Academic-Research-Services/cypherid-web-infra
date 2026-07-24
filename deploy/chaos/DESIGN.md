@@ -175,7 +175,7 @@ guardrails, staggered across the overnight window, `mode: one`, duration-bounded
 
 | # | File | Fault | Validates |
 |---|------|-------|-----------|
-| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
+| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. **Requires a volume-backed target**: IOChaos wraps a volume MOUNT in FUSE and cannot touch a container's overlay filesystem, so the web Rollout must mount the chart's `scratchVolume` emptyDir at `/tmp` (enabled for dev) or this experiment has nothing to attach to. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
 | E6 | `experiments/e6-dns.yaml` | `DNSChaos` resolution failure for `*.es.amazonaws.com` / `*.rds.amazonaws.com` | dependency DNS failure degrades cleanly + recovers, no crashloop (the OpenSearch-timeout / sandbox-NXDOMAIN class) |
 | E7 | `experiments/e7-http-fit.yaml` | `HTTPChaos` abort 30% of outbound 443 calls | Netflix **FIT**: a partial dependency brownout is absorbed by retries/timeouts, not a user-facing storm |
 | E8 | `experiments/e8-time.yaml` | `TimeChaos` -10m clock skew | JWT/TLS/date-versioning tolerate drift or fail cleanly |
