@@ -38,6 +38,16 @@ rules:
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
     verbs: ["get", "list", "patch"]
+  # Attempt counters live in a ConfigMap this reaper owns. `create` cannot be
+  # restricted by resourceName (the name is not known at admission time), so it is
+  # granted unqualified; read/write are pinned to the single state object.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["preview-resync-reaper-state"]
+    verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -65,6 +75,7 @@ data:
     import json
     import os
     import ssl
+    import urllib.error
     import urllib.request
 
     API = "https://kubernetes.default.svc"
@@ -72,13 +83,24 @@ data:
     PREFIX = os.environ.get("APP_NAME_PREFIX", "seqtoid-pr-")
     MAX_ATTEMPTS = int(os.environ.get("MAX_RESYNC_ATTEMPTS", "3"))
     DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"
-    ATTEMPT_ANN = "seqtoid.io/auto-resync-attempts"
+
+    # Attempt counts live in a ConfigMap this reaper owns outright, NOT in an
+    # annotation on the Application. The first implementation put the counter in an
+    # annotation and set it in the same merge-patch that set `.operation`. The Argo
+    # controller consumes `.operation`, moves it to status.operationState and strips
+    # the field with its own write -- and that write clobbered the annotation. The
+    # counter never persisted, so the cap never engaged and a failing app would have
+    # been re-synced every 10 minutes forever, which is the exact runaway the cap
+    # exists to prevent. Argo owns the Application object; do not try to store our
+    # state on it.
+    STATE_CM = os.environ.get("STATE_CONFIGMAP", "preview-resync-reaper-state")
 
     SA = "/var/run/secrets/kubernetes.io/serviceaccount"
     with open(f"{SA}/token") as fh:
         TOKEN = fh.read().strip()
     CTX = ssl.create_default_context(cafile=f"{SA}/ca.crt")
     BASE = f"{API}/apis/argoproj.io/v1alpha1/namespaces/{NS}/applications"
+    CM_BASE = f"{API}/api/v1/namespaces/{NS}/configmaps"
 
 
     def call(method, url, body=None, content_type="application/json"):
@@ -87,22 +109,52 @@ data:
         req.add_header("Authorization", f"Bearer {TOKEN}")
         if data:
             req.add_header("Content-Type", content_type)
-        with urllib.request.urlopen(req, context=CTX, timeout=30) as resp:
-            return json.loads(resp.read() or "{}")
+        try:
+            with urllib.request.urlopen(req, context=CTX, timeout=30) as resp:
+                return json.loads(resp.read() or "{}")
+        except urllib.error.HTTPError as err:
+            if err.code == 404:
+                return None
+            raise
+
+
+    def load_state():
+        cm = call("GET", f"{CM_BASE}/{STATE_CM}")
+        if cm is None:
+            return {}
+        return {k: int(v) for k, v in (cm.get("data") or {}).items() if v.isdigit()}
+
+
+    def save_state(state):
+        # Replace `data` wholesale so entries for deleted PRs disappear rather than
+        # accumulating forever. A merge-patch would leave stale keys behind.
+        body = {"data": {k: str(v) for k, v in state.items()}}
+        if call("PATCH", f"{CM_BASE}/{STATE_CM}", body,
+                "application/merge-patch+json") is not None:
+            return
+        call("POST", CM_BASE,
+             {"apiVersion": "v1", "kind": "ConfigMap",
+              "metadata": {"name": STATE_CM, "namespace": NS},
+              "data": body["data"]})
 
 
     def main():
         apps = call("GET", BASE).get("items", [])
         previews = [a for a in apps if a["metadata"]["name"].startswith(PREFIX)]
-        print(f"preview-resync: {len(previews)} preview app(s) (prefix {PREFIX!r})")
+        state = load_state()
+        print(f"preview-resync: {len(previews)} preview app(s) (prefix {PREFIX!r}), "
+              f"state has {len(state)} counter(s)")
+
+        live = set()
+        to_sync = []
 
         for app in previews:
             name = app["metadata"]["name"]
+            live.add(name)
             status = app.get("status", {}) or {}
             op_state = status.get("operationState", {}) or {}
             phase = op_state.get("phase")
-            anns = app["metadata"].get("annotations", {}) or {}
-            attempts = int(anns.get(ATTEMPT_ANN, "0") or 0)
+            attempts = state.get(name, 0)
 
             # An operation in flight -- leave it alone, we would only fight it.
             if phase in ("Running", "Terminating"):
@@ -111,10 +163,7 @@ data:
 
             if phase == "Succeeded":
                 if attempts:
-                    patch = {"metadata": {"annotations": {ATTEMPT_ANN: None}}}
-                    if not DRY_RUN:
-                        call("PATCH", f"{BASE}/{name}", patch,
-                             "application/merge-patch+json")
+                    state.pop(name, None)
                     print(f"  {name}: recovered, cleared attempt counter")
                 continue
 
@@ -122,8 +171,8 @@ data:
                 continue
 
             if attempts >= MAX_ATTEMPTS:
-                # Exhausted. Stay silent-but-inspectable rather than retrying forever:
-                # at this point the PR itself is very likely broken.
+                # Exhausted. Stay inspectable rather than retrying forever: at this
+                # point the PR itself is very likely the problem.
                 print(f"  {name}: FAILED, {attempts}/{MAX_ATTEMPTS} attempts used, "
                       "giving up (needs a human)")
                 continue
@@ -136,14 +185,29 @@ data:
             if revision:
                 operation["sync"]["revision"] = revision
 
-            patch = {"metadata": {"annotations": {ATTEMPT_ANN: str(attempts + 1)}},
-                     "operation": operation}
-            msg = (f"  {name}: {phase} -> re-issuing sync "
-                   f"(attempt {attempts + 1}/{MAX_ATTEMPTS})")
-            if DRY_RUN:
+            state[name] = attempts + 1
+            to_sync.append((name, operation,
+                            f"  {name}: {phase} -> re-issuing sync "
+                            f"(attempt {attempts + 1}/{MAX_ATTEMPTS})"))
+
+        # Drop counters for apps that no longer exist (merged/closed PRs).
+        for gone in set(state) - live:
+            del state[gone]
+
+        if DRY_RUN:
+            for _, _, msg in to_sync:
                 print(msg + " [DRY_RUN]")
-                continue
-            call("PATCH", f"{BASE}/{name}", patch, "application/merge-patch+json")
+            print(f"preview-resync: would persist {state} [DRY_RUN]")
+            return
+
+        # Persist BEFORE issuing the syncs. If this pod dies mid-run the worst case
+        # is an over-count (one wasted attempt), which keeps the cap honest. Issuing
+        # first and dying before the write would under-count and could retry forever.
+        save_state(state)
+
+        for name, operation, msg in to_sync:
+            call("PATCH", f"{BASE}/{name}", {"operation": operation},
+                 "application/merge-patch+json")
             print(msg)
 
 
