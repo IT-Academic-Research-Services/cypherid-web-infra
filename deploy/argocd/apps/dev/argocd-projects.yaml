@@ -1,0 +1,46 @@
+# Reconciles the AppProjects in deploy/argocd/projects/ from git.
+#
+# Why this exists: the AppProjects were hand-applied with `kubectl apply` at cluster
+# bootstrap and nothing owned them afterwards. The app-of-apps root (czid-root-dev)
+# recurses deploy/argocd/apps/dev, which does NOT contain projects/, so edits to an
+# AppProject landed in the repo and never reached the cluster. That silently broke
+# preview sandboxes: seqtoid-preview.yaml gained policy/PodDisruptionBudget on merge,
+# the live project never got it, and because Argo treats a single not-permitted
+# resource as invalidating the WHOLE sync, affected PR sandboxes created nothing at
+# all -- no namespace, no pods, no URL, and no error anywhere the author would look.
+#
+# This Application is deliberately in project `czid`: that project already whitelists
+# */* and lists the argocd namespace as a destination, which is what managing
+# AppProject objects requires.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-projects
+  namespace: argocd
+spec:
+  project: czid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    targetRevision: main
+    path: deploy/argocd/projects
+    directory:
+      # projects/ is flat; keep it flat so a stray nested file cannot be picked up.
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # selfHeal corrects drift from anyone running `kubectl apply` by hand, which is
+      # the exact failure this app is here to prevent from recurring.
+      selfHeal: true
+      # prune is OFF on purpose. AppProjects are the authorization boundary for every
+      # app that references them: deleting a project file (or a bad path/glob change)
+      # would prune the live AppProject and orphan every Application inside it,
+      # including this one -- `czid` is managed here AND is this app's own project.
+      # Removing a project should be a deliberate, reviewed `kubectl delete`, not a
+      # side effect of a file move.
+      prune: false
+    syncOptions:
+      # Never create the argocd namespace; it must already exist and is not ours to own.
+      - CreateNamespace=false
