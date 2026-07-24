@@ -44,6 +44,14 @@ spec:
       kind: Ingress
     - group: autoscaling
       kind: HorizontalPodAutoscaler
+    # The chart's pdb.yaml renders whenever podDisruptionBudget.enabled is set, which it is in
+    # preview. Without this entry Argo rejects the PodDisruptionBudget as "not permitted in project
+    # seqtoid-preview", and because that invalidates the WHOLE sync the namespace is never created
+    # and the sandbox never serves -- it just times out with no indication of the real cause. This
+    # is what broke the preview sandbox for PR 182. Permitting it keeps previews faithful to what
+    # dev actually runs, rather than disabling the PDB only in preview and letting them diverge.
+    - group: policy
+      kind: PodDisruptionBudget
     - group: argoproj.io
       kind: Rollout
     - group: argoproj.io
