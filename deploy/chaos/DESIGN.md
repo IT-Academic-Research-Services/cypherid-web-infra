@@ -273,6 +273,16 @@ deliberate and reversible:
 8.  **Deploy the SLO probe:** `kubectl apply -f deploy/chaos/slo-probe/slo-probe.yaml`
     (needs the LGTM/Mimir stack up). Verify `GET /steady-state` returns 200 on a healthy
     system, then repoint experiment `StatusCheck` URLs from `/health_check` to the probe.
+8b. **Deploy the benchmark trigger (arms the AUPR half of the accuracy gate):**
+    `kubectl apply -f deploy/chaos/benchmark-trigger/benchmark-trigger.yaml`. It needs
+    `GITHUB_TOKEN` in the `chaos-reporter` secret (`actions:read` + `actions:write` +
+    `contents:read` on `IT-Academic-Research-Services/seqtoid-workflows`); without it the
+    service answers 503 and the gate fails closed. Verify the FREE path first --
+    `GET /status` with no handle returns the last successful benchmark's per-sample AUPR and
+    dispatches nothing -- before flipping `require_aupr: true` in
+    `accuracy-probe/accuracy-probe.yaml`. Note `POST /start` runs a REAL benchmark
+    (pipeline per sample); never put it on a frequent schedule, and calibrate `aupr_min`
+    against a known-good run first.
 9.  **Apply E5-E8** one at a time, morning-after review, ticket findings (as E1-E3).
 10. **FIS AZ + RDS-failover** templates (`terraform apply` via CI), run attended first.
 11. **Stand up the pipeline `-chaos` sandbox** (its own `terraform` workspace/prefix),
