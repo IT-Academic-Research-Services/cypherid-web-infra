@@ -1,0 +1,461 @@
+# Chaos BENCHMARK TRIGGER -- the missing half of the ACCURACY gate (platform-overhaul #794/#810/#815).
+#
+# WHY: the accuracy probe (accuracy-probe/accuracy-probe.yaml) is deployed and working, but it runs
+# INTEGRITY-ONLY (`require_aupr: false`) because there was nothing in the cluster that could start a
+# benchmark and hand back its AUPR. Integrity alone proves reference data was not corrupted; it does
+# NOT prove the pipeline still gets the taxonomy call RIGHT under a fault. That is the whole
+# differentiator over Netflix's ChAP -- "up AND right", not just "up". This service closes that gap.
+#
+# The benchmark that produces a real NT/NR AUPR against the truth set is a GitHub Actions workflow in
+# seqtoid-workflows (`short-read-mngs-viral-benchmarks.yml`): it runs the pipeline per sample, harvests
+# with auto_benchmark/harvest.py, and uploads one `<sample>.<settings>_viral.json` artifact per sample.
+# So this service is a thin, dependency-free adapter from the probe's HTTP contract to that workflow:
+#
+#   POST /start            -> workflow_dispatch the benchmark; return {"handle": "<run id>"}.
+#   GET  /status?handle=ID -> {"state": ..., "results": {sample: {NT_aupr, NR_aupr, ...}}}
+#   GET  /status           -> the LAST COMPLETED SUCCESSFUL run's results. Starts NOTHING.
+#   GET  /healthz          -> 200 (readiness).
+#
+# `state` uses the probe's vocabulary: SUCCEEDED (terminal pass), FAILED / ABORTED / TIMED_OUT
+# (terminal fail), anything else (PENDING / RUNNING) = keep polling.
+#
+# TWO PROPERTIES THIS SERVICE MUST NEVER LOSE:
+#
+#  1. **A bare `GET /status` must never dispatch anything.** The probe uses it as the cheap
+#     preflight/baseline, on every experiment. A dispatch there would run the REAL pipeline on every
+#     preflight. Reading the last successful run is free; starting one is not (see COST below).
+#  2. **It fails closed.** Every error path returns a non-2xx with a JSON {"error": ...} instead of
+#     hanging or returning an empty `results` -- an empty results dict would sail through the probe's
+#     aupr_regressions() as "no regressions" and turn the accuracy gate into a rubber stamp. A missing
+#     token, a missing artifact, an expired artifact and an unresolvable run are all hard errors.
+#
+# COST WARNING: `/start` (and therefore the probe's /run-under-fault) dispatches a REAL benchmark --
+# the full short-read-mngs pipeline once per matrix sample, order-of-an-hour of runner time, and the
+# AWS side (SFN + Batch) when pointed at the pipeline sandbox. This belongs on a deliberate experiment,
+# NOT on a frequent cron. The preflight path is free by design; keep it that way.
+#
+# AUTH: needs a GitHub token with `actions:read` + `actions:write` (dispatch) + `contents:read` on
+# IT-Academic-Research-Services/seqtoid-workflows, read from env GITHUB_TOKEN via envFrom on the
+# existing `chaos-reporter` secret in namespace chaos-mesh. NO TOKEN IS CREATED OR REFERENCED BY VALUE
+# HERE. Until the key is added to that secret the service returns 503 with a clear message and the
+# gate fails closed -- which is the correct default.
+#
+# NOT DEPLOYED. Applied on purpose, per the arm checklist in DESIGN.md. Companion of
+# slo-probe/slo-probe.yaml and accuracy-probe/accuracy-probe.yaml -- same shape, same dependency-free
+# style (stdlib urllib/zipfile/json only; no pip install, no image build).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-benchmark-trigger
+  namespace: chaos-mesh
+data:
+  # Flat, hand-parsed config (mirrors slo.yaml / accuracy.yaml -- avoids a pyyaml dep in the slim
+  # image). Only non-secret values live here; the GitHub token comes from the chaos-reporter secret
+  # via envFrom on the Deployment, never from this ConfigMap.
+  trigger.yaml: |
+    github_api: https://api.github.com
+    owner: IT-Academic-Research-Services
+    repo: seqtoid-workflows
+    # The benchmark workflow. It gained `workflow_dispatch` in seqtoid-workflows PR #38; before that
+    # landed on the repo default branch, a dispatch returns HTTP 422 and this service fails closed.
+    workflow_file: short-read-mngs-viral-benchmarks.yml
+    # Branch to dispatch and to read baseline runs from.
+    ref: main
+    # Free-text audit reason sent as the workflow's `reason` input. Blank => send no inputs at all
+    # (use that if dispatching a workflow whose dispatch trigger declares no inputs -- GitHub rejects
+    # undeclared inputs with 422).
+    dispatch_reason: chaos-engine accuracy gate
+    # Per-sample harvest artifacts are named `<sample>.<settings>_viral.json`; their content is
+    # exactly what harvest.py prints.
+    artifact_suffix: _viral.json
+    # Keep only scalar metrics per sample (NT_aupr / NR_aupr / *_l2_norm). Dropping harvest.py's
+    # nested `outputs`/`taxa`/`truth` blobs and the precision/recall arrays keeps the response small;
+    # the probe's aupr_regressions() only ever reads keys ending in `_aupr`. Set false to pass the
+    # harvested JSON through untouched (can be megabytes).
+    compact_results: true
+    # `/start` must answer inside the probe's 30s POST timeout, so resolving the created run id is
+    # best-effort: if GitHub has not materialised the run yet we hand back a deferred
+    # `since:<epoch>` handle and resolve it on the first /status poll. Never guesses, never
+    # falls back to an unrelated run.
+    resolve_budget_seconds: 15
+    resolve_interval_seconds: 2
+    # Tolerance between this pod's clock and GitHub's `created_at` when matching the run we just
+    # dispatched. Small on purpose: a wide window could latch onto someone else's concurrent run.
+    dispatch_clock_skew_seconds: 30
+    http_timeout_seconds: 30
+    # Cap on a single artifact download (unzipped in memory -- keep well under the pod memory limit).
+    max_artifact_bytes: 33554432
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-benchmark-trigger-code
+  namespace: chaos-mesh
+data:
+  trigger.py: |
+    # Minimal, dependency-free (stdlib urllib + zipfile + json only) GitHub Actions benchmark adapter.
+    #
+    #   POST /start            -> workflow_dispatch the benchmark; {"handle": "<run id|since:epoch>"}
+    #   GET  /status?handle=ID -> {"state": ..., "results": {sample: {NT_aupr, NR_aupr, ...}}}
+    #   GET  /status           -> last COMPLETED SUCCESSFUL run's results; dispatches NOTHING.
+    #   GET  /healthz          -> 200.
+    #
+    # Reads /etc/chaos/trigger.yaml. Every failure path returns non-2xx + {"error": ...} so the
+    # accuracy gate fails CLOSED rather than reading an empty results dict as "no regressions".
+    import calendar, io, json, os, re, time, urllib.error, urllib.parse, urllib.request, zipfile
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    CFG_PATH = "/etc/chaos/trigger.yaml"
+    HANDLE_RE = re.compile(r"^(?:[0-9]{1,20}|since:[0-9]{1,20})$")
+
+    class TriggerError(Exception):
+        def __init__(self, message, status=502):
+            Exception.__init__(self, message)
+            self.message = message
+            self.status = status
+
+    def load_cfg():
+        cfg = {}
+        for raw in open(CFG_PATH):
+            line = raw.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            cfg[k.strip()] = v.strip().strip("'\"")
+        for key, default in (
+            ("resolve_budget_seconds", 15),
+            ("resolve_interval_seconds", 2),
+            ("dispatch_clock_skew_seconds", 30),
+            ("http_timeout_seconds", 30),
+            ("max_artifact_bytes", 33554432),
+        ):
+            cfg[key] = int(cfg.get(key, default))
+        cfg["compact_results"] = str(cfg.get("compact_results", "true")).lower() == "true"
+        return cfg
+
+    def token():
+        # Fail closed and say exactly what is missing. No token is ever minted or defaulted here.
+        t = os.environ.get("GITHUB_TOKEN", "").strip()
+        if not t:
+            raise TriggerError(
+                "GITHUB_TOKEN is not set. Add it to the 'chaos-reporter' secret in namespace "
+                "chaos-mesh (scopes: actions:read, actions:write, contents:read on the workflows "
+                "repo). Failing closed.", 503)
+        return t
+
+    # Default opener for the API. Artifact downloads use a NON-redirecting opener: GitHub answers the
+    # artifact URL with a 302 to a short-lived signed blob URL, and urllib would replay our
+    # Authorization header to the blob host, which rejects it. So we capture the Location and fetch it
+    # unauthenticated.
+    API_OPENER = urllib.request.build_opener()
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    BLOB_OPENER = urllib.request.build_opener(_NoRedirect)
+
+    def _req(url, method="GET", body=None, auth=True):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("X-GitHub-Api-Version", "2022-11-28")
+        req.add_header("User-Agent", "chaos-benchmark-trigger")
+        if auth:
+            req.add_header("Authorization", "Bearer " + token())
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        return req
+
+    def api(cfg, path, method="GET", body=None, expect_json=True):
+        url = cfg["github_api"].rstrip("/") + path
+        try:
+            with API_OPENER.open(_req(url, method, body), timeout=cfg["http_timeout_seconds"]) as r:
+                raw = r.read()
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = e.read().decode("utf-8", "replace")[:400]
+            except Exception:
+                pass
+            raise TriggerError("GitHub %s %s -> HTTP %s %s" % (method, path, e.code, detail))
+        except TriggerError:
+            # e.g. the missing-token 503 raised while building the request -- keep its own status
+            # rather than flattening every failure to a generic 502.
+            raise
+        except Exception as e:
+            raise TriggerError("GitHub %s %s failed: %s" % (method, path, e))
+        if not expect_json or not raw:
+            return {}
+        try:
+            return json.loads(raw.decode())
+        except ValueError as e:
+            raise TriggerError("GitHub %s %s returned non-JSON: %s" % (method, path, e))
+
+    def wf_path(cfg, tail):
+        return "/repos/%s/%s/actions/workflows/%s%s" % (
+            cfg["owner"], cfg["repo"], urllib.parse.quote(cfg["workflow_file"]), tail)
+
+    def parse_ts(value):
+        # GitHub timestamps are ISO-8601 UTC, e.g. 2026-07-23T12:34:56Z.
+        try:
+            return float(calendar.timegm(time.strptime(str(value)[:19], "%Y-%m-%dT%H:%M:%S")))
+        except Exception:
+            return 0.0
+
+    def list_runs(cfg, extra):
+        q = {"per_page": "30", "branch": cfg["ref"]}
+        q.update(extra)
+        d = api(cfg, wf_path(cfg, "/runs?" + urllib.parse.urlencode(q)))
+        return d.get("workflow_runs") or []
+
+    def newest_run(runs):
+        return max(runs, key=lambda r: (parse_ts(r.get("created_at")), r.get("id") or 0)) if runs else None
+
+    def run_dispatched_since(cfg, since):
+        candidates = [r for r in list_runs(cfg, {"event": "workflow_dispatch"})
+                      if parse_ts(r.get("created_at")) >= since]
+        return newest_run(candidates)
+
+    def state_for(run):
+        # Map GitHub status/conclusion onto the accuracy probe's vocabulary. Anything completed that
+        # is not an outright success is a FAILURE (skipped / neutral / stale / action_required
+        # included) -- the gate must fail closed, not treat "did not really run" as a pass.
+        status = str(run.get("status") or "").lower()
+        if status != "completed":
+            return "RUNNING"
+        conclusion = str(run.get("conclusion") or "").lower()
+        if conclusion == "success":
+            return "SUCCEEDED"
+        if conclusion == "timed_out":
+            return "TIMED_OUT"
+        if conclusion == "cancelled":
+            return "ABORTED"
+        return "FAILED"
+
+    def read_capped(response, cap):
+        blob = response.read(cap + 1)
+        if len(blob) > cap:
+            raise TriggerError("artifact exceeds max_artifact_bytes (%s)" % cap)
+        return blob
+
+    def download_artifact(cfg, artifact):
+        url = artifact.get("archive_download_url") or ""
+        if not url:
+            raise TriggerError("artifact %r has no archive_download_url" % artifact.get("name"))
+        try:
+            with BLOB_OPENER.open(_req(url), timeout=cfg["http_timeout_seconds"]) as r:
+                return read_capped(r, cfg["max_artifact_bytes"])
+        except urllib.error.HTTPError as e:
+            if e.code in (301, 302, 303, 307, 308):
+                location = e.headers.get("Location")
+                if not location:
+                    raise TriggerError("artifact redirect without Location")
+                # Unauthenticated on purpose: the signed blob URL rejects an Authorization header.
+                with urllib.request.urlopen(_req(location, auth=False),
+                                            timeout=cfg["http_timeout_seconds"]) as r2:
+                    return read_capped(r2, cfg["max_artifact_bytes"])
+            raise TriggerError("artifact download -> HTTP %s" % e.code)
+        except TriggerError:
+            raise
+        except Exception as e:
+            raise TriggerError("artifact download failed: %s" % e)
+
+    def compact(metrics, enabled):
+        # harvest.py's per-sample object carries nested blobs (`outputs`, `taxa`, `truth`, `counts`)
+        # and long precision/recall arrays alongside the scalars we gate on. Keep the scalars.
+        if not enabled:
+            return metrics
+        return {k: v for k, v in metrics.items() if isinstance(v, (int, float, str, bool)) or v is None}
+
+    def sample_hint(name):
+        # "idseq_bench_3.default_viral.json" -> "idseq_bench_3"
+        return os.path.basename(str(name)).split(".")[0]
+
+    def normalize(doc, fallback_sample, enabled):
+        # harvest.py prints json.dumps(rslt) where rslt = {sample: {..., "NT_aupr": f, "NR_aupr": f}},
+        # so the artifact JSON is ALREADY keyed by sample -- that is the expected shape. A bare
+        # per-sample object (no sample key) is accepted too and keyed by the artifact/file name, so a
+        # future harvest change cannot silently produce an empty results dict.
+        if not isinstance(doc, dict):
+            return {}
+        if any(str(k).endswith("_aupr") for k in doc):
+            return {fallback_sample: compact(doc, enabled)}
+        return {s: compact(m, enabled) for s, m in doc.items() if isinstance(m, dict)}
+
+    def results_from_run(cfg, run_id):
+        d = api(cfg, "/repos/%s/%s/actions/runs/%s/artifacts?per_page=100" % (cfg["owner"], cfg["repo"], run_id))
+        suffix = cfg["artifact_suffix"]
+        wanted = [a for a in (d.get("artifacts") or [])
+                  if str(a.get("name", "")).endswith(suffix) and not a.get("expired")]
+        if not wanted:
+            raise TriggerError(
+                "run %s has no unexpired '*%s' artifacts -- the benchmark job did not run, or the "
+                "artifacts aged out. Failing closed." % (run_id, suffix))
+        results = {}
+        for artifact in wanted:
+            blob = download_artifact(cfg, artifact)
+            try:
+                zf = zipfile.ZipFile(io.BytesIO(blob))
+            except Exception as e:
+                raise TriggerError("artifact %r is not a zip: %s" % (artifact.get("name"), e))
+            for member in zf.namelist():
+                if not member.endswith(".json"):
+                    continue
+                try:
+                    doc = json.loads(zf.read(member).decode("utf-8"))
+                except Exception as e:
+                    raise TriggerError("artifact %r member %r is not JSON: %s" % (artifact.get("name"), member, e))
+                results.update(normalize(doc, sample_hint(member) or sample_hint(artifact.get("name")),
+                                         cfg["compact_results"]))
+        if not results:
+            raise TriggerError("run %s produced no per-sample AUPR results. Failing closed." % run_id)
+        return results
+
+    def start(cfg):
+        # Dispatch, then best-effort resolve the run id. The dispatch API returns 204 with no body --
+        # it does NOT tell us which run it created -- so the run has to be found by listing.
+        since = time.time() - cfg["dispatch_clock_skew_seconds"]
+        body = {"ref": cfg["ref"]}
+        reason = cfg.get("dispatch_reason", "")
+        if reason:
+            body["inputs"] = {"reason": reason}
+        api(cfg, wf_path(cfg, "/dispatches"), method="POST", body=body, expect_json=False)
+        deadline = time.time() + cfg["resolve_budget_seconds"]
+        while True:
+            run = run_dispatched_since(cfg, since)
+            if run:
+                return {"handle": str(run.get("id")), "state": state_for(run), "run_url": run.get("html_url")}
+            if time.time() >= deadline:
+                break
+            time.sleep(cfg["resolve_interval_seconds"])
+        # Deferred handle: the dispatch succeeded but GitHub has not surfaced the run yet. /status
+        # resolves it from the timestamp on the next poll. This keeps /start inside the probe's 30s
+        # POST timeout without ever guessing a run id or silently falling back to an older run.
+        return {"handle": "since:%d" % int(since), "state": "PENDING", "run_url": None}
+
+    def resolve_handle(cfg, handle):
+        if handle.startswith("since:"):
+            run = run_dispatched_since(cfg, float(handle.split(":", 1)[1]))
+            if not run:
+                return None  # still materialising -> non-terminal
+            return run
+        return api(cfg, "/repos/%s/%s/actions/runs/%s" % (cfg["owner"], cfg["repo"], handle))
+
+    def status(cfg, handle):
+        if handle:
+            if not HANDLE_RE.match(handle):
+                raise TriggerError("invalid handle %r" % handle, 400)
+            run = resolve_handle(cfg, handle)
+            if run is None:
+                return {"state": "PENDING", "handle": handle}
+        else:
+            # BASELINE / PREFLIGHT. Read-only by contract: the last completed SUCCESSFUL run.
+            # This path must never dispatch -- the probe calls it on every experiment preflight.
+            run = newest_run(list_runs(cfg, {"status": "success"}))
+            if not run:
+                raise TriggerError(
+                    "no completed successful run of %s on %s to use as a baseline. Failing closed "
+                    "(an empty results dict would read as 'no AUPR regressions')."
+                    % (cfg["workflow_file"], cfg["ref"]), 503)
+        state = state_for(run)
+        out = {"state": state, "handle": str(run.get("id")), "run_url": run.get("html_url"),
+               "run_status": run.get("status"), "run_conclusion": run.get("conclusion"),
+               "created_at": run.get("created_at")}
+        if state == "SUCCEEDED":
+            out["results"] = results_from_run(cfg, run.get("id"))
+        return out
+
+    class H(BaseHTTPRequestHandler):
+        def _send(self, code, body):
+            b = json.dumps(body).encode()
+            self.send_response(code); self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+        def _guard(self, fn):
+            try:
+                return self._send(200, fn(load_cfg()))
+            except TriggerError as e:
+                return self._send(e.status, {"error": e.message})
+            except Exception as e:
+                return self._send(500, {"error": "%s: %s" % (type(e).__name__, e)})
+
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            route = parsed.path.rstrip("/") or "/"
+            if route == "/healthz":
+                return self._send(200, {"ok": True})
+            if route == "/start":
+                # Deliberately not a GET: starting a benchmark is expensive and must not be
+                # reachable by anything that merely crawls or prefetches URLs.
+                return self._send(405, {"error": "use POST /start"})
+            if route != "/status":
+                return self._send(404, {"error": "no such endpoint: %s" % route})
+            handle = (urllib.parse.parse_qs(parsed.query).get("handle") or [""])[0].strip()
+            return self._guard(lambda cfg: status(cfg, handle))
+
+        def do_POST(self):
+            route = urllib.parse.urlparse(self.path).path.rstrip("/") or "/"
+            if route != "/start":
+                return self._send(404, {"error": "no such endpoint: %s" % route})
+            return self._guard(start)
+
+        def log_message(self, *a):  # quiet
+            pass
+
+    if __name__ == "__main__":
+        # Threading: /start blocks for up to resolve_budget_seconds and a /status that harvests
+        # artifacts can take a few seconds; a single-threaded server would stall the readiness probe.
+        ThreadingHTTPServer.daemon_threads = True
+        ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-benchmark-trigger
+  namespace: chaos-mesh
+  labels: { app: chaos-benchmark-trigger }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: chaos-benchmark-trigger } }
+  template:
+    metadata:
+      labels: { app: chaos-benchmark-trigger }
+    spec:
+      containers:
+        - name: trigger
+          image: python:3.12-slim
+          command: ["python", "/app/trigger.py"]
+          ports: [{ containerPort: 8080 }]
+          # GITHUB_TOKEN rides in from the chaos-reporter secret, which already carries
+          # GRAFANA_* / JIRA_* / CHAOS_INTEGRITY_TOKEN. The key must be added by hand (see the PR
+          # body / DESIGN.md); optional:true so the pod still starts without it and returns a clear
+          # 503 instead of CrashLoopBackOff. Non-secret settings live in the trigger.yaml ConfigMap.
+          envFrom:
+            - secretRef:
+                name: chaos-reporter
+                optional: true
+          volumeMounts:
+            - { name: cfg, mountPath: /etc/chaos }
+            - { name: code, mountPath: /app }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            # Headroom for unzipping a harvest artifact in memory (capped at max_artifact_bytes).
+            limits: { memory: 192Mi }
+      volumes:
+        - { name: cfg, configMap: { name: chaos-benchmark-trigger } }
+        - { name: code, configMap: { name: chaos-benchmark-trigger-code } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-benchmark-trigger
+  namespace: chaos-mesh
+spec:
+  selector: { app: chaos-benchmark-trigger }
+  # Port 80 -> 8080: accuracy-probe's benchmark_trigger_url / benchmark_status_url address this
+  # service by name with no port, so the Service must listen on 80.
+  ports: [{ port: 80, targetPort: 8080 }]
