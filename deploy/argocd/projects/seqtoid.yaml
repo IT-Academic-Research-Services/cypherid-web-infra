@@ -1,0 +1,48 @@
+# Argo CD AppProject for the go-forward SEQTOID stack -- the fresh, all-seqtoid builds (sandbox,
+# prod-preview, and eventually dev/staging/prod as they modernize). Mirrors projects/czid.yaml but
+# scopes to the seqtoid-* namespaces only; it does NOT include the legacy czid-* namespaces (those
+# stay under the czid project). NEW project, new name -- additive, nothing renamed.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: seqtoid
+  namespace: argocd
+spec:
+  description: seqtoid stack delivery (blue/green via Argo Rollouts) -- go-forward naming scheme
+  sourceRepos:
+    - https://github.com/IT-Academic-Research-Services/seqtoid-web.git         # app chart (canonical)
+    - https://github.com/thorvath-slower/seqtoid-web.git                       # transitional: keep for rollback
+    - https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git  # env values + apps (canonical)
+    - https://github.com/thorvath-slower/cypherid-web-infra.git                # transitional: keep for rollback
+    - https://argoproj.github.io/argo-helm                                     # argo-rollouts controller chart
+    - https://aws.github.io/eks-charts                                         # AWS Load Balancer Controller chart
+    - https://sigstore.github.io/helm-charts                                   # sigstore policy-controller chart (#77)
+  destinations:
+    # The seqtoid app namespaces + argocd (where the app-of-apps roots create child Applications).
+    # sandbox + prod-preview are the fresh builds now; dev/staging/prod are here for when they
+    # modernize onto the seqtoid scheme.
+    - server: https://kubernetes.default.svc
+      namespace: argocd # app-of-apps roots (seqtoid-root-*) manage child Applications here
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-sandbox
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-prod-preview
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-dev
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-staging
+    - server: https://kubernetes.default.svc
+      namespace: seqtoid-prod
+    - server: https://kubernetes.default.svc
+      namespace: argo-rollouts
+    - server: https://kubernetes.default.svc
+      namespace: kube-system # AWS Load Balancer Controller
+    - server: https://kubernetes.default.svc
+      namespace: cosign-system # sigstore policy-controller + cosign ClusterImagePolicy (#77)
+  # The Rollouts controller installs cluster-scoped CRDs + RBAC.
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

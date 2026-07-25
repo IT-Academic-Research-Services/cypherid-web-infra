@@ -1,0 +1,49 @@
+# =============================================================================
+# App-of-apps root -- SANDBOX (isolated rehearsal env; account idseq-support 941377154785).
+#
+# Mirrors bootstrap/root-app.yaml (dev) for the sandbox account. It manages ONLY the
+# sandbox app-layer Argo Applications under deploy/argocd/apps/sandbox/. It runs from the
+# argocd that lives in the SANDBOX cluster (cluster-per-env), so the in-cluster target
+# kubernetes.default.svc is correct.
+#
+# Like the dev root, it deliberately does NOT manage infra addons (LBC, argo-rollouts,
+# cert-manager, external-dns, karpenter, ...): those are live Helm releases owned by the
+# eks Terraform module (SSOT); a root over them would make Argo fight Terraform.
+#
+# SANDBOX is a FRESH env (nothing to adopt), so there is no clean-no-op adoption step to
+# protect -- but prune + selfHeal START DISABLED here too, matching dev, so the first sync
+# is inspected before Argo is allowed to prune/self-heal. Flip both to true only after the
+# first sync looks right (see bootstrap/README.md).
+#
+# Applied by the env-reconstitute bootstrap stage:
+#   sandbox.appofapps_manifest = cypherid-web-infra/deploy/argocd/bootstrap/root-app-sandbox.yaml
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seqtoid-root-sandbox
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Fresh seqtoid build uses a `seqtoid` AppProject (create it under deploy/argocd/projects/ as part
+  # of bring-up; do NOT reuse the legacy `czid` project). Governs what the sandbox apps may deploy.
+  project: seqtoid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    targetRevision: rehearsal/sandbox-argo   # rehearsal: pull the sandbox apps from this branch, not main
+    path: deploy/argocd/apps/sandbox
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # Conservative for first bring-up. Flip both to true only after the initial
+      # sync is verified to be what you expect.
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
