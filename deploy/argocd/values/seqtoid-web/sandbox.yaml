@@ -14,6 +14,12 @@ serviceAccount:
   # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
   # NOT <env>-seqtoid-web.
   roleArn: arn:aws:iam::941377154785:role/seqtoid-web-sandbox
+secrets:
+  chamber:
+    # FRESH seqtoid chamber path (not the chart default idseq-<env>-web, which is the DEAD legacy env's
+    # config in this account). The reconstitute chamber-seed hook clones the legacy base config here and
+    # repoints the infra keys; the app IRSA role is granted SSM read on exactly /seqtoid-sandbox-web/*.
+    service: seqtoid-sandbox-web
 blueGreen:
   autoPromotionEnabled: true     # rehearsal env: promote on smoke pass (the gate is proven on dev)
   scaleDownDelaySeconds: 60
