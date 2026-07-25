@@ -20,6 +20,12 @@ secrets:
     # config in this account). The reconstitute chamber-seed hook clones the legacy base config here and
     # repoints the infra keys; the app IRSA role is granted SSM read on exactly /seqtoid-sandbox-web/*.
     service: seqtoid-sandbox-web
+# secrets.chamber.service only feeds the chart's PREVIEW jobs; the main app (migrate/rollout/workers)
+# reads CHAMBER_SERVICE from the image entrypoint via commonEnv, which defaults to idseq-<env>-web. Set
+# it explicitly so `chamber exec` reads the fresh seqtoid path the IRSA role is scoped to.
+extraEnv:
+  - name: CHAMBER_SERVICE
+    value: seqtoid-sandbox-web
 blueGreen:
   autoPromotionEnabled: true     # rehearsal env: promote on smoke pass (the gate is proven on dev)
   scaleDownDelaySeconds: 60
