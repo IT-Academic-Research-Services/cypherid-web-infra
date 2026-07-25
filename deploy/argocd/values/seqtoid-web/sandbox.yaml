@@ -1,6 +1,9 @@
 # sandbox overrides for the seqtoid-web chart. Isolated rehearsal env, account 941377154785.
-# Mirrors staging.yaml. REPLACE_* placeholders are filled once the sandbox foundation stack
-# publishes them (IRSA role, ACM cert, public subnets, DNS). Account id is known: 941377154785.
+# Mirrors staging.yaml. Edge is wired: IRSA role seqtoid-web-sandbox (app terraform stack), the
+# persistent sandbox.seqtoid.org ACM cert, subnets via LBC tag auto-discovery (no hardcoded IDs), host
+# sandbox.seqtoid.org. OPEN ITEM: seqtoid.org is not hosted in this account (only .com/.net + the
+# ucsf.czid.org zones), so the sandbox.seqtoid.org -> ALB record is NOT auto-created by this env's
+# external-dns; point it at the fresh ALB (cross-account external-dns or a manual ALIAS) before smoke.
 environment: sandbox
 image:
   # A seqtoid-web repo must exist in sandbox ECR (pre-flight). Simple repo name, like dev.
@@ -8,7 +11,8 @@ image:
   tag: latest            # CI advances this to the immutable git-sha tag on deploy
 replicaCount: 1          # rehearsal env: keep it lean (single_nat=true, minimal footprint)
 serviceAccount:
-  # IRSA role naming is seqtoid-web-<env> (see envs/sandbox/web/eks-irsa.tf), NOT <env>-seqtoid-web.
+  # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
+  # NOT <env>-seqtoid-web.
   roleArn: arn:aws:iam::941377154785:role/seqtoid-web-sandbox
 blueGreen:
   autoPromotionEnabled: true     # rehearsal env: promote on smoke pass (the gate is proven on dev)
@@ -27,10 +31,15 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 2
 # Public edge for sandbox. ALB via the AWS Load Balancer Controller -> active service.
-# Once the host is real, set sandbox.smoke_url in env-reconstitute/config/envs.conf to match.
+# smoke_url is set to match in env-reconstitute/config/envs.conf.
 ingress:
   enabled: true
-  host: REPLACE_SANDBOX_DNS            # e.g. sandbox.seqtoid.org
-  certificateArn: arn:aws:acm:us-west-2:941377154785:certificate/REPLACE_SANDBOX_CERT
-  annotations:
-    alb.ingress.kubernetes.io/subnets: REPLACE_SANDBOX_PUBLIC_SUBNETS
+  host: sandbox.seqtoid.org
+  # Persistent ACM cert for sandbox.seqtoid.org (ISSUED, DNS-validated). It lives OUTSIDE reconstitute
+  # -- an account-level edge resource, not part of the destroy/rebuild -- so its ARN is stable across
+  # rebuilds and safe to pin here. (Renew before NotAfter 2026-10-03.)
+  certificateArn: arn:aws:acm:us-west-2:941377154785:certificate/00ccbf7f-38fb-4784-98cb-d121bad0a289
+  # NO subnets annotation on purpose. reconstitute regenerates the public subnets every spin-up, so a
+  # hardcoded list (as dev pins, because dev is long-lived) would go stale on the next rebuild. The
+  # foundation tags the public subnets kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared,
+  # so the AWS Load Balancer Controller AUTO-DISCOVERS them -- nothing dynamic to commit.
