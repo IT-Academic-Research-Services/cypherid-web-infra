@@ -1,0 +1,30 @@
+# seqtoid-web @ prod-preview (locked-down pre-prod, prod account 283694049553).
+# Mirrors apps/sandbox/seqtoid-web-sandbox.yaml. Namespace seqtoid-prod-preview (never seqtoid-prod).
+# Values in $values/.../prod-preview.yaml. Governed by the seqtoid AppProject.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seqtoid-web-prod-preview
+  namespace: argocd
+spec:
+  project: seqtoid
+  sources:
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
+      targetRevision: main
+      path: deploy/charts/seqtoid-web
+      helm:
+        valueFiles:
+          - $values/deploy/argocd/values/seqtoid-web/prod-preview.yaml
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: seqtoid-prod-preview
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

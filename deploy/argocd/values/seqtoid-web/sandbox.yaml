@@ -1,0 +1,36 @@
+# sandbox overrides for the seqtoid-web chart. Isolated rehearsal env, account 941377154785.
+# Mirrors staging.yaml. REPLACE_* placeholders are filled once the sandbox foundation stack
+# publishes them (IRSA role, ACM cert, public subnets, DNS). Account id is known: 941377154785.
+environment: sandbox
+image:
+  # A seqtoid-web repo must exist in sandbox ECR (pre-flight). Simple repo name, like dev.
+  repository: 941377154785.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+replicaCount: 1          # rehearsal env: keep it lean (single_nat=true, minimal footprint)
+serviceAccount:
+  # IRSA role naming is seqtoid-web-<env> (see envs/sandbox/web/eks-irsa.tf), NOT <env>-seqtoid-web.
+  roleArn: arn:aws:iam::941377154785:role/seqtoid-web-sandbox
+blueGreen:
+  autoPromotionEnabled: true     # rehearsal env: promote on smoke pass (the gate is proven on dev)
+  scaleDownDelaySeconds: 60
+  analysis:
+    enabled: true
+    postPromotion: true
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+autoscaling:
+  enabled: false         # rehearsal env: no need to autoscale
+  minReplicas: 1
+  maxReplicas: 2
+# Public edge for sandbox. ALB via the AWS Load Balancer Controller -> active service.
+# Once the host is real, set sandbox.smoke_url in env-reconstitute/config/envs.conf to match.
+ingress:
+  enabled: true
+  host: REPLACE_SANDBOX_DNS            # e.g. sandbox.seqtoid.org
+  certificateArn: arn:aws:acm:us-west-2:941377154785:certificate/REPLACE_SANDBOX_CERT
+  annotations:
+    alb.ingress.kubernetes.io/subnets: REPLACE_SANDBOX_PUBLIC_SUBNETS
