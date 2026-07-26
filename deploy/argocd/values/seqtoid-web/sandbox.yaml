@@ -14,6 +14,10 @@ image:
   # immutable sha tag and can drop this.
   pullPolicy: Always
 replicaCount: 1          # rehearsal env: keep it lean (single_nat=true, minimal footprint)
+migrate:
+  # Fresh env: the brand-new Aurora has no idseq_<env> schema yet, so create it before migrating.
+  # db:create is idempotent (skips when the DB already exists on re-runs). Default is migrate-only.
+  command: ["rails", "db:create", "db:migrate:with_data"]
 serviceAccount:
   # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
   # NOT <env>-seqtoid-web.
