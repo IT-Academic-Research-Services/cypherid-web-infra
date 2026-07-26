@@ -13,7 +13,11 @@ image:
   # node that cached an earlier `latest` reuses the stale image with IfNotPresent). A real deploy pins an
   # immutable sha tag and can drop this.
   pullPolicy: Always
-replicaCount: 1          # rehearsal env: keep it lean (single_nat=true, minimal footprint)
+# 2 replicas for HA: the chart then renders the PodDisruptionBudget (maxUnavailable:1 -> one always
+# serving through node drain/consolidation) + HARD hostname topologySpread (the two pods MUST land on
+# different nodes), so a pod/node/AZ loss can't take the app down. Chaos gameday 2026-07-26 found the old
+# replicaCount:1 = a full outage on any pod-level fault (E1 pod-kill / E7). See CHAOS-GAMEDAY-SANDBOX-*.
+replicaCount: 2
 migrate:
   # Fresh env: create the DB, migrate, then seed (db:seed builds app_configs incl. the Step Functions
   # ARNs from AWS_ACCOUNT_ID + host_genomes + alignment_configs). All idempotent on re-runs.
