@@ -9,6 +9,10 @@ image:
   # A seqtoid-web repo must exist in sandbox ECR (pre-flight). Simple repo name, like dev.
   repository: 941377154785.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
   tag: latest            # CI advances this to the immutable git-sha tag on deploy
+  # Rehearsal iteration: `latest` is repointed on each image rebuild, so pull it every time (otherwise a
+  # node that cached an earlier `latest` reuses the stale image with IfNotPresent). A real deploy pins an
+  # immutable sha tag and can drop this.
+  pullPolicy: Always
 replicaCount: 1          # rehearsal env: keep it lean (single_nat=true, minimal footprint)
 serviceAccount:
   # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
