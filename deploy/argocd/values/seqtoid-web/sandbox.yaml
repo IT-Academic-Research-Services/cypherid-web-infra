@@ -18,6 +18,11 @@ migrate:
   # Fresh env: the brand-new Aurora has no idseq_<env> schema yet, so create it before migrating.
   # db:create is idempotent (skips when the DB already exists on re-runs). Default is migrate-only.
   command: ["rails", "db:create", "db:migrate:with_data"]
+taxonLoad:
+  # Deferred: the taxon-lineage import needs OpenSearch + the reference-data bucket, neither built in
+  # this env yet (it reads s3://czid-public-references). Disable so the web pods deploy; the site does
+  # not need taxon data (reports/heatmaps do). Re-enable once the data layer's OpenSearch lands.
+  enabled: false
 serviceAccount:
   # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
   # NOT <env>-seqtoid-web.
