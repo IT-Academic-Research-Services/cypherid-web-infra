@@ -1,0 +1,89 @@
+# exp-sandbox overrides for the seqtoid-web chart. A FULLY SEPARATE, throwaway rehearsal env in the
+# SAME sandbox account (941377154785) as `sandbox`, standing alongside it for experimental NT/NR index
+# validation by the scientists. It has its own VPC/EKS/RDS/OpenSearch/swipe + its own terraform WORKSPACE
+# (exp-sandbox), so a teardown/destroy touches ONLY its resources and NEVER the sandbox env. Mirrors
+# sandbox.yaml; the only real differences are the env name, the seqtoid-exp-sandbox namespace, the fresh
+# chamber path, and the experimental-sandbox.seqtoid.net edge.
+#
+# WHY .net (not sandbox's .org): seqtoid.net IS hosted in this account, so this env's external-dns can
+# AUTO-CREATE the experimental-sandbox.seqtoid.net -> ALB record (no cross-account/manual step that sandbox
+# needs for .org). That makes exp-sandbox genuinely self-service to spin up and tear down.
+#
+# THE EXPERIMENTAL INDEX: the experimental NT/NR index is built out-of-band and dropped into this env's own
+# reference bucket via `s3 cp`; the AlignmentConfig (chamber-seed / db:seed) points the pipeline at it. That
+# is data plumbing, not chart config -- nothing about it lives here.
+environment: exp-sandbox
+image:
+  # Reuse the SAME persistent seqtoid-web ECR repo as sandbox (same account, identical app code -- only the
+  # reference DATA differs between the two envs). No second repo to feed.
+  repository: 941377154785.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+  # Rehearsal iteration: `latest` is repointed on each rebuild, so always pull (an IfNotPresent node that
+  # cached an earlier `latest` would otherwise reuse a stale image).
+  pullPolicy: Always
+# 2 replicas for HA (PDB maxUnavailable:1 + hard hostname topologySpread), same as sandbox -- a pod/node
+# loss can't take the app down. See CHAOS-GAMEDAY-SANDBOX-2026-07-26.
+replicaCount: 2
+migrate:
+  # Fresh env: create -> migrate -> seed. db:seed is idempotent (seqtoid-web #203), so re-runs are safe.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+taxonLoad:
+  # Enabled: this env's own OpenSearch domain is up and the chamber-seed points S3_DATABASE_BUCKET at this
+  # env's reference bucket (the taxon-lineage slice). taxon-load imports the slice into taxon_lineages AND
+  # builds the heatmap OpenSearch index. (Independent of the experimental NT/NR *alignment* index above.)
+  enabled: true
+serviceAccount:
+  # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app when
+  # reconstitute runs with the exp-sandbox workspace), NOT <env>-seqtoid-web.
+  roleArn: arn:aws:iam::941377154785:role/seqtoid-web-exp-sandbox
+secrets:
+  chamber:
+    # FRESH seqtoid chamber path for THIS env (not sandbox's seqtoid-sandbox-web, and not the DEAD legacy
+    # idseq-<env>-web). reconstitute's chamber-seed clones the legacy base config here and repoints the
+    # infra keys; the app IRSA role is granted SSM read on exactly /seqtoid-exp-sandbox-web/*.
+    service: seqtoid-exp-sandbox-web
+# The main app (migrate/rollout/workers) reads CHAMBER_SERVICE from the image entrypoint via commonEnv,
+# which defaults to idseq-<env>-web. Set it explicitly so `chamber exec` reads the fresh seqtoid path the
+# IRSA role is scoped to (secrets.chamber.service above only feeds the chart's PREVIEW jobs).
+extraEnv:
+  - name: CHAMBER_SERVICE
+    value: seqtoid-exp-sandbox-web
+blueGreen:
+  autoPromotionEnabled: true     # rehearsal env: promote on smoke pass (the gate is proven on dev)
+  scaleDownDelaySeconds: 60
+  analysis:
+    enabled: true
+    postPromotion: true
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+autoscaling:
+  enabled: false         # rehearsal env: no need to autoscale
+  minReplicas: 1
+  maxReplicas: 2
+# Public edge for exp-sandbox. ALB via the AWS Load Balancer Controller -> active service.
+# smoke_url matches in env-reconstitute/config/envs.conf (exp-sandbox.smoke_url).
+ingress:
+  enabled: true
+  host: experimental-sandbox.seqtoid.net
+  # PRE-FLIGHT: request an ACM cert for experimental-sandbox.seqtoid.net in us-west-2 and DNS-validate it in
+  # the in-account seqtoid.net zone (validation auto-completes since the zone is local). It is a persistent
+  # account-level edge resource OUTSIDE reconstitute -- issue it once, then drop its ARN here. A per-host
+  # cert is fine (this hostname is not secret, unlike prod-test's random subdomain). Cannot reuse sandbox's
+  # cert: that one is for sandbox.seqtoid.ORG, a different domain.
+  certificateArn: REPLACE_EXP_SANDBOX_CERT_ARN
+  # NO subnets annotation on purpose (same as sandbox): reconstitute regenerates the public subnets every
+  # spin-up, and the foundation tags them kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared,
+  # so the LBC AUTO-DISCOVERS them -- nothing stale to pin.
+  annotations:
+    # THE GATE (codified so it survives every ALB rebuild -- the hard lesson from 2026-07-27 on sandbox):
+    # reuse the SHARED account-level sandbox Web ACL (idseq-sandbox-web). A regional WAFv2 Web ACL supports
+    # association to MANY ALBs, and its allow-list (UCSF egress CIDRs + the dev team's /32s) is EXACTLY the
+    # audience exp-sandbox wants (the same scientists/team). It is account-level edge, so a `reconstitute
+    # exp-sandbox` teardown NEVER touches it, and it is not part of this env's destroy. If you want a fully
+    # dedicated ACL (zero coupling to sandbox), build one like the sandbox ACL (default action Block + one
+    # IPSetReferenceStatement allow rule) and swap its ARN in here.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:941377154785:regional/webacl/idseq-sandbox-web/c88ccbd9-3d1f-460b-b69a-5b48177b117b

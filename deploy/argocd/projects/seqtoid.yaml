@@ -26,6 +26,8 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: seqtoid-sandbox
     - server: https://kubernetes.default.svc
+      namespace: seqtoid-exp-sandbox # fully-separate experimental NT/NR validation env (same sandbox acct)
+    - server: https://kubernetes.default.svc
       namespace: seqtoid-prod-preview
     - server: https://kubernetes.default.svc
       namespace: seqtoid-dev
