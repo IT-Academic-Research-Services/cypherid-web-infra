@@ -69,12 +69,12 @@ autoscaling:
 ingress:
   enabled: true
   host: experimental-sandbox.seqtoid.net
-  # PRE-FLIGHT: request an ACM cert for experimental-sandbox.seqtoid.net in us-west-2 and DNS-validate it in
-  # the in-account seqtoid.net zone (validation auto-completes since the zone is local). It is a persistent
-  # account-level edge resource OUTSIDE reconstitute -- issue it once, then drop its ARN here. A per-host
-  # cert is fine (this hostname is not secret, unlike prod-test's random subdomain). Cannot reuse sandbox's
-  # cert: that one is for sandbox.seqtoid.ORG, a different domain.
-  certificateArn: REPLACE_EXP_SANDBOX_CERT_ARN
+  # Persistent ACM cert for experimental-sandbox.seqtoid.net (ISSUED, DNS-validated in the in-account
+  # seqtoid.net zone). Like sandbox's cert it lives OUTSIDE reconstitute -- an account-level edge resource,
+  # not part of the destroy/rebuild -- so its ARN is stable across rebuilds and safe to pin. A per-host cert
+  # is fine (the hostname is not secret). Cannot reuse sandbox's cert: that one is for sandbox.seqtoid.ORG,
+  # a different domain. (Renew before NotAfter 2027-02-09.)
+  certificateArn: arn:aws:acm:us-west-2:941377154785:certificate/fb160b1f-bd70-4402-9a77-8688d876f2b4
   # NO subnets annotation on purpose (same as sandbox): reconstitute regenerates the public subnets every
   # spin-up, and the foundation tags them kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared,
   # so the LBC AUTO-DISCOVERS them -- nothing stale to pin.
