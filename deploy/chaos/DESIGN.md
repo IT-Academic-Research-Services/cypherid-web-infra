@@ -93,9 +93,18 @@ Four independent controls, each sufficient on its own:
    fault is removed early). This is the "do not break anything anyone needs"
    control: the experiment stops itself the moment steady state breaks.
 
-4. **Bounded blast + auto-heal.** Every fault has `mode: one` (a single pod, not
-   all), a hard `duration`, and Chaos Mesh's own recovery removes the fault when
-   the experiment ends or is deleted. `dev` is a non-prod env to begin with, so
+4. **Bounded blast.** Every fault has `mode: one` (a single pod, not all).
+
+   **CORRECTION (verified 2026-07-23, supervised E6 run).** This invariant used to
+   also claim "a hard `duration`, and Chaos Mesh's own recovery removes the fault
+   when the experiment ends or is deleted". That is NO LONGER TRUE for E1-E8. A
+   chaos `duration` is illegal inside a Workflow node, so the conversion to
+   Workflows replaced it with a node `deadline` (see the comment in
+   `experiments/e6-dns.yaml`). A `deadline` bounds the WORKFLOW NODE; it does not
+   give Chaos Mesh its own recovery timer. In the E6 run the `DNSChaos` was still
+   `phase=Injected` after its deadline elapsed, and only went away when the
+   Workflow was deleted. Treat auto-heal as ABSENT until a TTL reaper or a
+   guaranteed teardown node exists; verify teardown by hand (section 7). `dev` is a non-prod env to begin with, so
    this is defense in depth on top of "it is already dev."
 
 ## 4. Experiment catalog (staged)
@@ -134,12 +143,26 @@ Nothing below has run. To go live, deliberately and in order:
 6. **AWS FIS (E4):** `terraform apply` the `chaos-fis.tf` template + role via CI
    (Rosetta wall -- no local apply), then run the FIS experiment manually the first
    time before scheduling it.
-7. **Disarm:** remove the `chaos-mesh.org/inject=enabled` annotation
-   (`kubectl annotate ns seqtoid-dev chaos-mesh.org/inject-`) for an instant global
-   stop, and/or `kubectl delete -f deploy/chaos/experiments/` to stop scheduling.
+7. **Disarm AND tear down -- these are two different things.**
 
-Rollback is trivial: delete the inject annotation to disarm, delete the `_deliberate` app to
-remove the operator. No app code, no chart, no CD pipeline touched.
+   Removing the annotation (`kubectl annotate ns seqtoid-dev chaos-mesh.org/inject-`)
+   blocks NEW injections. **It does NOT remove a fault that is already injected** --
+   verified in the E6 run, where the DNSChaos stayed `Injected` after disarming. To
+   actually stop a live fault you must delete the Workflow, which cascades to its
+   chaos objects, and then CONFIRM nothing is left:
+
+   ```bash
+   kubectl -n chaos-mesh delete workflow <name>
+   kubectl -n chaos-mesh get podchaos,networkchaos,dnschaos,iochaos,httpchaos,stresschaos,timechaos
+   # must print "No resources found" before the run is considered finished
+   kubectl annotate ns seqtoid-dev chaos-mesh.org/inject-
+   ```
+
+   `kubectl delete -f deploy/chaos/experiments/` stops future scheduling.
+
+Rollback: delete the Workflow (this is what actually removes a live fault), confirm no chaos
+objects remain, then delete the inject annotation to disarm, and delete the `_deliberate` app to
+remove the operator. Disarming ALONE is not a rollback -- see step 7. No app code, no chart, no CD pipeline touched.
 
 ## 6. Steady-state definition (the hypothesis)
 
@@ -175,7 +198,7 @@ guardrails, staggered across the overnight window, `mode: one`, duration-bounded
 
 | # | File | Fault | Validates |
 |---|------|-------|-----------|
-| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
+| E5 | `experiments/e5-io.yaml` | `IOChaos` 100ms latency on `/tmp` | web tolerates a slow local disk. **Requires a volume-backed target**: IOChaos wraps a volume MOUNT in FUSE and cannot touch a container's overlay filesystem, so the web Rollout must mount the chart's `scratchVolume` emptyDir at `/tmp` (enabled for dev) or this experiment has nothing to attach to. (The high-value disk case -- pipeline **scratch exhaustion**, the #799 NT/NR failure -- is a *pipeline-sandbox* experiment, section 9, not this one.) |
 | E6 | `experiments/e6-dns.yaml` | `DNSChaos` resolution failure for `*.es.amazonaws.com` / `*.rds.amazonaws.com` | dependency DNS failure degrades cleanly + recovers, no crashloop (the OpenSearch-timeout / sandbox-NXDOMAIN class) |
 | E7 | `experiments/e7-http-fit.yaml` | `HTTPChaos` abort 30% of outbound 443 calls | Netflix **FIT**: a partial dependency brownout is absorbed by retries/timeouts, not a user-facing storm |
 | E8 | `experiments/e8-time.yaml` | `TimeChaos` -10m clock skew | JWT/TLS/date-versioning tolerate drift or fail cleanly |
@@ -273,6 +296,16 @@ deliberate and reversible:
 8.  **Deploy the SLO probe:** `kubectl apply -f deploy/chaos/slo-probe/slo-probe.yaml`
     (needs the LGTM/Mimir stack up). Verify `GET /steady-state` returns 200 on a healthy
     system, then repoint experiment `StatusCheck` URLs from `/health_check` to the probe.
+8b. **Deploy the benchmark trigger (arms the AUPR half of the accuracy gate):**
+    `kubectl apply -f deploy/chaos/benchmark-trigger/benchmark-trigger.yaml`. It needs
+    `GITHUB_TOKEN` in the `chaos-reporter` secret (`actions:read` + `actions:write` +
+    `contents:read` on `IT-Academic-Research-Services/seqtoid-workflows`); without it the
+    service answers 503 and the gate fails closed. Verify the FREE path first --
+    `GET /status` with no handle returns the last successful benchmark's per-sample AUPR and
+    dispatches nothing -- before flipping `require_aupr: true` in
+    `accuracy-probe/accuracy-probe.yaml`. Note `POST /start` runs a REAL benchmark
+    (pipeline per sample); never put it on a frequent schedule, and calibrate `aupr_min`
+    against a known-good run first.
 9.  **Apply E5-E8** one at a time, morning-after review, ticket findings (as E1-E3).
 10. **FIS AZ + RDS-failover** templates (`terraform apply` via CI), run attended first.
 11. **Stand up the pipeline `-chaos` sandbox** (its own `terraform` workspace/prefix),
