@@ -1,0 +1,82 @@
+# sandbox overrides for the seqtoid-web chart. Isolated rehearsal env, account 941377154785.
+# Mirrors staging.yaml. Edge is wired: IRSA role seqtoid-web-sandbox (app terraform stack), the
+# persistent sandbox.seqtoid.org ACM cert, subnets via LBC tag auto-discovery (no hardcoded IDs), host
+# sandbox.seqtoid.org. OPEN ITEM: seqtoid.org is not hosted in this account (only .com/.net + the
+# ucsf.czid.org zones), so the sandbox.seqtoid.org -> ALB record is NOT auto-created by this env's
+# external-dns; point it at the fresh ALB (cross-account external-dns or a manual ALIAS) before smoke.
+environment: sandbox
+image:
+  # A seqtoid-web repo must exist in sandbox ECR (pre-flight). Simple repo name, like dev.
+  repository: 941377154785.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+  # Rehearsal iteration: `latest` is repointed on each image rebuild, so pull it every time (otherwise a
+  # node that cached an earlier `latest` reuses the stale image with IfNotPresent). A real deploy pins an
+  # immutable sha tag and can drop this.
+  pullPolicy: Always
+# 2 replicas for HA: the chart then renders the PodDisruptionBudget (maxUnavailable:1 -> one always
+# serving through node drain/consolidation) + HARD hostname topologySpread (the two pods MUST land on
+# different nodes), so a pod/node/AZ loss can't take the app down. Chaos gameday 2026-07-26 found the old
+# replicaCount:1 = a full outage on any pod-level fault (E1 pod-kill / E7). See CHAOS-GAMEDAY-SANDBOX-*.
+replicaCount: 2
+migrate:
+  # Fresh env: create the DB, migrate, then seed (db:seed builds app_configs incl. the Step Functions
+  # ARNs from AWS_ACCOUNT_ID + host_genomes + alignment_configs). All idempotent on re-runs.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+taxonLoad:
+  # Enabled: the data layer's OpenSearch domain is up, and the chamber-seed points S3_DATABASE_BUCKET at
+  # the same-account seqtoid-public-references bucket (which holds the taxon slice at ncbi-indexes-prod/
+  # 2024-02-06/...). taxon-load imports the slice into taxon_lineages AND builds the OpenSearch index.
+  enabled: true
+serviceAccount:
+  # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
+  # NOT <env>-seqtoid-web.
+  roleArn: arn:aws:iam::941377154785:role/seqtoid-web-sandbox
+secrets:
+  chamber:
+    # FRESH seqtoid chamber path (not the chart default idseq-<env>-web, which is the DEAD legacy env's
+    # config in this account). The reconstitute chamber-seed hook clones the legacy base config here and
+    # repoints the infra keys; the app IRSA role is granted SSM read on exactly /seqtoid-sandbox-web/*.
+    service: seqtoid-sandbox-web
+# secrets.chamber.service only feeds the chart's PREVIEW jobs; the main app (migrate/rollout/workers)
+# reads CHAMBER_SERVICE from the image entrypoint via commonEnv, which defaults to idseq-<env>-web. Set
+# it explicitly so `chamber exec` reads the fresh seqtoid path the IRSA role is scoped to.
+extraEnv:
+  - name: CHAMBER_SERVICE
+    value: seqtoid-sandbox-web
+blueGreen:
+  autoPromotionEnabled: true     # rehearsal env: promote on smoke pass (the gate is proven on dev)
+  scaleDownDelaySeconds: 60
+  analysis:
+    enabled: true
+    postPromotion: true
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+autoscaling:
+  enabled: false         # rehearsal env: no need to autoscale
+  minReplicas: 1
+  maxReplicas: 2
+# Public edge for sandbox. ALB via the AWS Load Balancer Controller -> active service.
+# smoke_url is set to match in env-reconstitute/config/envs.conf.
+ingress:
+  enabled: true
+  host: sandbox.seqtoid.org
+  # Persistent ACM cert for sandbox.seqtoid.org (ISSUED, DNS-validated). It lives OUTSIDE reconstitute
+  # -- an account-level edge resource, not part of the destroy/rebuild -- so its ARN is stable across
+  # rebuilds and safe to pin here. (Renew before NotAfter 2026-10-03.)
+  certificateArn: arn:aws:acm:us-west-2:941377154785:certificate/00ccbf7f-38fb-4784-98cb-d121bad0a289
+  # NO subnets annotation on purpose. reconstitute regenerates the public subnets every spin-up, so a
+  # hardcoded list (as dev pins, because dev is long-lived) would go stale on the next rebuild. The
+  # foundation tags the public subnets kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared,
+  # so the AWS Load Balancer Controller AUTO-DISCOVERS them -- nothing dynamic to commit.
+  annotations:
+    # WAF: the deny-by-default whitelist (UCSF CIDRs + named team IPs). CODIFIED here so the LBC attaches
+    # it to EVERY ALB it builds -- without this, a reconstitute yields an UNGATED endpoint. Observed
+    # 2026-07-27: a fast-tier rebuild created a fresh LBC ALB, DNS repointed to it, and the WAF (which had
+    # only been associated to the OLD ALB out-of-band) did NOT follow -> sandbox.seqtoid.org came up OPEN.
+    # Like certificateArn above, this Web ACL is a stable account-level edge resource OUTSIDE reconstitute,
+    # so its ARN is safe to pin. If a rebuild regenerates the ACL, refresh this ARN.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:941377154785:regional/webacl/idseq-sandbox-web/c88ccbd9-3d1f-460b-b69a-5b48177b117b

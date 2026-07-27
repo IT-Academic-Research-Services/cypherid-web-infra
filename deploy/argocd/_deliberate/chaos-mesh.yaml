@@ -7,6 +7,12 @@
 # root app. It does NOTHING on its own -- no experiment runs until (a) an experiment
 # manifest is applied AND (b) the target namespace carries chaos-mesh.org/inject=enabled.
 #
+# AL2023 NODE PREREQUISITE: also apply ../../chaos/node-prep/kmod-loader.yaml alongside this.
+# On AL2023 nodes the tc-netem/ipset kernel modules the daemon needs for NetworkChaos/DNSChaos/
+# HTTPChaos are not auto-loaded; the loader DaemonSet modprobes them (proven 2026-07-26: 2.8.3 +
+# the loader recovered E2/E7 and E6's transport). IOChaos stays blocked by cgroup-v2 /dev/fuse
+# -> use AWS FIS for IO faults.
+#
 # BLAST-RADIUS GUARDRAIL (the important line): controllerManager.enableFilterNamespace=true.
 # With it on, chaos can be injected ONLY into namespaces labeled
 # `chaos-mesh.org/inject=enabled`. We label ONLY seqtoid-dev, only during an authorized

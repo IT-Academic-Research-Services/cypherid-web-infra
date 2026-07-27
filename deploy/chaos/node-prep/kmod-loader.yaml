@@ -1,0 +1,71 @@
+# chaos-kmod-loader -- node prerequisite for Chaos Mesh NetworkChaos / DNSChaos / HTTPChaos on AL2023.
+#
+# WHY THIS EXISTS: on Amazon Linux 2023 (EKS AL2023 AMI) the kernel modules the chaos-daemon needs to
+# program tc-netem + ipset inside a pod's network namespace ship in the AMI but are NOT auto-loaded.
+# Without them, NetworkChaos fails "unable to flush ip sets" and DNSChaos's redirect can't be programmed
+# -- the exact block that made E2/E6/E7 look like a Chaos-Mesh-version wall on the 2026-07-22 game-day.
+# Loading the FULL set below (not just ip_set -- that alone was a red herring) + Chaos Mesh 2.8.3
+# recovered E2/E7 and E6's transport on the 2026-07-26 sandbox run. (E5 IOChaos stays blocked by the
+# cgroup-v2 /dev/fuse path -> use AWS FIS for IO faults.)
+#
+# HOW: a privileged DaemonSet that nsenter's into the host (PID 1) mount/UTS/IPC/net/PID namespaces and
+# runs `modprobe` on the NODE. As a DaemonSet it also covers node churn -- every new Karpenter node gets
+# the modules loaded when its loader pod starts. modprobe is idempotent; the pod then idles.
+#
+# LIFECYCLE: apply together with deploy/argocd/_deliberate/chaos-mesh.yaml, BEFORE arming a namespace.
+# It is inert (loads modules, injects nothing) and safe to leave running; remove it with the operator.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: chaos-kmod-loader
+  namespace: chaos-mesh
+  labels:
+    app.kubernetes.io/name: chaos-kmod-loader
+    app.kubernetes.io/part-of: chaos-mesh
+    app.kubernetes.io/component: node-prep
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chaos-kmod-loader
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chaos-kmod-loader
+        app.kubernetes.io/part-of: chaos-mesh
+        app.kubernetes.io/component: node-prep
+    spec:
+      hostPID: true
+      # Tolerate everything so the modules load on every node (incl. tainted/chaos node pools).
+      tolerations:
+        - operator: Exists
+      priorityClassName: system-node-critical
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: modprobe
+          image: busybox:1.36
+          securityContext:
+            privileged: true
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              node="$(nsenter -t 1 -u -- hostname 2>/dev/null || echo unknown)"
+              echo "[chaos-kmod-loader] node=${node}"
+              rc=0
+              # tc-netem (delay/loss), ipset (+ hash types) and iptables tables the daemon programs for
+              # NetworkChaos/DNSChaos/HTTPChaos; nf_tables is usually already loaded on AL2023.
+              for m in sch_netem sch_prio cls_bpf ip_set ip_set_hash_ip ip_set_hash_net \
+                       iptable_filter iptable_mangle nf_tables; do
+                if nsenter -t 1 -m -u -i -n -p -- modprobe "$m" 2>/dev/null; then
+                  echo "[chaos-kmod-loader]   loaded  $m"
+                else
+                  echo "[chaos-kmod-loader]   FAILED  $m"; rc=1
+                fi
+              done
+              [ "$rc" = 0 ] && echo "[chaos-kmod-loader] all modules loaded" \
+                            || echo "[chaos-kmod-loader] WARNING: one or more modules failed to load"
+              # Idle so the DaemonSet stays Ready and covers future node reboots via pod restart.
+              exec sleep infinity

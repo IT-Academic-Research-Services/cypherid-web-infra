@@ -1,0 +1,60 @@
+# Fail-closed target guard for the SANDBOX pipeline-chaos copy (idseq-swipe-sandbox-chaos-*).
+#
+# Same structure as ../experiments/_sandbox-guard.yaml but retargeted from the dev-chaos copy to the
+# sandbox account (941377154785). A pipeline-chaos fault can only ever hit a resource that is BOTH
+# (a) named idseq-swipe-sandbox-chaos-* AND (b) tagged seqtoid.io/chaos-sandbox=true -- the tag is
+# applied ONLY by a workflows-stack apply with environment=sandbox-chaos (strcontains "chaos" ->
+# seqtoid.io/chaos-sandbox=true; see seqtoid-ssot-infra/infra/state-foundation/workflows/main.tf). So the
+# real idseq-swipe-sandbox-* pipeline (used for the e2e proof) can never be selected. Read-only checks.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-sandbox-guard
+  namespace: chaos-mesh
+data:
+  guard.sh: |
+    set -euo pipefail
+
+    readonly CHAOS_ENV="sandbox-chaos"
+    readonly CHAOS_NAME_PREFIX="idseq-swipe-sandbox-chaos-"
+    readonly CHAOS_TAG_KEY="seqtoid.io/chaos-sandbox"
+    readonly CHAOS_TAG_VALUE="true"
+
+    # Exits 0 only if the target is the sandbox-chaos disposable copy; exits 3 (fail closed) otherwise.
+    assert_sandbox_target() {
+      local target="${1:-}"
+      if [[ -z "$target" ]]; then
+        echo "GUARD: refusing -- no target given" >&2
+        exit 3
+      fi
+      # (a) Name guard: must carry the sandbox-chaos prefix. The real idseq-swipe-sandbox-* pipeline does
+      #     NOT contain idseq-swipe-sandbox-chaos- and is refused.
+      if [[ "$target" != *"${CHAOS_NAME_PREFIX}"* ]]; then
+        echo "GUARD: refusing -- '$target' is not an ${CHAOS_NAME_PREFIX}* resource" >&2
+        exit 3
+      fi
+      # (b) Tag guard (authoritative): the target must actually carry seqtoid.io/chaos-sandbox=true,
+      #     applied only by an environment=sandbox-chaos workflows apply. Read-only.
+      local got
+      got="$(aws resourcegroupstaggingapi get-resources \
+               --resource-arn-list "$target" \
+               --query "ResourceTagMappingList[0].Tags[?Key=='${CHAOS_TAG_KEY}'].Value | [0]" \
+               --output text 2>/dev/null || echo "MISSING")"
+      if [[ "$got" != "$CHAOS_TAG_VALUE" ]]; then
+        echo "GUARD: refusing -- '$target' lacks ${CHAOS_TAG_KEY}=${CHAOS_TAG_VALUE} (got '$got')" >&2
+        exit 3
+      fi
+      echo "GUARD: ok -- '$target' is the ${CHAOS_ENV} sandbox; fault permitted" >&2
+    }
+
+    # FIS-based faults (P2/P4/P5/P6): the FIS templates are themselves tag-scoped to
+    # ${CHAOS_TAG_KEY}=${CHAOS_TAG_VALUE}; this refuses to START a template whose name is not the
+    # sandbox-chaos template, so a wrong template id cannot be launched.
+    assert_sandbox_fis_template() {
+      local tpl="${1:-}"
+      if [[ "$tpl" != *"${CHAOS_NAME_PREFIX}"* ]]; then
+        echo "GUARD: refusing FIS template '$tpl' -- not an ${CHAOS_NAME_PREFIX}* template" >&2
+        exit 3
+      fi
+      echo "GUARD: ok -- FIS template '$tpl' is a sandbox-chaos template" >&2
+    }

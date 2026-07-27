@@ -2568,6 +2568,13 @@
                         "CKV_DOCKER_2",
                         "CKV_DOCKER_3"
                     ]
+                },
+                {
+                    "resource": "/modules/idseq-s3-tar-writer/Dockerfile.",
+                    "check_ids": [
+                        "CKV_DOCKER_2",
+                        "CKV_DOCKER_3"
+                    ]
                 }
             ]
         },
@@ -2878,6 +2885,29 @@
                     "resource": "module.cloudfront_waf.aws_wafv2_web_acl.cloudfront",
                     "check_ids": [
                         "CKV2_AWS_31"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/envs/prod-preview/web-waf/main.tf",
+            "findings": [
+                {
+                    "resource": "aws_wafv2_web_acl.prod_preview",
+                    "check_ids": [
+                        "CKV2_AWS_31",
+                        "CKV_AWS_192"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/envs/prod-preview/web/seqtoid-web-ecr.tf",
+            "findings": [
+                {
+                    "resource": "aws_ecr_repository.seqtoid-web-repository",
+                    "check_ids": [
+                        "CKV_AWS_136"
                     ]
                 }
             ]

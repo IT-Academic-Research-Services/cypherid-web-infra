@@ -1,0 +1,44 @@
+# prod-preview overrides for the seqtoid-web chart. Locked-down pre-prod, prod account 283694049553.
+# Isolated from real prod (seqtoid.org) by name + network + data. See env-reconstitute/PROD-PREVIEW-DESIGN.md.
+# REPLACE_* placeholders are filled once the prod-preview foundation + edge are stood up.
+environment: prod-preview
+image:
+  # seqtoid-web ECR must exist in the prod account (survey found 0 ECR repos there -- create it).
+  repository: 283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+replicaCount: 2          # prod-shaped, but lean; scale-to-zero when idle (cost)
+serviceAccount:
+  # IRSA role naming is seqtoid-web-<env> (mirror envs/dev/web/eks-irsa.tf into envs/prod-preview/web/).
+  roleArn: arn:aws:iam::283694049553:role/seqtoid-web-prod-preview
+blueGreen:
+  # prod-family: DO NOT auto-promote. prod-preview is the dark color; the readiness-gate is the
+  # promotion authority, and the flip to real seqtoid.org is a deliberate, gated cutover -- never
+  # automatic. (sandbox uses autoPromotion=true; prod-preview mirrors prod's manual posture.)
+  autoPromotionEnabled: false
+  scaleDownDelaySeconds: 60
+  analysis:
+    enabled: true
+    postPromotion: true
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+# Public edge for prod.seqtoid.org -- DENY-BY-DEFAULT, whitelist only. Two layers:
+#   1. WAF IP-allowlist (UCSF egress CIDRs) associated to this ALB, on top of the export-control
+#      geofence WAF -- fill wafv2-acl-arn with the prod-preview allowlist Web ACL ARN.
+#   2. Auth0 internal-UCSF group gate (app-side; only that group may complete login).
+# The record prod.seqtoid.org lives in the prod-account seqtoid.org zone (do NOT touch seqtoid.org).
+ingress:
+  enabled: true
+  host: prod.seqtoid.org
+  certificateArn: arn:aws:acm:us-west-2:283694049553:certificate/REPLACE_PRODPREVIEW_CERT
+  annotations:
+    alb.ingress.kubernetes.io/subnets: REPLACE_PRODPREVIEW_PUBLIC_SUBNETS
+    # WAF allowlist (UCSF CIDRs) -- deny-by-default at the edge.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: REPLACE_PRODPREVIEW_WAF_ACL_ARN
