@@ -1,0 +1,64 @@
+# prod-test overrides for the seqtoid-web chart. A STANDALONE, prod-shaped test env in the prod account
+# (283694049553), reachable ONLY at a long, random subdomain -- NOT the customer domain, and NOT wired to
+# the seqtoid.org promotion flip. It exists to spin up "a working version of prod" for internal validation.
+#
+# Difference vs prod-preview: prod-preview is the promotion DARK COLOR at prod.seqtoid.org (it flips into
+# real prod when ready). prod-test is a throwaway test at preview-<random>.seqtoid.org that never flips and
+# never tracks seqtoid.org. Same isolation walls (name / network / synthetic-data-only), same prod account.
+#
+# ACCESS GATE -- deny-by-default at the CONNECTION layer, CODIFIED (the hard lesson from 2026-07-27):
+#   The gate MUST live in this ingress config, NOT be bolted onto a live ALB. A reconstitute rebuilds the
+#   ALB; any out-of-band WAF association is LOST and the endpoint comes up OPEN. Pinning wafv2-acl-arn here
+#   makes the AWS Load Balancer Controller re-attach the WAF to every ALB it builds -> the gate survives
+#   every rebuild. (Observed: sandbox came up ungated after a rebuild for exactly this reason.)
+#   Layers, weakest-actor-first:
+#     1. WAF deny-by-default IP allowlist = UCSF egress CIDRs + the dev team's IPs. This is the real gate:
+#        a source not on the list is BLOCKED at the edge (never reaches the app / login page). Same pattern
+#        proven live on sandbox (idseq-sandbox-web: default Block + a UCSF+team IP set).
+#     2. Auth0 internal-group login (app-side) -- identity/audit AFTER the edge, not the perimeter.
+#   Remote-team caveat: roaming home IPs must be re-added as /32s when they change (sandbox already carries
+#   two hardcoded team /32s). When that churn gets annoying, upgrade the perimeter to ALB mTLS client certs
+#   (IP-independent, per-person, blocks at the TLS handshake) -- see the prod-test access-model notes.
+environment: prod-test
+image:
+  # seqtoid-web ECR must exist in the prod account (survey found 0 ECR repos there -- create it).
+  repository: 283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+replicaCount: 2          # prod-shaped, but lean; scale-to-zero when idle (cost)
+serviceAccount:
+  # IRSA role naming is seqtoid-web-<env> (mirror envs/dev/web/eks-irsa.tf into envs/prod-test/web/).
+  roleArn: arn:aws:iam::283694049553:role/seqtoid-web-prod-test
+blueGreen:
+  # prod-family posture: manual promotion (prod-shaped), but there is no seqtoid.org flip here -- prod-test
+  # is standalone. Kept manual so it behaves like prod for validation, not because it promotes anywhere.
+  autoPromotionEnabled: false
+  scaleDownDelaySeconds: 60
+  analysis:
+    enabled: true
+    postPromotion: true
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+ingress:
+  enabled: true
+  # Long, random subdomain of seqtoid.org (UCSF grants the subdomain). GENERATE the 24-char token at apply
+  # time (e.g. `openssl rand -hex 12`) and DO NOT commit the real value -- committing it to git defeats the
+  # obscurity (it lives forever in history). Obscurity is a BONUS layer, never the control (the WAF is).
+  host: preview-REPLACE_RANDOM24.seqtoid.org
+  # WILDCARD cert (*.seqtoid.org), NOT a per-host cert: a per-host public cert publishes the exact random
+  # hostname to Certificate Transparency logs (crt.sh) within minutes, destroying the obscurity. A wildcard
+  # only ever publishes "*.seqtoid.org", so the random host stays out of CT.
+  certificateArn: arn:aws:acm:us-west-2:283694049553:certificate/REPLACE_PRODTEST_WILDCARD_CERT
+  annotations:
+    alb.ingress.kubernetes.io/subnets: REPLACE_PRODTEST_PUBLIC_SUBNETS
+    # THE GATE (codified, survives rebuild): deny-by-default Web ACL whose allow rule = an IP set of UCSF
+    # egress CIDRs + the dev team's IPs. Build it like the sandbox one (default action Block + one
+    # IPSetReferenceStatement allow rule). Fill this ARN once the prod-test edge is stood up.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: REPLACE_PRODTEST_WAF_ACL_ARN
