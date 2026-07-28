@@ -27,6 +27,10 @@ on:
         required: false
       AUTH0_DOMAIN:
         required: false
+      TF_VAR_LOCATION_IQ_API_KEY:
+        required: false
+      TF_VAR_MAPTILER_API_KEY:
+        required: false
       # Only used by the `if: env.ACT` local-run step (nektos act); real CI uses OIDC.
       # Declared here (optional) so the references resolve for the workflow linter.
       AWS_ACCESS_KEY_ID:
@@ -132,6 +136,8 @@ jobs:
           AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
           AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
           AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+          TF_VAR_LOCATION_IQ_API_KEY: ${{ secrets.TF_VAR_LOCATION_IQ_API_KEY }}
+          TF_VAR_MAPTILER_API_KEY: ${{ secrets.TF_VAR_MAPTILER_API_KEY }}
         run: |
           terraform plan -input=false -out=tf.plan
       - name: Terraform Apply
@@ -141,6 +147,8 @@ jobs:
           AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
           AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
           AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+          TF_VAR_LOCATION_IQ_API_KEY: ${{ secrets.TF_VAR_LOCATION_IQ_API_KEY }}
+          TF_VAR_MAPTILER_API_KEY: ${{ secrets.TF_VAR_MAPTILER_API_KEY }}
           # TODO: Handle special cases, like route53 which needs idseq-prod access; or fix route53 to be profile-specific only
         run: |
           set +e
