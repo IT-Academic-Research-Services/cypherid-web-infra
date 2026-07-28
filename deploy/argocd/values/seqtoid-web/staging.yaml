@@ -1,17 +1,43 @@
-# staging overrides for the seqtoid-web chart.
+# staging overrides for the seqtoid-web chart. FRESH SEQTOID pre-prod in the staging account
+# (030998640247). Deliberately seqtoid-scheme (namespace seqtoid-staging, role seqtoid-web-staging) so it
+# NEVER collides with the LIVE legacy czid-staging in the same account -- same isolation model as sandbox
+# vs the dead czid-sandbox, but here the legacy is LIVE, so the name/CIDR/workspace separation matters more.
+# Prod-shaped (reconstitute runs staging with size_profile=prod); mirrors sandbox.yaml otherwise.
 environment: staging
 image:
-  repository: REPLACE_STAGING_ACCT.dkr.ecr.us-west-2.amazonaws.com/czid-staging/seqtoid-web
-  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+  # Persistent seqtoid-web ECR repo in the staging account (like sandbox's app-registry repo). PRE-FLIGHT:
+  # create it (the reconstitute foundation makes a namespaced seqtoid-staging/seqtoid-web; a persistent
+  # simple `seqtoid-web` repo survives rebuilds + matches this pin). CI/build advances the tag.
+  repository: 030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest
+  pullPolicy: Always
+# Prod-shaped HA: 2 replicas + PDB + hard hostname topologySpread (chart renders these) so a pod/node loss
+# can't take staging down. Autoscaling on (staging exercises the same scaling path as prod).
 replicaCount: 2
+migrate:
+  # Fresh env: create -> migrate -> seed. db:seed is idempotent (seqtoid-web #203), so redeploys are safe.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+taxonLoad:
+  enabled: true
 serviceAccount:
-  roleArn: arn:aws:iam::REPLACE_STAGING_ACCT:role/czid-staging-seqtoid-web
+  # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra state-foundation/app).
+  roleArn: arn:aws:iam::030998640247:role/seqtoid-web-staging
+secrets:
+  chamber:
+    # FRESH seqtoid chamber path (not the legacy idseq-staging-web). reconstitute's chamber-seed clones the
+    # base config here + repoints infra keys; the app IRSA role is scoped to SSM /seqtoid-staging-web/*.
+    service: seqtoid-staging-web
+extraEnv:
+  # The main app reads CHAMBER_SERVICE from the entrypoint (defaults to idseq-<env>-web); set it explicitly
+  # so `chamber exec` reads the fresh seqtoid path the IRSA role is scoped to.
+  - name: CHAMBER_SERVICE
+    value: seqtoid-staging-web
 blueGreen:
-  autoPromotionEnabled: true     # staging: automated gate (promote on smoke pass)
+  autoPromotionEnabled: true     # staging: promote on smoke pass (the gate is proven on dev)
   scaleDownDelaySeconds: 60
   analysis:
     enabled: true
-    postPromotion: true          # also re-smoke the new active color
+    postPromotion: true
 resources:
   requests:
     cpu: 500m
@@ -21,11 +47,22 @@ resources:
 autoscaling:
   enabled: true
   minReplicas: 2
-  maxReplicas: 4
+  maxReplicas: 6
 # Public edge for staging. ALB via the AWS Load Balancer Controller -> active service.
+# smoke_url matches env-reconstitute/config/envs.conf (staging.smoke_url).
 ingress:
   enabled: true
-  host: czid-staging.example.org       # REPLACE with the real staging DNS name
-  certificateArn: arn:aws:acm:us-west-2:REPLACE_STAGING_ACCT:certificate/REPLACE_STAGING_CERT
+  host: staging.seqtoid.org
+  # PRE-FLIGHT: request an ACM cert for staging.seqtoid.org in us-west-2, DNS-validated in the seqtoid.org
+  # zone (which lives in the PROD account -> cross-account validation, same as sandbox's .org edge). It is a
+  # persistent account-level edge resource OUTSIDE reconstitute; drop its ARN here once issued.
+  certificateArn: REPLACE_STAGING_CERT_ARN
+  # NO subnets annotation on purpose: reconstitute regenerates the public subnets every spin-up and the
+  # foundation tags them for LBC auto-discovery (kubernetes.io/role/elb=1 + cluster/<name>=shared).
   annotations:
-    alb.ingress.kubernetes.io/subnets: REPLACE_STAGING_PUBLIC_SUBNETS
+    # THE GATE (codified so the LBC re-attaches it to EVERY ALB it builds -- the hard lesson from the
+    # sandbox WAF drop): a deny-by-default Web ACL whose allow rule = UCSF egress CIDRs + the dev team's
+    # IPs. PRE-FLIGHT: build a dedicated staging Web ACL in the STAGING account (WAF is account+region
+    # scoped -- the sandbox ACL in 941377154785 cannot be reused here), like the sandbox one (default
+    # action Block + one IPSetReferenceStatement allow rule). Fill this ARN once it exists.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: REPLACE_STAGING_WAF_ACL_ARN
