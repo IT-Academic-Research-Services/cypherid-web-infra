@@ -1,0 +1,46 @@
+# =============================================================================
+# App-of-apps root -- STAGING (fresh SEQTOID pre-prod; staging account 030998640247).
+#
+# Mirrors bootstrap/root-app-sandbox.yaml. Manages ONLY the staging app-layer Argo Applications under
+# deploy/argocd/apps/staging/. Runs from the argocd in the fresh seqtoid-staging EKS cluster
+# (cluster-per-env), so the in-cluster target kubernetes.default.svc is correct and this env's teardown
+# never touches the LIVE legacy staging in the same account.
+#
+# Like the dev/sandbox roots, it deliberately does NOT manage infra addons (LBC, argo-rollouts,
+# cert-manager, external-dns, karpenter): those are live Helm releases owned by the eks Terraform module.
+#
+# prune + selfHeal START DISABLED so the first sync is inspected before Argo prunes/self-heals -- doubly
+# important here because the account also hosts the live legacy staging. Flip both to true only after the
+# first sync is verified (see bootstrap/README.md).
+#
+# Applied by the env-reconstitute bootstrap stage:
+#   staging.appofapps_manifest = cypherid-web-infra/deploy/argocd/bootstrap/root-app-staging.yaml
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seqtoid-root-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # The seqtoid AppProject (staging.appproject_manifest -> projects/seqtoid.yaml, which whitelists the
+  # seqtoid-staging namespace). Do NOT reuse the legacy czid project.
+  project: seqtoid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    # Track the integration line. For a PRE-MERGE rehearsal apply, override to the feature branch.
+    targetRevision: integration
+    path: deploy/argocd/apps/staging
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

@@ -1,11 +1,13 @@
-# seqtoid-web @ staging. See seqtoid-web-dev.yaml for the multi-source pattern.
+# seqtoid-web @ staging -- FRESH SEQTOID pre-prod (staging account 030998640247). New-scheme namespace
+# seqtoid-staging (NOT the legacy czid-staging) + the seqtoid AppProject, so it never collides with the
+# live legacy staging. Values from $values/.../staging.yaml. Mirrors the sandbox app; tracks integration.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: seqtoid-web-staging
   namespace: argocd
 spec:
-  project: czid
+  project: seqtoid
   sources:
     - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
       targetRevision: main
@@ -14,11 +16,13 @@ spec:
         valueFiles:
           - $values/deploy/argocd/values/seqtoid-web/staging.yaml
     - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
-      targetRevision: main
+      # Track the integration line (like sandbox) so env-values fixes land automatically. Pre-merge
+      # rehearsal applies can override this to the feature branch.
+      targetRevision: integration
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: czid-staging
+    namespace: seqtoid-staging
   syncPolicy:
     automated:
       prune: true
