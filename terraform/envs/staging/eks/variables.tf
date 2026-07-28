@@ -12,8 +12,7 @@ locals {
     # "tfe-si",
   ]
 
-  cluster_name            = var.eks_cluster_name
-  iam_cluster_name_prefix = null
+  cluster_name = var.eks_cluster_name
 
   # CZID #55: restrict the EKS public API endpoint off 0.0.0.0/0.
   # Interim CIDR restriction only — the full private flip (endpoint_public_access
