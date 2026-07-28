@@ -1,13 +1,43 @@
-# staging overrides for the seqtoid-web chart.
+# staging overrides for the seqtoid-web chart. FRESH seqtoid pre-prod in account 030998640247, running
+# ALONGSIDE the LIVE legacy czid-staging -- fully isolated (seqtoid-staging-* resources, own VPC 10.170/16,
+# own terraform workspace). Mirrors sandbox.yaml. Edge: IRSA role seqtoid-web-staging (app terraform
+# stack), the persistent staging.seqtoid.org ACM cert (in-account, ISSUED), subnets via LBC tag
+# auto-discovery (no hardcoded IDs), host staging.seqtoid.org. Unlike sandbox, the staging.seqtoid.org
+# zone IS in this account, so external-dns creates the record in-account (no manual ALIAS).
 environment: staging
 image:
-  repository: REPLACE_STAGING_ACCT.dkr.ecr.us-west-2.amazonaws.com/czid-staging/seqtoid-web
-  tag: latest            # CI advances this to the immutable git-sha tag on deploy
+  # Persistent seqtoid-web repo in the staging account (seqtoid-ssot-infra/infra/app-registry). Simple
+  # repo name, like dev/sandbox.
+  repository: 030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest            # repointed on each image rebuild; pull every time (see pullPolicy)
+  pullPolicy: Always
+# 2 replicas for HA (PDB maxUnavailable:1 + hard hostname topologySpread) -- see sandbox.yaml rationale.
 replicaCount: 2
+migrate:
+  # Fresh env: create the DB, migrate, then seed (app_configs incl. SFN ARNs from AWS_ACCOUNT_ID +
+  # host_genomes + alignment_configs). All idempotent on re-runs.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+taxonLoad:
+  # The chamber-seed points S3_DATABASE_BUCKET at the same-account seqtoid-public-references bucket; the
+  # data layer's OpenSearch domain is up -- taxon-load imports the slice + builds the heatmap index.
+  enabled: true
 serviceAccount:
-  roleArn: arn:aws:iam::REPLACE_STAGING_ACCT:role/czid-staging-seqtoid-web
+  # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
+  # NOT <env>-seqtoid-web.
+  roleArn: arn:aws:iam::030998640247:role/seqtoid-web-staging
+secrets:
+  chamber:
+    # FRESH seqtoid chamber path (not the chart default idseq-<env>-web = the LIVE legacy config). The
+    # reconstitute chamber-seed-staging hook clones the legacy base in-account and repoints infra keys;
+    # the app IRSA role is granted SSM read on exactly /seqtoid-staging-web/*.
+    service: seqtoid-staging-web
+extraEnv:
+  # The main app (migrate/rollout/workers) reads CHAMBER_SERVICE from the image entrypoint (defaults to
+  # idseq-<env>-web); set it explicitly to the fresh seqtoid path the IRSA role is scoped to.
+  - name: CHAMBER_SERVICE
+    value: seqtoid-staging-web
 blueGreen:
-  autoPromotionEnabled: true     # staging: automated gate (promote on smoke pass)
+  autoPromotionEnabled: true     # promote on smoke pass (the gate is proven on dev)
   scaleDownDelaySeconds: 60
   analysis:
     enabled: true
@@ -19,13 +49,23 @@ resources:
   limits:
     memory: 2Gi
 autoscaling:
-  enabled: true
+  enabled: false         # pre-prod: no autoscale for the first spin-up
   minReplicas: 2
   maxReplicas: 4
 # Public edge for staging. ALB via the AWS Load Balancer Controller -> active service.
+# smoke_url matches env-reconstitute/config/envs.conf (https://staging.seqtoid.org).
 ingress:
   enabled: true
-  host: czid-staging.example.org       # REPLACE with the real staging DNS name
-  certificateArn: arn:aws:acm:us-west-2:REPLACE_STAGING_ACCT:certificate/REPLACE_STAGING_CERT
-  annotations:
-    alb.ingress.kubernetes.io/subnets: REPLACE_STAGING_PUBLIC_SUBNETS
+  host: staging.seqtoid.org
+  # Persistent ACM cert for staging.seqtoid.org (ISSUED, in-account DNS-validated). Lives OUTSIDE
+  # reconstitute -- an account-level edge resource, stable across rebuilds, safe to pin.
+  certificateArn: arn:aws:acm:us-west-2:030998640247:certificate/eb905d34-4ac8-48ce-a1e3-019cc3d5992a
+  # NO subnets annotation on purpose: the foundation tags the public subnets
+  # kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared, so the AWS Load Balancer
+  # Controller AUTO-DISCOVERS them -- nothing goes stale when reconstitute regenerates subnets.
+  #
+  # WAF DEFERRED for the first spin-up (deliberate): staging comes up WITHOUT an IP allowlist so it can
+  # be smoke-tested immediately. Attach a Web ACL as a fast-follow by adding, under an `annotations:`
+  # block here:
+  #   alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:030998640247:regional/webacl/seqtoid-staging-web/<id>
+  # (see sandbox.yaml for the pattern + the reconstitute-vs-edge-resource note).
