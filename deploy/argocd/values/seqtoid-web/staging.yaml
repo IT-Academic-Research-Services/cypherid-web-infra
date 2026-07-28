@@ -1,8 +1,8 @@
 # staging overrides for the seqtoid-web chart. FRESH seqtoid pre-prod in account 030998640247, running
 # ALONGSIDE the LIVE legacy czid-staging -- fully isolated (seqtoid-staging-* resources, own VPC 10.170/16,
 # own terraform workspace). Mirrors sandbox.yaml. Edge: IRSA role seqtoid-web-staging (app terraform
-# stack), the persistent staging.seqtoid.org ACM cert (in-account, ISSUED), subnets via LBC tag
-# auto-discovery (no hardcoded IDs), host staging.seqtoid.org. Unlike sandbox, the staging.seqtoid.org
+# stack), the persistent env-staging.seqtoid.org ACM cert (in-account, ISSUED), subnets via LBC tag
+# auto-discovery (no hardcoded IDs), host env-staging.seqtoid.org. Unlike sandbox, the env-staging.seqtoid.org
 # zone IS in this account, so external-dns creates the record in-account (no manual ALIAS).
 environment: staging
 image:
@@ -53,13 +53,13 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 4
 # Public edge for staging. ALB via the AWS Load Balancer Controller -> active service.
-# smoke_url matches env-reconstitute/config/envs.conf (https://staging.seqtoid.org).
+# smoke_url matches env-reconstitute/config/envs.conf (https://env-staging.seqtoid.org).
 ingress:
   enabled: true
-  host: staging.seqtoid.org
-  # Persistent ACM cert for staging.seqtoid.org (ISSUED, in-account DNS-validated). Lives OUTSIDE
+  host: env-staging.seqtoid.org
+  # Persistent ACM cert for env-staging.seqtoid.org (ISSUED, in-account DNS-validated). Lives OUTSIDE
   # reconstitute -- an account-level edge resource, stable across rebuilds, safe to pin.
-  certificateArn: arn:aws:acm:us-west-2:030998640247:certificate/eb905d34-4ac8-48ce-a1e3-019cc3d5992a
+  certificateArn: arn:aws:acm:us-west-2:030998640247:certificate/3ee144bd-901c-4b3b-9971-b52f51e0df2e
   # NO subnets annotation on purpose: the foundation tags the public subnets
   # kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared, so the AWS Load Balancer
   # Controller AUTO-DISCOVERS them -- nothing goes stale when reconstitute regenerates subnets.
