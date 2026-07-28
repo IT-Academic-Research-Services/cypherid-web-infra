@@ -31,7 +31,7 @@ spec:
   project: seqtoid
   source:
     repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
-    targetRevision: rehearsal/sandbox-argo   # rehearsal: pull sandbox apps from the pushed branch, not main
+    targetRevision: integration   # sandbox tracks the integration line (was the throwaway rehearsal/sandbox-argo branch)
     path: deploy/argocd/apps/sandbox
     directory:
       recurse: true
