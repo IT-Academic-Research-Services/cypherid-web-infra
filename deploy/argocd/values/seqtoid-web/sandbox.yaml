@@ -72,3 +72,11 @@ ingress:
   # hardcoded list (as dev pins, because dev is long-lived) would go stale on the next rebuild. The
   # foundation tags the public subnets kubernetes.io/role/elb=1 + kubernetes.io/cluster/<cluster>=shared,
   # so the AWS Load Balancer Controller AUTO-DISCOVERS them -- nothing dynamic to commit.
+  annotations:
+    # WAF: the deny-by-default whitelist (UCSF CIDRs + named team IPs). CODIFIED here so the LBC attaches
+    # it to EVERY ALB it builds -- without this, a reconstitute yields an UNGATED endpoint. Observed
+    # 2026-07-27: a fast-tier rebuild created a fresh LBC ALB, DNS repointed to it, and the WAF (which had
+    # only been associated to the OLD ALB out-of-band) did NOT follow -> sandbox.seqtoid.org came up OPEN.
+    # Like certificateArn above, this Web ACL is a stable account-level edge resource OUTSIDE reconstitute,
+    # so its ARN is safe to pin. If a rebuild regenerates the ACL, refresh this ARN.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:941377154785:regional/webacl/idseq-sandbox-web/c88ccbd9-3d1f-460b-b69a-5b48177b117b
