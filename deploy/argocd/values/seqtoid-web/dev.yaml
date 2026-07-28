@@ -8,7 +8,7 @@ environment: dev
 image:
   # Dev-account ECR, go-forward repo (the CZID-76 dual-push lands here too).
   repository: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: sha-121cc851 # the current hardened known-good build; CI advances this per build
+  tag: sha-059a704d # the current hardened known-good build; CI advances this per build
 # COST SPIN-DOWN (dev): scale ALL workloads to 0 and skip the migrate/taxon-load hooks
 # (chart `suspend`). Safe + reversible — the app's data lives in Aurora + OpenSearch, not
 # the pods. The CD keeps advancing `image.tag` while suspended, so flipping this to false
@@ -165,7 +165,6 @@ ingress:
   certificateArn: arn:aws:acm:us-west-2:491013321714:certificate/9881060c-5652-40b6-9132-72a94171e18b
   annotations:
     alb.ingress.kubernetes.io/subnets: subnet-06bfffadf91e2c189,subnet-0f94623d782341d71
-
 # Dev runs RAILS_ENV=development, whose deployed-logging block defaults to :debug.
 # At :debug ActiveRecord echoes every statement WITH its bound values, so the resque
 # worker wrote whole `INSERT INTO contigs` statements including the `sequence`
