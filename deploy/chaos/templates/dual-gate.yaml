@@ -129,9 +129,30 @@ spec:
         container:
           name: verdict
           # Reporter image (built from deploy/chaos/report/, pushed to ECR). Posts a Grafana
-          # annotation always + opens a Jira ticket on a failed verdict.
+          # annotation always + opens a Jira ticket on a failed verdict. The command carries the FULL
+          # story so the ticket is self-contained: fault, sequence/timeline, what was observed, which
+          # gate failed (with values), key metrics. Replace the <...> placeholders per experiment.
           image: 491013321714.dkr.ecr.us-west-2.amazonaws.com/chaos-report:latest
-          command: ["/report", "--experiment", "dual-gate-example"]
+          command:
+            - /report
+            - --experiment
+            - dual-gate-example
+            - --verdict
+            - fail
+            - --gate
+            - availability
+            - --fault
+            - "<what fault was injected + params>"
+            - --step
+            - "T+0s preflight = healthy"
+            - --step
+            - "T+Ns fault injected; <what happened>"
+            - --observed
+            - "<what was seen under the fault>"
+            - --failure
+            - "<gate>: <measured> vs <threshold>"
+            - --metric
+            - "<name>=<value>"
           # Tokens/endpoints from the chaos-reporter secret (kubectl create secret; keys:
           # GRAFANA_URL, GRAFANA_TOKEN, JIRA_BASE_URL, JIRA_EMAIL, JIRA_TOKEN).
           envFrom:
