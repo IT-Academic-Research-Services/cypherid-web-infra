@@ -96,13 +96,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "samples" {
     id     = "Expire Samples in 3 days"
     status = "Enabled"
     filter {
-      prefix = "samples/"
+      and {
+        prefix = "samples/"
+        tags = {
+          type = "sample"
+        }
+      }
     }
-
-    tags = {
-      "type" = "sample"
-    }
-
     expiration {
       days = 3
     }
