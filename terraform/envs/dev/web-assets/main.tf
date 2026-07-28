@@ -3,7 +3,7 @@ module "static_site" {
 
   env     = var.env
   service = var.component
-  domain  = "assets.dev.seqtoid.org"
+  domain  = "static-assets.dev.seqtoid.org"
 
   zone_id                    = data.terraform_remote_state.route53.outputs.env_seqtoid_org_zone_id
   web_acl_id                 = data.terraform_remote_state.web.outputs.cloudfront_web_acl_id
