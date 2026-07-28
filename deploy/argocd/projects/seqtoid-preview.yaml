@@ -58,6 +58,17 @@ spec:
       kind: AnalysisTemplate
     - group: argoproj.io
       kind: AnalysisRun
+    # The chart's bulk-download-rbac.yaml renders a Role + RoleBinding whenever
+    # bulkDownload.rbac.create is set, which it is in preview (preview-base.yaml) so the preview web
+    # SA can create the bulk-download tar Job in its own namespace (SMP-1496). Without these entries
+    # Argo rejects them as "not permitted in project seqtoid-preview" and -- exactly like the
+    # PodDisruptionBudget case above -- that invalidates the WHOLE sync, so the namespace never
+    # comes up and the sandbox silently times out. Scoped to the namespace (namespaceResourceWhitelist),
+    # never cluster-wide.
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
   # Reap everything in the namespace when a preview Application is deleted (PR close).
   orphanedResources:
     warn: false
