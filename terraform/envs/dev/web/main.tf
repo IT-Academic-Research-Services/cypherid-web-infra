@@ -322,9 +322,9 @@ module "web-service-params" {
     AUTO_ACCOUNT_CREATION_V1      = 1
     S3_WORKFLOWS_BUCKET           = local.s3_bucket_workflows
     LAMBDA_ENV                    = var.env # TODO: Only necessary for dev, as it defaults to Rails.env ('development') in the code
-    # LOCATION_IQ_API_KEY           = var.location_iq_api_key
-    # MAPTILER_API_KEY              = var.maptiler_api_key
-    # MAP_STYLE_ID                  = var.map_style_id
+    LOCATION_IQ_API_KEY           = var.LOCATION_IQ_API_KEY
+    MAPTILER_API_KEY              = var.MAPTILER_API_KEY
+    MAP_STYLE_ID                  = var.MAP_STYLE_ID
   }
 }
 
