@@ -82,6 +82,15 @@ serviceAccount:
   name: seqtoid-web
   roleArn: arn:aws:iam::491013321714:role/seqtoid-web-preview
 
+# Preview namespaces have no Terraform, so grant the app SA "create jobs" in-chart
+# here -- otherwise bulk-download tar Jobs fail with a 403 (SMP-1496). dev/staging/
+# prod get this from Terraform (bulk-download-warmpool-rbac.tf) and leave it off.
+# Pairs with BULK_DOWNLOAD_JOB_SA=seqtoid-web in the preview SSM config (sandbox.rake),
+# so the tar Job runs as this same preview SA (its role already has the S3 access).
+bulkDownload:
+  rbac:
+    create: true
+
 # The per-PR sandbox extras (provision/teardown Jobs + provisioner SA). prNumber +
 # ingress.host + image.tag are set per-PR by the ApplicationSet.
 preview:
