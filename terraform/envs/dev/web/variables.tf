@@ -12,3 +12,5 @@ variable "MAP_STYLE_ID" {
   type    = string
   default = "base-v4"
 }
+
+# plan-on-PR smoke test (transient; safe to revert)
