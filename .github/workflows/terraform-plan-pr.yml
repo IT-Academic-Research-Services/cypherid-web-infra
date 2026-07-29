@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   plan-dev-web:
-    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/terraform-plan.yml@v1
+    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/terraform-plan.yml@feat/plan-gate-environment
     with:
       working_directory: terraform/envs/dev/web
       environment: dev
