@@ -28,3 +28,34 @@ def test_handler_no_arn_returns_note_without_calling_aws():
     assert result["correlation_id"] == "c1"
     assert "nothing to enrich" in result["note"]
     assert "sfn" not in result  # no AWS calls attempted
+
+
+def test_failed_batch_job_id_from_history():
+    # newest-first history: the batch TaskSubmitted carries the JobId in its output.
+    events = [
+        {"type": "ExecutionFailed", "executionFailedEventDetails": {"error": "KeyError"}},
+        {
+            "type": "TaskSubmitted",
+            "taskSubmittedEventDetails": {
+                "resource": "batch:submitJob.sync",
+                "output": '{"JobId":"abc-123","JobName":"host-filter"}',
+            },
+        },
+    ]
+    assert handler._failed_batch_job_id(events) == "abc-123"
+
+
+def test_failed_batch_job_id_none_when_no_batch_task():
+    events = [{"type": "TaskSubmitted", "taskSubmittedEventDetails": {"resource": "lambda:invoke", "output": "{}"}}]
+    assert handler._failed_batch_job_id(events) is None
+
+
+def test_sfn_detail_extracts_failed_state_and_cause():
+    events = [
+        {"type": "ExecutionFailed", "executionFailedEventDetails": {"error": "KeyError", "cause": "boom"}},
+        {"type": "TaskFailed", "stateExitedEventDetails": {"name": "HostFilterReadOutput"}},
+    ]
+    detail = handler._sfn_detail("FAILED", events)
+    assert detail["status"] == "FAILED"
+    assert detail["error"] == "KeyError"
+    assert detail["failed_state"] == "HostFilterReadOutput"
