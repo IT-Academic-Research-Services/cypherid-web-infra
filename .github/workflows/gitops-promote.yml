@@ -31,10 +31,20 @@ jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
+      # IT-ARS authenticates gitops writes with a GitHub App (repo var CI_APP_ENABLED=true);
+      # the thorvath-slower fork has no app, so this step is skipped and the tokens below fall
+      # back to the GITOPS_TOKEN PAT. See platform-overhaul #683.
+      - name: Generate app token
+        id: app_token
+        if: ${{ vars.CI_APP_ENABLED == 'true' }}
+        uses: chanzuckerberg/github-app-token@365b1f2db827eb8f17288ec335b1a7e3c03ff683 # v1.1.4
+        with:
+          app_id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private_key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          token: ${{ secrets.GITOPS_TOKEN }}
+          token: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN }}
 
       - name: Validate the promotion path
         env:
@@ -80,7 +90,7 @@ jobs:
       - name: Open the promotion PR
         if: steps.promote.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN }}
           SRC: ${{ github.event.inputs.source }}
           DST: ${{ github.event.inputs.target }}
           TAG: ${{ steps.promote.outputs.tag }}

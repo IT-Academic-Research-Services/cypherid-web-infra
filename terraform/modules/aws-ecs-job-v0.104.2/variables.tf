@@ -82,3 +82,15 @@ variable "ordered_placement_strategy" {
   default     = []
   description = "Placement strategy for the task instances."
 }
+
+# Dev migrated to EKS/Argo: resque, its scheduler, the pipeline/result monitors and shoryuken all run
+# as k8s pods now, and the dev ECS cluster was torn down. Terraform still declared the ECS services,
+# so a refreshed plan wanted to RE-CREATE all five -- duplicating workloads that are already running
+# on EKS. This gates only the ECS service; the task definitions (and everything else this module owns)
+# are untouched, exactly as ecs-service-with-alb's create_service does. Defaults TRUE, so staging,
+# prod and sandbox -- still on ECS -- are completely unaffected. See platform-overhaul #687.
+variable "create_service" {
+  type        = bool
+  default     = true
+  description = "Create the ECS service. Set false where the workload has moved off ECS (e.g. dev on EKS)."
+}

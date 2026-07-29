@@ -19,7 +19,7 @@ locals {
 resource "aws_ecs_service" "job" {
   name    = local.name
   cluster = var.cluster_id
-  count   = var.manage_task_definition ? 1 : 0
+  count   = var.create_service && var.manage_task_definition ? 1 : 0
 
   task_definition                    = local.task_definition
   desired_count                      = var.desired_count
@@ -41,7 +41,7 @@ resource "aws_ecs_service" "job" {
 resource "aws_ecs_service" "unmanaged-job" {
   name    = local.name
   cluster = var.cluster_id
-  count   = var.manage_task_definition ? 0 : 1
+  count   = var.create_service && !var.manage_task_definition ? 1 : 0
 
   task_definition                    = local.task_definition
   desired_count                      = var.desired_count

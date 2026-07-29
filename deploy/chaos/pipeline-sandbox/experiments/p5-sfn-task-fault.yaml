@@ -1,0 +1,137 @@
+# P5 -- SFN task-transition fault (platform-overhaul #794/#808). Instantiates ../../templates/dual-gate.yaml.
+#
+# Hypothesis: a failed task transition is caught and recovered -- the Step Functions Retry/Catch
+# config is actually correct, so the state machine retries/resumes and AUPR still holds. This SHOULD
+# hold (dependency-register: step-functions, safe_to_fail: true); the experiment proves the config is
+# real, not aspirational.
+#
+# FAULT: AWS FIS action aws:fis:inject-api-throttle-error (service batch) scoped to the sandbox SFN
+# execution role, so the Batch SubmitJob/DescribeJobs calls a state task makes get throttled -> the
+# task transition errors -> SFN Retry/Catch must recover. Only the sandbox execution role is targeted
+# (tag-scoped seqtoid.io/chaos-sandbox=true; see ../fis/fis-experiment-templates.tf).
+#
+# NOT DEPLOYED. Apply after sandbox stand-up + recovery proof + FIS template applied.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: dual-gate-p5-sfn-task-fault
+  namespace: chaos-mesh
+spec:
+  entry: dual-gate
+  templates:
+    - name: dual-gate
+      templateType: Serial
+      deadline: 45m
+      children:
+        - preflight-both-gates
+        - inject-and-assert
+        - verdict
+
+    - name: preflight-both-gates
+      templateType: Serial
+      deadline: 5m
+      children:
+        - preflight-availability
+        - preflight-accuracy
+
+    - name: preflight-availability
+      templateType: StatusCheck
+      deadline: 3m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        http:
+          url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: preflight-accuracy
+      templateType: StatusCheck
+      deadline: 3m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        http:
+          url: http://chaos-accuracy-probe.chaos-mesh.svc.cluster.local/steady-state
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: inject-and-assert
+      templateType: Parallel
+      deadline: 40m
+      children:
+        - guard-then-start-fis
+        - availability-gate
+        - accuracy-gate
+
+    # ---- FAULT: guard on the template name, then start the tag-scoped FIS Batch-API-throttle template. ----
+    - name: guard-then-start-fis
+      templateType: Task
+      task:
+        container:
+          name: inject
+          image: chaos-pipeline-inject:latest
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              source /guard/guard.sh
+              TPL_NAME="idseq-dev-chaos-fis-p5-sfn-task-fault"
+              assert_sandbox_fis_template "$TPL_NAME"
+              TPL_ID="$(aws fis list-experiment-templates \
+                          --query "experimentTemplates[?tags.Name=='${TPL_NAME}'].id | [0]" \
+                          --output text)"
+              if [[ -z "$TPL_ID" || "$TPL_ID" == "None" ]]; then
+                echo "FIS template $TPL_NAME not found -- apply ../fis/fis-experiment-templates.tf first" >&2
+                exit 1
+              fi
+              aws fis start-experiment --experiment-template-id "$TPL_ID" \
+                --tags "seqtoid.io/chaos-sandbox=true,seqtoid.io/chaos-experiment=p5"
+              echo "started FIS Batch-API-throttle $TPL_ID against sandbox SFN task transitions" >&2
+          volumeMounts:
+            - name: guard
+              mountPath: /guard
+        volumes:
+          - name: guard
+            configMap:
+              name: chaos-sandbox-guard
+              defaultMode: 0555
+
+    - name: availability-gate
+      templateType: StatusCheck
+      deadline: 38m
+      statusCheck:
+        mode: Continuous
+        type: HTTP
+        duration: 36m
+        intervalSeconds: 10
+        failureThreshold: 3
+        recordsHistoryLimit: 200
+        http:
+          url: http://chaos-slo-probe.chaos-mesh.svc.cluster.local/steady-state?scope=pipeline-dev-chaos
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: accuracy-gate
+      templateType: StatusCheck
+      deadline: 40m
+      statusCheck:
+        mode: Synchronous
+        type: HTTP
+        timeoutSeconds: 2100
+        http:
+          url: http://chaos-accuracy-probe.chaos-mesh.svc.cluster.local/run-under-fault?scope=dev-chaos
+          method: GET
+          criteria:
+            statusCode: "200"
+
+    - name: verdict
+      templateType: Task
+      task:
+        container:
+          name: verdict
+          image: chaos-report:latest
+          command: ["/report", "--experiment", "dual-gate-p5-sfn-task-fault"]

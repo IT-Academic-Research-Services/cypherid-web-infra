@@ -1,0 +1,117 @@
+# Chaos Engine -- dependency criticality register (the "Monocle"-equivalent). platform-overhaul #794/#814.
+#
+# Netflix's Monocle introspects every service's dependencies + their timeout/retry/fallback config to
+# (a) PRIORITIZE which chaos experiments matter and (b) flag misconfigured dependencies -- bugs found
+# WITHOUT injecting a single fault. This is the static half of that: a hand-maintained register of the
+# seqtoid platform's dependencies. `check_criticality.py` reads it and fails on any critical dependency
+# that lacks a timeout or a fallback, and emits the experiment priority order.
+#
+# HONESTY: fields marked `TODO-AUDIT` are not yet verified against the app/config -- filling them IS the
+# dependency-resilience audit (#814). The checker treats TODO-AUDIT on a critical dep as a finding, so
+# this register doubles as the audit worklist. Update it as each dependency is confirmed.
+#
+# criticality: critical  = a user-facing core path fails if this is down (login, run, heatmap)
+#              important = a feature degrades but the platform stays usable
+#              optional  = nice-to-have; failure should be invisible
+# safe_to_fail: true  = has a proven graceful-degradation/fallback path -> a chaos experiment SHOULD hold
+#               false = no fallback -> failure is expected to be user-visible; fix the fallback FIRST
+version: 1
+dependencies:
+  - name: aurora-mysql
+    kind: database
+    criticality: critical
+    used_for: "primary datastore (samples, users, taxon_lineages, pipeline runs)"
+    timeout: "TODO-AUDIT"          # connection + statement timeout
+    retry: "TODO-AUDIT"
+    fallback: none                 # no read-replica fallback wired on dev
+    safe_to_fail: false
+    chaos: "E4/RDS failover (FIS #809); NetworkChaos partition (E2)"
+    notes: "MySQL 8 hard-required (ROW_NUMBER). RDS failover is the real test; assert reconnect + no data loss."
+
+  - name: opensearch
+    kind: search
+    criticality: critical
+    used_for: "taxon lineage + heatmap queries (top_taxons)"
+    timeout: "TODO-AUDIT"
+    retry: "TODO-AUDIT"
+    fallback: "TODO-AUDIT"         # does the heatmap degrade or hard-fail on OS down?
+    safe_to_fail: false            # history: connect-timeouts on node rotation surfaced as taxon-indexing 'N/0'
+    chaos: "E2 network delay/partition; E6 DNS failure; E7 HTTP fault-fraction"
+    notes: "The OpenSearchCircuit breaker exists (initializer); confirm it opens cleanly + heatmap shows a degraded state, not a 500."
+
+  - name: redis
+    kind: queue-cache
+    criticality: critical
+    used_for: "resque/shoryuken job queues + cache"
+    timeout: "TODO-AUDIT"
+    retry: "reconnect"
+    fallback: none
+    safe_to_fail: false            # history: Errno::EALREADY connect race on worker start (#790)
+    chaos: "E2 network partition to Redis endpoint"
+    notes: "Jobs must resume, not silently drop, after a Redis blip. Assert queue depth recovers."
+
+  - name: s3
+    kind: object-store
+    criticality: critical
+    used_for: "sample uploads, pipeline intermediates, reference indexes"
+    timeout: "sdk-default"
+    retry: "sdk-default (adaptive)"
+    fallback: none
+    safe_to_fail: false
+    chaos: "pipeline-sandbox/experiments/p4-s3-fault.yaml (FIS S3 errors on the dev-chaos Batch job role)"
+    notes: "Reference-data reads are read-only; the write path (uploads) is the risk. Idempotent retries assumed -- verify."
+
+  - name: step-functions
+    kind: orchestration
+    criticality: critical
+    used_for: "pipeline run orchestration (mngs / CG / AMR / index-generation)"
+    timeout: "per-task"
+    retry: "Retry/Catch per state"
+    fallback: "SFN retry + resume"
+    safe_to_fail: true             # SFN Retry/Catch is the designed fallback
+    chaos: "pipeline-sandbox/experiments/p5-sfn-task-fault.yaml (FIS Batch-API throttle on the dev-chaos SFN role)"
+    notes: "This SHOULD hold -- the experiment proves the Retry/Catch config is actually correct."
+
+  - name: aws-batch
+    kind: compute
+    criticality: critical
+    used_for: "pipeline compute (alignment, assembly, index-generation)"
+    timeout: "job attempt"
+    retry: "attempts>1 + spot-interruption handling"
+    fallback: "on-demand fallback (some queues)"
+    safe_to_fail: true             # spot interruption is a fault the pipeline must already tolerate
+    chaos: "pipeline-sandbox/experiments: p1-batch-job-kill, p2-spot-interrupt, p3-scratch-exhaustion (repro #799) -- all on dev-chaos"
+    notes: "P3 is the highest-value: reproduce the NT/NR scratch-disk exhaustion on purpose + assert the split-volume fix holds."
+
+  - name: auth0
+    kind: auth
+    criticality: critical
+    used_for: "authentication / login"
+    timeout: "TODO-AUDIT"
+    retry: "TODO-AUDIT"
+    fallback: none                 # no login = no access, by design
+    safe_to_fail: false
+    chaos: "E7 HTTP fault-fraction to the Auth0 domain; E8 clock skew (JWT exp/nbf)"
+    notes: "E8 clock-skew is the cheap high-signal test: too-tight JWT clock tolerance = 401 storms."
+
+  - name: ecr
+    kind: registry
+    criticality: important
+    used_for: "container image pulls (deploy + Batch job images)"
+    timeout: "runtime-default"
+    retry: "kubelet/Batch pull backoff"
+    fallback: "image cache on node"
+    safe_to_fail: true
+    chaos: "pipeline-sandbox/experiments/p6-ecr-throttle.yaml (FIS ECR throttle on the dev-chaos instance role)"
+    notes: "A throttle should slow, not break, a run (cached layers). Assert no run failure, only latency."
+
+  - name: locationiq
+    kind: geocoding
+    criticality: optional
+    used_for: "sample collection-location geocoding"
+    timeout: "TODO-AUDIT"
+    retry: "TODO-AUDIT"
+    fallback: "degrade: skip geocode"
+    safe_to_fail: true             # confirmed to self-heal on boot race earlier
+    chaos: "E7 HTTP fault-fraction to the LocationIQ domain"
+    notes: "Failure must be invisible to the core upload->process->result path."

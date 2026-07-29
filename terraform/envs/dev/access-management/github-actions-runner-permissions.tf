@@ -76,9 +76,23 @@ module "czid_gh_actions_apply" {
   authorized_github_repos = {
     for org in local.gh_orgs : org => local.gh_repos
   }
-  # D2: only merges to main may apply. Combined with the module's C1 deny this
-  # restricts the write role to sub `repo:<org>/<repo>:refs/heads/main`.
-  subject_ref_pattern = "refs/heads/main"
+  # The apply job runs under a GitHub Environment (apply_component_call sets
+  # `environment: <env>`), so GitHub issues the OIDC token with sub
+  # `repo:<org>/<repo>:environment:<env>` -- the git ref is NOT in the sub once an
+  # environment is attached, so a `refs/heads/main` pattern never matches and every
+  # AssumeRoleWithWebIdentity is denied. Match the environment sub here instead.
+  # The "only main may apply" guard now comes from each GitHub Environment's
+  # deployment-branch restriction (dev/staging/prod set to deploy only from `main`),
+  # NOT the IAM sub. The module's C1 :pull_request deny still applies.
+  #
+  # The `*` glob additionally admits the `${var.env}-targeted` environment used by
+  # targeted-apply.yml (scoped `-target` applies from ANY branch). That environment
+  # carries NO deployment-branch restriction -- its guard is a required reviewer plus
+  # the workflow's hard requirement of an explicit target list (it can never run a
+  # full apply). The branch-restricted `${var.env}` environment (full make-deploy) is
+  # unchanged: `environment:${var.env}` still matches this glob. Both environments are
+  # admin-created, so a non-admin cannot widen the set of matching subs.
+  subject_ref_pattern = "environment:${var.env}*"
 }
 
 # ---------------------------------------------------------------------------
@@ -188,25 +202,126 @@ resource "aws_iam_role_policy_attachment" "apply_ci_cd" {
   policy_arn = aws_iam_policy.czid_ci_cd.arn
 }
 
-# --- KEPT managed policies (already least-priv / read-only) --------------------
+# --- PLAN role: decrypt SecureString SSM params (#687) ------------------------
+# terraform PLAN reads SecureString SSM parameters (e.g. /idseq-dev-web/db_password via the
+# aws-param module). AWS's ReadOnlyAccess grants ssm:GetParameter but deliberately NOT
+# kms:Decrypt, so the plan role could not decrypt them and the `db` component failed to plan:
+#   AccessDeniedException: ... not authorized to perform: kms:Decrypt on resource: <key>
+# Grant decrypt-only (no key management: no Create/Schedule/Disable/Put/Revoke) on this
+# account's keys. Read-only in effect -- the plan role still cannot mutate anything.
+data "aws_iam_policy_document" "plan_kms_decrypt" {
+  statement {
+    sid       = "DecryptSecureStringParamsForPlan"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:DescribeKey"]
+    resources = ["arn:aws:kms:${var.region}:${local.account_id}:key/*"]
+  }
+}
+
+resource "aws_iam_policy" "plan_kms_decrypt" {
+  name   = "czid-${var.env}-gh-actions-plan-kms-decrypt"
+  policy = data.aws_iam_policy_document.plan_kms_decrypt.json
+}
+
+resource "aws_iam_role_policy_attachment" "plan_kms_decrypt" {
+  role       = module.czid_gh_actions_plan.role.name
+  policy_arn = aws_iam_policy.plan_kms_decrypt.arn
+}
+
+# --- Infrastructure PROVISIONING grant (#684) ---------------------------------
+# The apply role was originally scoped for APP deploys (ECS/ECR/S3/batch, via czid_ci_cd).
+# But terraform PROVISIONS the platform: it creates KMS keys, VPC endpoints, RDS, EKS
+# nodegroups, WAF ACLs, ACM certs, Route53 records, CloudWatch alarms -- and IAM roles.
+# The first time CI could actually assume this role (the CZID-81 trust fix), 19 of 20
+# components failed on AccessDenied across ~37 distinct actions (run 29346421280).
+#
+# PowerUserAccess covers every one of those services. It deliberately EXCLUDES IAM, which
+# terraform also needs, so the IAM half is granted explicitly below -- narrowly.
+resource "aws_iam_role_policy_attachment" "apply_poweruser" {
+  role       = module.czid_gh_actions_apply.role.name
+  policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
+}
+
+# The IAM half PowerUserAccess omits: manage ROLES, POLICIES and INSTANCE PROFILES -- what
+# terraform provisions -- and nothing else. No CreateUser / AccessKey / LoginProfile / MFA /
+# group / identity-provider / account-alias actions, so this grants no credential surface and
+# no way to mint a new principal.
+data "aws_iam_policy_document" "apply_iam_provisioning" {
+  statement {
+    sid    = "ProvisionRolesPoliciesInstanceProfiles"
+    effect = "Allow"
+    actions = [
+      "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole", "iam:UpdateRoleDescription",
+      "iam:UpdateAssumeRolePolicy", "iam:TagRole", "iam:UntagRole",
+      "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+      "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+      "iam:CreatePolicy", "iam:DeletePolicy",
+      "iam:CreatePolicyVersion", "iam:DeletePolicyVersion", "iam:SetDefaultPolicyVersion",
+      "iam:TagPolicy", "iam:UntagPolicy",
+      "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
+      "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
+      "iam:TagInstanceProfile", "iam:UntagInstanceProfile",
+      "iam:CreateServiceLinkedRole",
+      "iam:PassRole",
+    ]
+    # Scoped to this account's roles / policies / instance profiles. Terraform derives many
+    # of these names at plan time (eks, batch, lambda, service-linked), so a name-prefix
+    # allowlist would break provisioning; constraining by ACCOUNT + RESOURCE TYPE keeps the
+    # grant real while structurally excluding users, groups and identity providers -- which
+    # the action list already omits. Belt and braces.
+    resources = [
+      "arn:aws:iam::${local.account_id}:role/*",
+      "arn:aws:iam::${local.account_id}:policy/*",
+      "arn:aws:iam::${local.account_id}:instance-profile/*",
+    ]
+  }
+
+  # ANTI-ESCALATION. The apply role must never rewrite the CI identity itself -- neither the
+  # gh-actions roles nor the policies ATTACHED to them (widening czid_ci_cd would widen this
+  # very role just as surely as attaching AdministratorAccess to it). Denying the WRITE verbs
+  # only (reads stay allowed, so terraform refresh still works) means any change to the CI
+  # identity must be applied out-of-band with admin creds -- exactly as the CZID-81 bootstrap
+  # was. Deliberate: `access-management` self-changes are expected to fail in CI.
+  statement {
+    sid    = "DenyCIIdentitySelfModification"
+    effect = "Deny"
+    actions = [
+      "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole",
+      "iam:UpdateAssumeRolePolicy", "iam:TagRole", "iam:UntagRole",
+      "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+      "iam:AttachRolePolicy", "iam:DetachRolePolicy",
+      "iam:CreatePolicy", "iam:DeletePolicy",
+      "iam:CreatePolicyVersion", "iam:DeletePolicyVersion", "iam:SetDefaultPolicyVersion",
+      "iam:TagPolicy", "iam:UntagPolicy",
+    ]
+    resources = [
+      "arn:aws:iam::${local.account_id}:role/czid-${var.env}-gh-actions-*",
+      "arn:aws:iam::${local.account_id}:policy/czid-${var.env}-gh-actions-*",
+      "arn:aws:iam::${local.account_id}:policy/czid-${var.env}-ci-cd",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "apply_iam_provisioning" {
+  name   = "czid-${var.env}-gh-actions-apply-iam-provisioning"
+  policy = data.aws_iam_policy_document.apply_iam_provisioning.json
+}
+
+resource "aws_iam_role_policy_attachment" "apply_iam_provisioning" {
+  role       = module.czid_gh_actions_apply.role.name
+  policy_arn = aws_iam_policy.apply_iam_provisioning.arn
+}
+
+# NOTE (#684): AWS caps a role at 10 managed policies (PoliciesPerRole). Attaching
+# PowerUserAccess + the IAM-provisioning policy blew that quota, so the attachments below
+# were removed: PowerUserAccess is a strict SUPERSET of each (it grants every service except
+# IAM/Organizations). The policies themselves remain defined but unattached. What the apply
+# role now carries: PowerUserAccess (all services), apply_iam_provisioning (the IAM half
+# PowerUser omits, scoped + with the self-escalation Deny), IAMReadOnlyAccess (IAM reads,
+# which PowerUser excludes), plus czid_ci_cd and tfstate_rw retained deliberately.
 resource "aws_iam_role_policy_attachment" "apply_iam_read" {
   role       = module.czid_gh_actions_apply.role.name
   policy_arn = "arn:aws:iam::aws:policy/IAMReadOnlyAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "apply_ec2_read" {
-  role       = module.czid_gh_actions_apply.role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "apply_lambda_read" {
-  role       = module.czid_gh_actions_apply.role.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSLambda_ReadOnlyAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "apply_tagging" {
-  role       = module.czid_gh_actions_apply.role.name
-  policy_arn = "arn:aws:iam::aws:policy/ResourceGroupsTaggingAPITagUntagSupportedResources"
 }
 
 # --- Scoped terraform-state READ/WRITE ----------------------------------------
@@ -296,11 +411,6 @@ data "aws_iam_policy_document" "apply_cw_logs" {
   }
 }
 
-resource "aws_iam_role_policy_attachment" "apply_cw_logs" {
-  role       = module.czid_gh_actions_apply.role.name
-  policy_arn = aws_iam_policy.apply_cw_logs.arn
-}
-
 # --- D4: scoped ECR (replaces AmazonEC2ContainerRegistryPowerUser) -------------
 # The deploy logs in to ECR and pushes/pulls the app image. GetAuthorizationToken
 # has no resource scoping (must be "*"); the push/pull layer actions are scoped
@@ -337,11 +447,6 @@ data "aws_iam_policy_document" "apply_ecr" {
   }
 }
 
-resource "aws_iam_role_policy_attachment" "apply_ecr" {
-  role       = module.czid_gh_actions_apply.role.name
-  policy_arn = aws_iam_policy.apply_ecr.arn
-}
-
 # --- D4: scoped SSM param read (replaces AmazonSSMManagedInstanceCore) ----------
 # The deploy reads app config/secrets from SSM Parameter Store (Chamber uses the
 # /idseq-<env>-* path). AmazonSSMManagedInstanceCore was for EC2 instance mgmt
@@ -367,11 +472,6 @@ data "aws_iam_policy_document" "apply_ssm_params" {
       "arn:aws:ssm:*:${local.account_id}:parameter/idseq-${var.env}-*",
     ]
   }
-}
-
-resource "aws_iam_role_policy_attachment" "apply_ssm_params" {
-  role       = module.czid_gh_actions_apply.role.name
-  policy_arn = aws_iam_policy.apply_ssm_params.arn
 }
 
 # ===========================================================================

@@ -112,10 +112,16 @@ variable "build_index_date" {
   type    = string
   default = "2021-01-22"
 }
+# The LIVE cluster. This drives k8s_cluster_names, which aws-env turns into AUTHORITATIVE subnet
+# tags (`kubernetes.io/cluster/<name>` and `karpenter.sh/discovery = <name>`). `aws_subnet.tags` is
+# authoritative -- terraform DELETES any tag it does not know about. While this named the RETIRED v1
+# cluster (czid-dev-eks), the first cloud-env apply tagged the subnets for a cluster that no longer
+# exists and deleted the per-cluster discovery tag eks-v2 adds, leaving Karpenter unable to find ANY
+# subnet -- it could not provision a single node cluster-wide. Keep this on the live cluster.
 # tflint-ignore: terraform_unused_declarations
 variable "eks_cluster_name" {
   type    = string
-  default = "czid-dev-eks"
+  default = "czid-dev-eks-v2"
 }
 # tflint-ignore: terraform_unused_declarations
 variable "s3_bucket_idseq_bench" {

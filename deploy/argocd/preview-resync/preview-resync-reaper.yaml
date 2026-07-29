@@ -1,0 +1,270 @@
+# Preview sandbox auto-resync reaper (platform-overhaul 860).
+#
+# Problem it solves: an Argo Application that exhausts its sync retries enters a
+# terminal Failed state and NEVER re-attempts on its own -- not even after the thing
+# that broke it is fixed. Automated sync does not help: `selfHeal` addresses live
+# cluster drift, not a failed operation. The app sits at OutOfSync/Missing with a
+# frozen operationState until a human runs an explicit sync.
+#
+# That behaviour converted every since-fixed sandbox fault into a permanent one. A
+# preview sandbox would stay dead after the fix landed, so contributors were told
+# "it's fixed" while their PR URL still returned nothing. It is the single biggest
+# reason the sandbox flow is not trusted.
+#
+# What this does: every 10 minutes, find seqtoid-pr-* Applications whose last sync
+# FAILED and no operation is currently running, and re-issue a sync. Attempts are
+# counted in an annotation and capped, so a genuinely broken PR converges to "stopped
+# retrying" instead of looping forever. A successful sync resets the counter.
+#
+# This is deliberately a nudge, not a fix-all: it only re-runs syncs. If the PR is
+# actually broken the retries are exhausted and the app is annotated so the state is
+# inspectable rather than silent.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: preview-resync-reaper
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: preview-resync-reaper
+  namespace: argocd
+rules:
+  # Read every Application to find the failed previews, and patch to (a) set the
+  # `operation` field that triggers a sync and (b) maintain the attempt annotation.
+  # No delete: this reaper must never be able to remove an Application.
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "patch"]
+  # Attempt counters live in a ConfigMap this reaper owns. `create` cannot be
+  # restricted by resourceName (the name is not known at admission time), so it is
+  # granted unqualified; read/write are pinned to the single state object.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["preview-resync-reaper-state"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: preview-resync-reaper
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: preview-resync-reaper
+subjects:
+  - kind: ServiceAccount
+    name: preview-resync-reaper
+    namespace: argocd
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: preview-resync-reaper-code
+  namespace: argocd
+data:
+  reaper.py: |
+    # Re-issue a sync for preview Applications stuck in a terminal failed state.
+    # Talks to the in-cluster API with urllib so the image needs no dependencies.
+    import json
+    import os
+    import ssl
+    import urllib.error
+    import urllib.request
+
+    API = "https://kubernetes.default.svc"
+    NS = os.environ.get("ARGOCD_NAMESPACE", "argocd")
+    PREFIX = os.environ.get("APP_NAME_PREFIX", "seqtoid-pr-")
+    MAX_ATTEMPTS = int(os.environ.get("MAX_RESYNC_ATTEMPTS", "3"))
+    DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"
+
+    # Attempt counts live in a ConfigMap this reaper owns outright, NOT in an
+    # annotation on the Application. The first implementation put the counter in an
+    # annotation and set it in the same merge-patch that set `.operation`. The Argo
+    # controller consumes `.operation`, moves it to status.operationState and strips
+    # the field with its own write -- and that write clobbered the annotation. The
+    # counter never persisted, so the cap never engaged and a failing app would have
+    # been re-synced every 10 minutes forever, which is the exact runaway the cap
+    # exists to prevent. Argo owns the Application object; do not try to store our
+    # state on it.
+    STATE_CM = os.environ.get("STATE_CONFIGMAP", "preview-resync-reaper-state")
+
+    SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+    with open(f"{SA}/token") as fh:
+        TOKEN = fh.read().strip()
+    CTX = ssl.create_default_context(cafile=f"{SA}/ca.crt")
+    BASE = f"{API}/apis/argoproj.io/v1alpha1/namespaces/{NS}/applications"
+    CM_BASE = f"{API}/api/v1/namespaces/{NS}/configmaps"
+
+
+    def call(method, url, body=None, content_type="application/json"):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Authorization", f"Bearer {TOKEN}")
+        if data:
+            req.add_header("Content-Type", content_type)
+        try:
+            with urllib.request.urlopen(req, context=CTX, timeout=30) as resp:
+                return json.loads(resp.read() or "{}")
+        except urllib.error.HTTPError as err:
+            if err.code == 404:
+                return None
+            raise
+
+
+    def load_state():
+        cm = call("GET", f"{CM_BASE}/{STATE_CM}")
+        if cm is None:
+            return {}
+        return {k: int(v) for k, v in (cm.get("data") or {}).items() if v.isdigit()}
+
+
+    def save_state(state):
+        # Replace `data` wholesale so entries for deleted PRs disappear rather than
+        # accumulating forever. A merge-patch would leave stale keys behind.
+        body = {"data": {k: str(v) for k, v in state.items()}}
+        if call("PATCH", f"{CM_BASE}/{STATE_CM}", body,
+                "application/merge-patch+json") is not None:
+            return
+        call("POST", CM_BASE,
+             {"apiVersion": "v1", "kind": "ConfigMap",
+              "metadata": {"name": STATE_CM, "namespace": NS},
+              "data": body["data"]})
+
+
+    def main():
+        apps = call("GET", BASE).get("items", [])
+        previews = [a for a in apps if a["metadata"]["name"].startswith(PREFIX)]
+        state = load_state()
+        print(f"preview-resync: {len(previews)} preview app(s) (prefix {PREFIX!r}), "
+              f"state has {len(state)} counter(s)")
+
+        live = set()
+        to_sync = []
+
+        for app in previews:
+            name = app["metadata"]["name"]
+            live.add(name)
+            status = app.get("status", {}) or {}
+            op_state = status.get("operationState", {}) or {}
+            phase = op_state.get("phase")
+            attempts = state.get(name, 0)
+
+            # An operation in flight -- leave it alone, we would only fight it.
+            if phase in ("Running", "Terminating"):
+                print(f"  {name}: {phase}, skipping")
+                continue
+
+            if phase == "Succeeded":
+                if attempts:
+                    state.pop(name, None)
+                    print(f"  {name}: recovered, cleared attempt counter")
+                continue
+
+            if phase not in ("Failed", "Error"):
+                continue
+
+            if attempts >= MAX_ATTEMPTS:
+                # Exhausted. Stay inspectable rather than retrying forever: at this
+                # point the PR itself is very likely the problem.
+                print(f"  {name}: FAILED, {attempts}/{MAX_ATTEMPTS} attempts used, "
+                      "giving up (needs a human)")
+                continue
+
+            revision = (status.get("sync", {}) or {}).get("revision")
+            operation = {"initiatedBy": {"username": "preview-resync-reaper",
+                                         "automated": True},
+                         "retry": {"limit": 2},
+                         "sync": {}}
+            if revision:
+                operation["sync"]["revision"] = revision
+
+            state[name] = attempts + 1
+            to_sync.append((name, operation,
+                            f"  {name}: {phase} -> re-issuing sync "
+                            f"(attempt {attempts + 1}/{MAX_ATTEMPTS})"))
+
+        # Drop counters for apps that no longer exist (merged/closed PRs).
+        for gone in set(state) - live:
+            del state[gone]
+
+        if DRY_RUN:
+            for _, _, msg in to_sync:
+                print(msg + " [DRY_RUN]")
+            print(f"preview-resync: would persist {state} [DRY_RUN]")
+            return
+
+        # Persist BEFORE issuing the syncs. If this pod dies mid-run the worst case
+        # is an over-count (one wasted attempt), which keeps the cap honest. Issuing
+        # first and dying before the write would under-count and could retry forever.
+        save_state(state)
+
+        for name, operation, msg in to_sync:
+            call("PATCH", f"{BASE}/{name}", {"operation": operation},
+                 "application/merge-patch+json")
+            print(msg)
+
+
+    main()
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: preview-resync-reaper
+  namespace: argocd
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: preview-resync-reaper
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reaper
+              image: python:3.12-slim
+              command: ["python", "/code/reaper.py"]
+              env:
+                - name: ARGOCD_NAMESPACE
+                  value: argocd
+                - name: APP_NAME_PREFIX
+                  value: seqtoid-pr-
+                # Three nudges is enough to ride out a transient or a just-fixed
+                # cause; beyond that the PR is the problem, not the timing.
+                - name: MAX_RESYNC_ATTEMPTS
+                  value: "3"
+                - name: DRY_RUN
+                  value: "false"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: code
+                  mountPath: /code
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi
+          volumes:
+            - name: code
+              configMap:
+                name: preview-resync-reaper-code

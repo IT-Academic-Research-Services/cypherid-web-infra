@@ -27,7 +27,7 @@ locals {
 resource "aws_wafv2_web_acl" "cloudfront" {
   # checkov:skip=CKV_AWS_192:Log4Shell (CVE-2021-44228) is mitigated by the AWSManagedRulesKnownBadInputsRuleSet rule group configured below; checkov 3.3.x throws a TypeError evaluating this check on the rendered dynamic rule set (upstream bug), so it is skipped rather than left to crash. Mirrors the same skip on the regional ACL (web-acl-regional-v3.3.1).
   name        = local.web_acl_name
-  description = "CLOUDFRONT-scoped WAF for ${local.web_acl_name} (baseline AWS managed rules)"
+  description = "CLOUDFRONT-scoped WAF for ${local.web_acl_name} - baseline AWS managed rules"
   scope       = "CLOUDFRONT"
 
   # A public edge cannot default-deny all traffic; enforcement is by the managed rule BLOCK actions below.

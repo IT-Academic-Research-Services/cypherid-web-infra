@@ -8,7 +8,7 @@ environment: dev
 image:
   # Dev-account ECR, go-forward repo (the CZID-76 dual-push lands here too).
   repository: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: sha-31a1fb57 # the current hardened known-good build; CI advances this per build
+  tag: sha-121cc851 # the current hardened known-good build; CI advances this per build
 # COST SPIN-DOWN (dev): scale ALL workloads to 0 and skip the migrate/taxon-load hooks
 # (chart `suspend`). Safe + reversible — the app's data lives in Aurora + OpenSearch, not
 # the pods. The CD keeps advancing `image.tag` while suspended, so flipping this to false
@@ -26,53 +26,131 @@ replicaCount: 2
 nodeSelector:
   kubernetes.io/arch: amd64
   seqtoid.io/pool: web
-# Rightsize dev worker memory (#486). The chart defaults (3Gi each) are prod-ish and
-# forced Karpenter onto an oversized node; dev needs far less. Per-worker overrides are
-# possible now that `workers` is a name-keyed map (seqtoid-web #129). NOTE: this reduces
-# memory pressure but the node stays large until seqtoid-web also lands on a dedicated
-# small Karpenter NodePool (the shared NodePool floors instance-cpu > 8) — see #486.
+# Dev worker memory, sized to MEASURED usage.
+#
+# The chart asks 3Gi per worker, which is prod-ish and forced Karpenter onto an oversized
+# node, so these were cut to 512Mi-1Gi. That went too far: the values were chosen against
+# the chart default, not against what the workers actually consume, and they landed BELOW
+# real usage. `kubectl top`, dev + sandboxes, 2026-07-17:
+#
+#   worker                  requested   ACTUAL      over
+#   resque-pipeline-monitor   512Mi     1601Mi      3.1x
+#   resque-result-monitor     512Mi     1618Mi      3.2x
+#   shoryuken                 512Mi      884Mi      1.7x
+#   resque-scheduler          512Mi      822Mi      1.6x
+#   resque                      1Gi     1015Mi      at the line
+#
+# A request is what the SCHEDULER packs against, so under-requesting does not save memory --
+# it hides the demand. Nodes reported "memory 3168Mi (47%) requested" while the kubelet was
+# evicting with 6240Ki free against a 200Mi threshold (25 pods on a ~6.5Gi c7i-flex.xlarge).
+# Pods died as Evicted/ContainerStatusUnknown, dev's own web pods were evicted with them
+# (brief 503s), and under sustained pressure the kubelet stopped posting node status at all
+# -- nodes going NotReady ~5 minutes into their life. Karpenter then made it worse by design:
+# consolidation is WhenEmptyOrUnderutilized, so nodes that looked underutilized BY REQUEST
+# were deleted and the survivors packed tighter.
+#
+# These are measured peaks + ~25% headroom. Nodes will be larger or more numerous; that is
+# the real cost of these workers, previously paid in evictions instead of instances. Each
+# Rails worker loads the whole app, which is why a "monitor" is not small.
+#
+# NOT set: memory LIMITS on workers. A monitor using 1.6Gi against a 512Mi request smells
+# like a leak or an unbounded batch rather than a sizing miss (#709 step 3). Sizing contains
+# the blast radius; it does not explain the appetite. Add limits once the cause is known --
+# a limit set now would convert an unexplained leak into an OOMKill loop.
 workers:
   resque:
     resources:
       requests:
         cpu: 250m
-        memory: 1Gi
+        memory: 1536Mi
   resque-scheduler:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 1Gi
   resque-pipeline-monitor:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 2Gi
   resque-result-monitor:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 2Gi
   shoryuken:
     resources:
       requests:
         cpu: 100m
-        memory: 512Mi
+        memory: 1152Mi
 serviceAccount:
   create: true
   name: seqtoid-web # MUST match the IRSA trust (system:serviceaccount:seqtoid-dev:seqtoid-web)
   roleArn: arn:aws:iam::491013321714:role/seqtoid-web-dev
+# Zero-downtime cutovers on the v2 ALB (platform-overhaul 782). blueGreen flips the
+# activeService selector atomically, dropping traffic for ~30s (503s) each promotion,
+# and pod readiness gates cannot be injected on blueGreen. pingpong uses canary + ALB
+# weighted target groups (static selectors -> gates inject; weight shift, not an atomic
+# flip). A PreSync smoke gate validates the new build at zero user traffic before the
+# cutover, and the PodDisruptionBudget + topology spread keep the two replicas on
+# separate nodes so a node loss can't take dev down. Requires: seqtoid-web chart pingpong
+# support (on main) + --aws-verify-target-group on the rollouts controller + the namespace
+# pod-readiness-gate-inject label (below). Roll back to blueGreen with a one-line flip.
+rolloutStrategy: pingpong
+# TEMP (platform-overhaul 787): disable the PreSync smoke gate on dev. On its first real
+# run it failed with `rake aborted! Don't know how to build task 'smoke:critical_paths'`
+# -- the smoke:critical_paths task is not resolving in the deployed image, a false-positive
+# fail that blocked the rebrand deploy of a fully CI-validated build. Re-enable once the
+# task-loading bug is fixed. pingpong readiness gates + HA still protect the cutover.
+smoke:
+  gate:
+    enabled: false
 blueGreen:
-  autoPromotionEnabled: true # dev: promote on the smoke AnalysisTemplate passing
+  autoPromotionEnabled: true # dev: promote on the smoke AnalysisTemplate passing (unused while pingpong)
   scaleDownDelaySeconds: 30
   analysis:
     enabled: true
     postPromotion: false
+# Web pod, sized to measured usage: dev web pods run 852-1015Mi (kubectl top, 2026-07-17).
+#
+# The 512Mi request was half of that, so the scheduler packed nodes against a number the pod
+# passes within seconds of booting. The 1Gi LIMIT is the sharper edge: at 1015Mi a pod is
+# sitting on 99% of its hard ceiling, and the only reason we are not seeing OOMKills is luck
+# and timing -- one slow request with a big result set and the container dies. Raise the
+# request to cover real usage and give the limit genuine headroom above it.
 resources:
   requests:
     cpu: 250m
-    memory: 512Mi
+    memory: 1280Mi
   limits:
-    memory: 1Gi
+    memory: 2Gi
+# Chaos E5 (IOChaos): give the web pod a REAL volume mount for its temp writes.
+#
+# Chaos Mesh IOChaos injects a FUSE layer over a VOLUME MOUNT; it cannot intercept a
+# container's overlay/root filesystem. The web pod had no volume at all -- verified live, its
+# only volumes were the projected service-account tokens -- so /tmp was overlay and E5 had
+# nothing to attach to. This mounts an emptyDir at /tmp so the experiment has a target.
+#
+# /tmp is the meaningful path, not a synthetic one: TMPDIR is unset in the image, so Ruby's
+# Dir.tmpdir resolves to /tmp and every Tempfile lands there (phylo tree export, AMR BAI/BAM
+# slicing, mngs read-stats load), as does Rack's multipart buffering; PipelineRun's
+# LOCAL_JSON_PATH (/tmp/results_json) and the bulk-download TSV/BIOM writers hardcode it.
+#
+# Safe: Rails tmp is already ephemeral and the pod is stateless (data lives in Aurora /
+# OpenSearch / S3), so an emptyDir is exactly the storage semantics the app already assumes.
+# The chart's init container keeps behavior identical -- see the scratchVolume comment in the
+# chart's values.yaml for why TMPDIR must point at a 0700 subdir of the mount (the kubelet
+# creates emptyDir 0777 non-sticky and Ruby's Dir.tmpdir rejects that).
+#
+# DEV ONLY and deliberately not enabled anywhere else. This does NOT arm any experiment --
+# arming is a separate namespace annotation, and seqtoid-dev carries none.
+scratchVolume:
+  enabled: true
+  # 2Gi is generous on purpose: exceeding an emptyDir sizeLimit EVICTS the pod, and these
+  # same writes are unbounded against node ephemeral storage today, so a tight cap would be a
+  # regression, not a safeguard. Web-tier temp writes are small; the large bulk-download
+  # assembly runs in the resque workers, which are untouched.
+  sizeLimit: 2Gi
 autoscaling:
   enabled: false
 ingress:
@@ -87,3 +165,15 @@ ingress:
   certificateArn: arn:aws:acm:us-west-2:491013321714:certificate/9881060c-5652-40b6-9132-72a94171e18b
   annotations:
     alb.ingress.kubernetes.io/subnets: subnet-06bfffadf91e2c189,subnet-0f94623d782341d71
+
+# Dev runs RAILS_ENV=development, whose deployed-logging block defaults to :debug.
+# At :debug ActiveRecord echoes every statement WITH its bound values, so the resque
+# worker wrote whole `INSERT INTO contigs` statements including the `sequence`
+# column -- measured single lines up to 484 KB, a 12 KB mean against a 106 B median,
+# and about three quarters of all container log bytes in the namespace from that one
+# process. Beyond the volume, that puts sample sequence content verbatim into a log
+# stream that ships to an aggregator and would ship to a third-party log vendor.
+# sandbox/staging/prod are already :info and never had this.
+extraEnv:
+  - name: RAILS_LOG_LEVEL
+    value: "info"

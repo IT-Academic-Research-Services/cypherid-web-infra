@@ -13,6 +13,11 @@
 
 data "aws_caller_identity" "current" {}
 
+# The bucket-owner grant below needs the S3 CANONICAL USER ID (64-char hex) -- NOT the 12-digit
+# account id. Passing the account id as a CanonicalUser grantee makes S3 reject the whole
+# PutBucketAcl with InvalidArgument, which failed the entire dev/web apply.
+data "aws_canonical_user_id" "current" {}
+
 locals {
   # CloudFront standard-logging delivery canonical user (global, AWS-published constant).
   cloudfront_log_delivery_canonical_id = "c4c1ede66af53448b93c283ce9448c4ba468c9432aa01d700d3878632f77d2d0"
@@ -38,7 +43,7 @@ module "logs_bucket" {
       permissions       = ["FULL_CONTROL"]
     },
     {
-      canonical_user_id = data.aws_caller_identity.current.account_id
+      canonical_user_id = data.aws_canonical_user_id.current.id
       permissions       = ["FULL_CONTROL"]
     },
   ]

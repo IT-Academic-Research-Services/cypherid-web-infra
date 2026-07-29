@@ -1,0 +1,33 @@
+# seqtoid-web @ sandbox (isolated rehearsal env, account 941377154785).
+# Mirrors apps/staging/seqtoid-web-staging.yaml. New env -> new-scheme namespace
+# seqtoid-sandbox (not the legacy czid- prefix). Values in $values/.../sandbox.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seqtoid-web-sandbox
+  namespace: argocd
+spec:
+  project: seqtoid   # fresh seqtoid build's AppProject (create under deploy/argocd/projects/)
+  sources:
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
+      targetRevision: main
+      path: deploy/charts/seqtoid-web
+      helm:
+        valueFiles:
+          - $values/deploy/argocd/values/seqtoid-web/sandbox.yaml
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+      # Sandbox tracks the integration line for its env values (was the throwaway rehearsal/sandbox-argo
+      # branch -- values fixes on integration now reach the live sandbox automatically). The seqtoid-web
+      # CHART above stays on main (stable, shared with dev); the integration-line CODE rides in the image.
+      targetRevision: integration
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: seqtoid-sandbox
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

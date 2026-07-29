@@ -1,0 +1,210 @@
+# Chaos fault reaper -- restores the auto-heal guarantee the Workflow conversion removed.
+#
+# WHY THIS EXISTS
+# DESIGN.md safety invariant 4 used to rest on every fault carrying a hard `duration`, so Chaos
+# Mesh's own recovery removed it. That stopped being true when E1-E8 became Workflows: a chaos
+# `duration` is ILLEGAL inside a Workflow node, so it was replaced with a node `deadline` (see the
+# comment in experiments/e6-dns.yaml). A `deadline` bounds the NODE -- it does not give Chaos Mesh a
+# recovery timer. Verified in the supervised E6 run on 2026-07-23: the DNSChaos was still
+# phase=Injected after its deadline elapsed, and removing the namespace inject annotation did NOT
+# clear it (disarm blocks NEW injections only). The fault only went away on explicit Workflow delete.
+#
+# So today the only thing standing between a stuck workflow and an indefinitely-injected fault is an
+# operator remembering to check. This reaper removes that dependency on human memory. It mirrors the
+# existing seqtoid-sandbox-orphan-reaper: a small, idempotent, hourly-ish CronJob that cleans up what
+# should have cleaned itself up.
+#
+# TWO RULES, deliberately different:
+#   1. TTL   -- anything older than CHAOS_TTL_MINUTES is reaped, no questions asked. This is the
+#      backstop for a wedged controller. The longest deadline declared anywhere in deploy/chaos is
+#      55m, so the default 90m cannot truncate a legitimate run.
+#   2. ORPHAN -- a chaos object whose owning Workflow no longer exists is reaped after only
+#      CHAOS_ORPHAN_GRACE_MINUTES, because nothing will ever come back to clean it up. The short
+#      grace avoids racing a Workflow that is still being created.
+#
+# It deletes the TOP-LEVEL chaos kinds and Workflows only. The controller-managed pod* artifacts
+# (podnetworkchaos / podiochaos / podhttpchaos) are left alone deliberately -- they are the
+# controller's own bookkeeping, and deleting them directly can strand the reconciler.
+#
+# SAFETY: namespaced to chaos-mesh, and the Role grants list/get/delete on chaos resources ONLY.
+# It cannot touch application workloads. Reaping is logged with the reason so a surprising deletion
+# is traceable rather than mysterious.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-fault-reaper
+  namespace: chaos-mesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-fault-reaper
+  namespace: chaos-mesh
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources:
+      - podchaos
+      - networkchaos
+      - dnschaos
+      - iochaos
+      - httpchaos
+      - stresschaos
+      - timechaos
+      - kernelchaos
+      - jvmchaos
+      - blockchaos
+      - awschaos
+      - gcpchaos
+      - azurechaos
+      - physicalmachinechaos
+      - workflows
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-fault-reaper
+  namespace: chaos-mesh
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chaos-fault-reaper
+subjects:
+  - kind: ServiceAccount
+    name: chaos-fault-reaper
+    namespace: chaos-mesh
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-fault-reaper-code
+  namespace: chaos-mesh
+data:
+  reaper.py: |
+    # Dependency-free (urllib only) reaper, same style as slo-probe / accuracy-probe.
+    # Reaps: Workflows past TTL first (deleting one cascades to its chaos objects), then any chaos
+    # object past TTL, then any chaos object orphaned by a vanished Workflow.
+    import json, os, ssl, urllib.error, urllib.request
+    from datetime import datetime, timezone
+
+    SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+    NS = open(f"{SA}/namespace").read().strip()
+    TOKEN = open(f"{SA}/token").read().strip()
+    HOST = os.environ.get("KUBERNETES_SERVICE_HOST", "kubernetes.default.svc")
+    PORT = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+    BASE = f"https://{HOST}:{PORT}/apis/chaos-mesh.org/v1alpha1/namespaces/{NS}"
+
+    TTL = int(os.environ.get("CHAOS_TTL_MINUTES", "90"))
+    ORPHAN_GRACE = int(os.environ.get("CHAOS_ORPHAN_GRACE_MINUTES", "10"))
+    DRY_RUN = os.environ.get("CHAOS_REAPER_DRY_RUN", "false").lower() == "true"
+
+    CHAOS_KINDS = [
+        "podchaos", "networkchaos", "dnschaos", "iochaos", "httpchaos", "stresschaos",
+        "timechaos", "kernelchaos", "jvmchaos", "blockchaos", "awschaos", "gcpchaos",
+        "azurechaos", "physicalmachinechaos",
+    ]
+
+    ctx = ssl.create_default_context(cafile=f"{SA}/ca.crt")
+
+    def api(path, method="GET"):
+        req = urllib.request.Request(f"{BASE}/{path}", method=method)
+        req.add_header("Authorization", f"Bearer {TOKEN}")
+        req.add_header("Accept", "application/json")
+        try:
+            with urllib.request.urlopen(req, context=ctx, timeout=20) as r:
+                return r.status, json.loads(r.read().decode() or "{}")
+        except urllib.error.HTTPError as e:
+            return e.code, {}
+
+    def age_minutes(item):
+        ts = item.get("metadata", {}).get("creationTimestamp")
+        if not ts:
+            return 0.0
+        created = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - created).total_seconds() / 60.0
+
+    def reap(kind, name, age, reason):
+        if DRY_RUN:
+            print(f"DRY-RUN would reap {kind}/{name} age={age:.1f}m reason={reason}")
+            return 0
+        code, _ = api(f"{kind}/{name}", method="DELETE")
+        ok = code in (200, 202)
+        print(f"{'REAPED' if ok else 'FAILED'} {kind}/{name} age={age:.1f}m reason={reason} http={code}")
+        return 1 if ok else 0
+
+    def workflow_exists(name):
+        code, _ = api(f"workflows/{name}")
+        return code == 200
+
+    total = 0
+    # 1) Workflows past TTL. Deleting the parent cascades, so this is the cleanest removal.
+    code, body = api("workflows")
+    if code == 200:
+        for item in body.get("items", []):
+            name = item["metadata"]["name"]
+            age = age_minutes(item)
+            if age > TTL:
+                total += reap("workflows", name, age, f"workflow older than TTL {TTL}m")
+
+    # 2) Chaos objects: past TTL, or orphaned by a Workflow that no longer exists.
+    for kind in CHAOS_KINDS:
+        code, body = api(kind)
+        if code != 200:
+            continue  # CRD not installed in this cluster -- skip quietly
+        for item in body.get("items", []):
+            meta = item.get("metadata", {})
+            name = meta["name"]
+            age = age_minutes(item)
+            if age > TTL:
+                total += reap(kind, name, age, f"older than TTL {TTL}m")
+                continue
+            owners = [o for o in meta.get("ownerReferences", []) or [] if o.get("kind") == "Workflow"]
+            if owners and age > ORPHAN_GRACE and not any(workflow_exists(o["name"]) for o in owners):
+                total += reap(kind, name, age, "owning Workflow no longer exists")
+
+    print(f"chaos-fault-reaper done: {total} object(s) reaped (ttl={TTL}m orphan_grace={ORPHAN_GRACE}m dry_run={DRY_RUN})")
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: chaos-fault-reaper
+  namespace: chaos-mesh
+  labels:
+    app.kubernetes.io/name: chaos-fault-reaper
+spec:
+  # Every 10 minutes. Cheap and idempotent: it lists a handful of CRs and usually deletes nothing.
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: chaos-fault-reaper
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+          containers:
+            - name: reaper
+              image: python:3.12-slim
+              command: ["python", "/app/reaper.py"]
+              env:
+                - name: CHAOS_TTL_MINUTES
+                  value: "90"   # longest declared experiment deadline is 55m; 90m cannot truncate a real run
+                - name: CHAOS_ORPHAN_GRACE_MINUTES
+                  value: "10"
+                - name: CHAOS_REAPER_DRY_RUN
+                  value: "false"
+              volumeMounts:
+                - { name: code, mountPath: /app }
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 64Mi }
+          volumes:
+            - name: code
+              configMap: { name: chaos-fault-reaper-code }

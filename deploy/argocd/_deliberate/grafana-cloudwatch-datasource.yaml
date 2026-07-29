@@ -1,0 +1,33 @@
+# Observability Phase 4 (LGTM epic, #608): the AWS CloudWatch datasource -- the "DataDog-like"
+# connector that pulls EVERY AWS-native service's metrics AND logs into Grafana WITHOUT touching
+# those services. Covers Step Functions (AWS/States), Lambda (AWS/Lambda), Batch (AWS/Batch +
+# /aws/batch/job logs), RDS (AWS/RDS + error/slowquery logs), ALB, S3, NAT, etc. -- all read-only.
+#
+# Auth is IRSA: the kube-prometheus-stack Grafana ServiceAccount is annotated with the
+# grafana-cloudwatch IAM role (terraform/envs/dev/eks-v2/grafana-cloudwatch-irsa.tf). With that
+# annotation, authType=default uses the pod's web-identity token -- NO static keys. Until the IRSA
+# role is applied + the SA annotated, this datasource loads but queries return AccessDenied.
+#
+# Provisioned as a sidecar-loaded ConfigMap (label grafana_datasource), same decoupled pattern as
+# grafana-lgtm-datasources.yaml -- merged in live by the Grafana sidecar, no chart re-sync.
+# Apply by hand: kubectl apply -f deploy/argocd/_deliberate/grafana-cloudwatch-datasource.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-cloudwatch-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"   # the kps Grafana sidecar watches for this label
+data:
+  cloudwatch-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: CloudWatch
+        type: cloudwatch
+        uid: cloudwatch
+        access: proxy
+        jsonData:
+          authType: default          # IRSA web-identity via the annotated Grafana SA
+          defaultRegion: us-west-2
+          # Surface the CloudWatch Logs groups we care about first in the Logs Insights picker.
+          logsTimeout: "30m"

@@ -135,3 +135,19 @@ variable "log_retention_in_days" {
   description = "N of days you want to retain log events. Possible values are: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653, and 0."
   default     = 0
 }
+
+# Create the EC2 compute plane: the ECS cluster, its AutoScalingGroup, the graceful-shutdown lifecycle
+# hook and the rolling schedules. Set FALSE where the workloads have moved to EKS and the ECS cluster
+# was torn down -- otherwise a refreshed plan wants to RE-CREATE the cluster and an ASG of real EC2
+# instances, duplicating workloads that already run as k8s pods and costing money.
+#
+# It deliberately does NOT gate the security group, the log group, the instance profile or the IAM
+# policy. The SG in particular MUST survive: dev/redis reads it, and dev/batch feeds it into
+# random_id.batch's keepers -- if it changed, the AWS Batch compute environment would be REPLACED.
+#
+# Defaults true, so staging/prod/sandbox (still on ECS) are completely unaffected. See #687.
+variable "create_compute" {
+  type        = bool
+  default     = true
+  description = "Create the ECS cluster + ASG compute plane. False where workloads moved to EKS."
+}

@@ -1,0 +1,104 @@
+# Per-PR preview sandbox generator (#617). For every OPEN seqtoid-web PR labelled
+# `preview`, stand up an isolated sandbox Application (own app + DB schema + S3 prefix;
+# shared dev Batch/SFN backend); reap it when the PR closes or the label is removed.
+#
+# Opt-in by LABEL (not every PR): a developer adds the `preview` label to a PR into
+# `integration` to get pr-N.dev.seqtoid.org. This bounds fan-out/cost and keeps the
+# generator off unrelated PRs.
+#
+# PREREQS (deliberate, before enabling):
+#   - the seqtoid-preview AppProject (projects/seqtoid-preview.yaml) applied,
+#   - the preview ECR repo + IRSA roles (cypherid-web-infra #247/#248/#249) APPLIED,
+#   - a GitHub token secret `github-pr-generator` (key `token`) in ns argocd for the
+#     pullRequest generator,
+#   - a wildcard *.dev.seqtoid.org ACM cert (set in preview-base.yaml),
+#   - the #619 isolation gate passed.
+# Applied deliberately to ns argocd (mirrors the hand-applied dev app; the app-of-apps
+# is not live).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: seqtoid-web-preview
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - pullRequest:
+        github:
+          owner: IT-Academic-Research-Services
+          repo: seqtoid-web
+          # Only PRs carrying this label get a sandbox.
+          labels:
+            - preview
+          tokenRef:
+            secretName: github-pr-generator
+            key: token
+        # Re-scan for opened/closed PRs + label changes.
+        requeueAfterSeconds: 120
+  # On PR close / label removal, delete the Application AND its resources (namespace,
+  # and via the chart's PostDelete hook, the sandbox schema + user + SSM path).
+  template:
+    metadata:
+      name: "seqtoid-pr-{{.number}}"
+      labels:
+        seqtoid.io/preview: "true"
+        seqtoid.io/pr: "{{.number}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: seqtoid-preview
+      sources:
+        # 1) the app chart @ the PR head commit (deploys the code under review)
+        - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
+          targetRevision: "{{.head_sha}}"
+          path: deploy/charts/seqtoid-web
+          helm:
+            valueFiles:
+              - $values/deploy/argocd/values/seqtoid-web/preview-base.yaml
+            parameters:
+              # Per-PR preview image from the throwaway ECR repo. 8-char sha matches
+              # build-pr-preview.yml's tag (sha-<prHeadSha[:8]>).
+              - name: image.repository
+                value: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web-preview
+              - name: image.tag
+                value: "sha-{{ .head_sha | trunc 8 }}"
+              - name: preview.prNumber
+                value: "{{.number}}"
+              - name: ingress.host
+                value: "pr-{{.number}}.dev.seqtoid.org"
+              # DB isolation: read the sandbox's OWN SSM path + its OWN schema. The
+              # entrypoint reads CHAMBER_SERVICE before `chamber exec`; DB_NAME survives
+              # the chamber clobber (it is not an SSM key).
+              - name: extraEnv[0].name
+                value: CHAMBER_SERVICE
+              - name: extraEnv[0].value
+                value: "idseq-sandbox-pr-{{.number}}-web"
+              - name: extraEnv[1].name
+                value: DB_NAME
+              - name: extraEnv[1].value
+                value: "idseq_pr_{{.number}}"
+        # 2) this repo (main) supplies the shared preview-base values via $values.
+        - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "seqtoid-pr-{{.number}}"
+      syncPolicy:
+        # Label the auto-created namespace so the TTL reaper can find + delete it once the
+        # PR closes (Argo does not delete a CreateNamespace'd namespace on app deletion).
+        managedNamespaceMetadata:
+          labels:
+            seqtoid.io/preview: "true"
+            # Pod readiness gates for zero-downtime ping-pong cutovers (platform-
+            # overhaul 782). A web pod is not Ready until its ALB target is healthy, so
+            # the Rollout won't shift weight / scale down the old color until the new
+            # color serves. Harmless on single-replica sandboxes / blueGreen charts.
+            elbv2.k8s.aws/pod-readiness-gate-inject: enabled
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ApplyOutOfSyncOnly=true

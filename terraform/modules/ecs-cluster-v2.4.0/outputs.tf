@@ -1,5 +1,8 @@
+# Null-safe so the module still produces outputs when create_compute = false. cluster_id must stay a
+# STRING, never null: dev/web and dev/resque pass it into required string variables (their services are
+# gated off, so the value is unused -- but the argument is still mandatory). "" keeps them planning.
 output "cluster_id" {
-  value = aws_ecs_cluster.cluster.id
+  value = try(aws_ecs_cluster.cluster[0].id, "")
 }
 
 output "security_group_id" {
@@ -15,15 +18,15 @@ output "logs_group_arn" {
 }
 
 output "asg_name" {
-  value = aws_autoscaling_group.ecs.name
+  value = try(aws_autoscaling_group.ecs[0].name, "")
 }
 
 output "cluster_name" {
-  value = aws_ecs_cluster.cluster.name
+  value = try(aws_ecs_cluster.cluster[0].name, "")
 }
 
 output "arn" {
-  value = aws_ecs_cluster.cluster.arn
+  value = try(aws_ecs_cluster.cluster[0].arn, "")
 }
 
 output "ami_id" {
@@ -37,10 +40,10 @@ output "container_instance_role_arn" {
 
 output "ecs" {
   value = {
-    cluster_id     = aws_ecs_cluster.cluster.id
+    cluster_id     = try(aws_ecs_cluster.cluster[0].id, "")
     security_group = module.sg.security_group_id
     log_group      = module.logs.name
-    cluster_name   = aws_ecs_cluster.cluster.name
+    cluster_name   = try(aws_ecs_cluster.cluster[0].name, "")
     subnets        = var.subnets
     vpc_id         = var.vpc_id
     region         = var.region

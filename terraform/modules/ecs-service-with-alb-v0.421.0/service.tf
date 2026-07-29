@@ -76,7 +76,7 @@ module "container-sg" {
 resource "aws_ecs_service" "job" {
   name    = local.name
   cluster = var.cluster_id
-  count   = !var.use_fargate && local.tf_managed_task ? 1 : 0
+  count   = var.create_service && (!var.use_fargate && local.tf_managed_task) ? 1 : 0
 
   task_definition                   = local.task_definition
   desired_count                     = var.desired_count
@@ -94,7 +94,7 @@ resource "aws_ecs_service" "job" {
 resource "aws_ecs_service" "unmanaged-job" {
   name    = local.name
   cluster = var.cluster_id
-  count   = !var.use_fargate && !local.tf_managed_task ? 1 : 0
+  count   = var.create_service && (!var.use_fargate && !local.tf_managed_task) ? 1 : 0
 
   task_definition                   = local.task_definition
   desired_count                     = var.desired_count
@@ -142,7 +142,7 @@ resource "aws_service_discovery_service" "discovery" {
 resource "aws_ecs_service" "fargate-job" {
   name        = local.name
   cluster     = var.cluster_id
-  count       = var.use_fargate && !var.with_service_discovery && local.tf_managed_task ? 1 : 0
+  count       = var.create_service && (var.use_fargate && !var.with_service_discovery && local.tf_managed_task) ? 1 : 0
   launch_type = "FARGATE"
 
   task_definition                   = local.task_definition
@@ -166,7 +166,7 @@ resource "aws_ecs_service" "fargate-job" {
 resource "aws_ecs_service" "unmanaged-fargate-job" {
   name        = local.name
   cluster     = var.cluster_id
-  count       = var.use_fargate && !var.with_service_discovery && !local.tf_managed_task ? 1 : 0
+  count       = var.create_service && (var.use_fargate && !var.with_service_discovery && !local.tf_managed_task) ? 1 : 0
   launch_type = "FARGATE"
 
   task_definition                   = local.task_definition
@@ -194,7 +194,7 @@ resource "aws_ecs_service" "unmanaged-fargate-job" {
 resource "aws_ecs_service" "fargate-discovery-job" {
   name        = local.name
   cluster     = var.cluster_id
-  count       = var.use_fargate && var.with_service_discovery && local.tf_managed_task ? 1 : 0
+  count       = var.create_service && (var.use_fargate && var.with_service_discovery && local.tf_managed_task) ? 1 : 0
   launch_type = "FARGATE"
 
   task_definition                   = local.task_definition
@@ -222,7 +222,7 @@ resource "aws_ecs_service" "fargate-discovery-job" {
 resource "aws_ecs_service" "unmanaged-fargate-discovery-job" {
   name        = local.name
   cluster     = var.cluster_id
-  count       = var.use_fargate && var.with_service_discovery && !local.tf_managed_task ? 1 : 0
+  count       = var.create_service && (var.use_fargate && var.with_service_discovery && !local.tf_managed_task) ? 1 : 0
   launch_type = "FARGATE"
 
   task_definition                   = local.task_definition

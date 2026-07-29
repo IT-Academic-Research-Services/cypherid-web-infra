@@ -121,6 +121,7 @@ data "aws_iam_policy_document" "idseq-web" {
   statement {
     actions = [
       "s3:PutObject",
+      "s3:PutObjectTagging",
       "s3:DeleteObject",
     ]
 
@@ -205,7 +206,25 @@ data "aws_iam_policy_document" "idseq-upload-assume-role" {
       # (get_upload_credentials -> CLI_UPLOAD_ROLE_ARN). BOTH the ECS task role AND the
       # EKS/IRSA pod role must be trusted so uploads work on either runtime during the
       # ECS->EKS strangler (#489). Drop idseq-web once ECS dev is decommissioned (Phase 5).
-      identifiers = [aws_iam_role.idseq-web.arn, aws_iam_role.seqtoid_web_eks.arn]
+      #
+      # seqtoid_web_preview is here because per-PR sandbox pods run as THAT role, not
+      # seqtoid_web_eks -- so every sandbox upload died server-side, before S3 was ever
+      # reached, with a 500 from /samples/N/upload_credentials.json:
+      #   Aws::STS::Errors::AccessDenied (User: .../seqtoid-web-preview is not authorized to
+      #   perform: sts:AssumeRole on resource: .../idseq-upload-dev)
+      # This is why sandbox uploads NEVER worked. Granting the preview bucket on the role's
+      # policy (#29) was necessary but not sufficient: a session policy intersects with the
+      # role's permissions, and none of that matters if the caller cannot assume the role at
+      # all. Trust and permissions are separate locks and the sandbox failed both.
+      #
+      # This does NOT widen what a sandbox can write: the session policy the app builds is
+      # scoped to $SAMPLES_BUCKET_NAME/<file_path> (the sandbox's own bucket), and the role's
+      # own policy is scoped to */samples/*. A sandbox still cannot touch dev's samples.
+      identifiers = [
+        aws_iam_role.idseq-web.arn,
+        aws_iam_role.seqtoid_web_eks.arn,
+        aws_iam_role.seqtoid_web_preview.arn,
+      ]
     }
   }
   # statement {
@@ -234,12 +253,27 @@ data "aws_iam_policy_document" "idseq-upload" {
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:PutObjectTagging",
       "s3:AbortMultipartUpload",
       "s3:ListMultipartUploadParts",
     ]
 
     resources = [
       "arn:aws:s3:::${var.s3_bucket_samples}/samples/*",
+      # Per-PR preview sandboxes upload to their own bucket (#697). The app mints these creds by
+      # assuming THIS role with a session policy scoped to
+      # `arn:aws:s3:::$SAMPLES_BUCKET_NAME/<file_path>` (samples_helper.rb get_upload_credentials).
+      # A session policy INTERSECTS with this identity policy, so a sandbox's request for
+      # seqtoid-preview-samples-*/samples/* against a role that only allows idseq-samples-dev
+      # intersected to NOTHING and every sandbox upload failed with "All uploads failed".
+      #
+      # This is why sandbox uploads NEVER worked -- including against the old `seqtoid-sandbox`
+      # bucket, which this role was never granted either. (Which also means the browser upload path
+      # could never write into that 4.8 TB research bucket: it had no permission. Only the preview
+      # IRSA role did, server-side, and that grant is now withdrawn.)
+      #
+      # Same /samples/* prefix scoping as dev: a sandbox can only ever write under samples/.
+      "${aws_s3_bucket.preview_samples.arn}/samples/*",
     ]
   }
 }
@@ -288,6 +322,9 @@ module "web-service-params" {
     AUTO_ACCOUNT_CREATION_V1      = 1
     S3_WORKFLOWS_BUCKET           = local.s3_bucket_workflows
     LAMBDA_ENV                    = var.env # TODO: Only necessary for dev, as it defaults to Rails.env ('development') in the code
+    LOCATION_IQ_API_KEY           = var.LOCATION_IQ_API_KEY
+    MAPTILER_API_KEY              = var.MAPTILER_API_KEY
+    MAP_STYLE_ID                  = var.MAP_STYLE_ID
   }
 }
 
@@ -323,15 +360,27 @@ module "staging_east" {
 module "web-service" {
   source = "../../../modules/ecs-service-with-alb-v0.421.0"
 
-  service                           = "web"
-  project                           = var.project
-  owner                             = var.owner
-  container_port                    = 3000
-  container_name                    = "rails"
-  env                               = var.env
-  vpc_id                            = data.terraform_remote_state.cloud-env.outputs.vpc_id
-  cluster_id                        = data.terraform_remote_state.ecs.outputs.cluster_id
-  task_role_arn                     = aws_iam_role.idseq-web.arn
+  service        = "web"
+  project        = var.project
+  owner          = var.owner
+  container_port = 3000
+  container_name = "rails"
+  env            = var.env
+  vpc_id         = data.terraform_remote_state.cloud-env.outputs.vpc_id
+  cluster_id     = data.terraform_remote_state.ecs.outputs.cluster_id
+  task_role_arn  = aws_iam_role.idseq-web.arn
+  # Dev runs on EKS/Argo (the app + resque are k8s pods) and the ECS cluster was torn down at
+  # the migration, so creating an ECS service here fails with ClusterNotFoundException. Keep the
+  # ALB / target group / task definition (still present and still referenced) but do NOT create
+  # the service. staging/prod are unaffected -- the module defaults create_service = true.
+  # See platform-overhaul #687.
+  create_service = false
+  # The edge is a Kubernetes Ingress now: the AWS load-balancer controller owns the k8s-seqtoidd-*
+  # ALB and external-dns owns dev.seqtoid.org. This module still declared the same records pointing
+  # at the ECS ALB, so a refreshed plan wanted to repoint the live hostname at an ALB with ZERO
+  # healthy targets -- i.e. take dev offline. Terraform must stop claiming records it no longer owns.
+  # staging/prod still front on ECS and keep their records (the module defaults to true). See #693.
+  manage_dns_records                = false
   desired_count                     = 1
   lb_subnets                        = data.terraform_remote_state.cloud-env.outputs.public_subnets
   route53_zone_id                   = local.zone_id
@@ -349,15 +398,18 @@ module "web-service" {
   ssl_policy              = "ELBSecurityPolicy-TLS-1-2-2017-01"
 }
 
-resource "aws_route53_record" "www" {
-  zone_id = local.zone_id
-  name    = local.www_env_fqdn
-  type    = "A"
+# www.dev.seqtoid.org was declared here, aliased to the ECS ALB. external-dns now owns it (it points
+# at the k8s Ingress ALB), so terraform must let go -- but it must NOT delete the record on the way
+# out, which is exactly what removing the resource block alone would do (destroy = the hostname stops
+# resolving). `removed` with destroy = false drops it from state and leaves the live record standing.
+#
+# Keep this block. Deleting it does nothing once state is clean, but while any state still carries the
+# resource, removing this block silently re-arms the destroy.
+removed {
+  from = aws_route53_record.www
 
-  alias {
-    name                   = module.web-service.alb_dns_name
-    zone_id                = module.web-service.alb_route53_zone_id
-    evaluate_target_health = false
+  lifecycle {
+    destroy = false
   }
 }
 

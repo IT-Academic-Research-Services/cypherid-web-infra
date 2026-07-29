@@ -272,6 +272,17 @@ resource "aws_iam_role" "karpenter_node" {
   })
 
   tags = var.tags
+
+  lifecycle {
+    # AWS Systems Manager Quick Setup stamps a "QSConfigId-<id>" tag onto the IAM
+    # roles it manages (here: "QSConfigId-rfw2z" = "rfw2z"). That tag is applied
+    # out-of-band by Quick Setup, not by this config, so every plan wanted to strip
+    # it ("QSConfigId-rfw2z" -> null) -- a real but benign perpetual in-place diff on
+    # this role. We do not own that tag, so ignore just that one key rather than
+    # adopting it (its value is an opaque Quick Setup config id) or ignoring all tags.
+    # See EKS-V2-DRIFT-2026-07-20.md / platform-overhaul #703.
+    ignore_changes = [tags["QSConfigId-rfw2z"]]
+  }
 }
 
 resource "aws_iam_policy" "node_ecr_pullthrough_cache" {

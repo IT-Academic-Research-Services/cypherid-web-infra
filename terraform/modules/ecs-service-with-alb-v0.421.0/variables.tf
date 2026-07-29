@@ -204,3 +204,25 @@ variable "alb_protocol" {
   }
   description = "Specify the ALB protocol version to use. Modify, for example, if you need HTTP/2 or gRPC."
 }
+
+# Dev migrated to EKS/Argo: the app + resque now run as k8s pods and the ECS cluster was torn
+# down, so creating an ECS service there fails with ClusterNotFoundException. This lets a caller
+# keep the ALB / target group / task definition (which still exist and are still referenced)
+# while NOT creating the ECS service. Defaults to true so staging/prod -- still on ECS -- are
+# completely unaffected. See platform-overhaul #687.
+variable "create_service" {
+  type        = bool
+  default     = true
+  description = "Create the ECS service. Set false where the workload has moved off ECS (e.g. dev on EKS)."
+}
+
+# Manage the app's Route53 records (the apex A record and, when HTTP redirect is on, the AAAA and
+# www records). Set FALSE where a Kubernetes Ingress owns the edge: the AWS load-balancer controller
+# creates its own ALB and external-dns owns the records, so terraform declaring them too means two
+# owners fighting -- and terraform, believing it still owns them, would repoint the hostname at the
+# now-empty ECS ALB. Defaults true so ECS-fronted envs (staging/prod) are unaffected. See #693.
+variable "manage_dns_records" {
+  type        = bool
+  default     = true
+  description = "Manage the service's Route53 records. Set false where a k8s Ingress + external-dns own the edge."
+}

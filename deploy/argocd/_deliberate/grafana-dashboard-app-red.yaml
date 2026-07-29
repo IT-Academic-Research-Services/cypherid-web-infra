@@ -1,0 +1,111 @@
+# Observability Phase 4 (#608/#700): custom "App RED" Grafana dashboard built on the OTel spanmetrics
+# the collector synthesizes from app traces (traces_span_metrics_*). Rate / Errors / Duration for the
+# Rails app + Resque workers, no app /metrics endpoint needed. Loaded by the kps Grafana sidecar
+# (label grafana_dashboard: "1") -- no chart re-sync. Apply:
+#   kubectl apply -f deploy/argocd/_deliberate/grafana-dashboard-app-red.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-app-red
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  app-red.json: |
+    {
+      "uid": "seqtoid-app-red",
+      "title": "seqtoid - App RED (span metrics)",
+      "tags": ["seqtoid", "app", "red", "otel"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-3h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": { "text": "Prometheus", "value": "prometheus" },
+            "hide": 0
+          },
+          {
+            "name": "service",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "${datasource}" },
+            "query": "label_values(traces_span_metrics_calls_total, service_name)",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request rate (server spans) by service",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\", service_name=~\"$service\"}[5m]))",
+              "legendFormat": "{{service_name}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "p95 latency (server spans) by service",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.95, sum by (service_name, le) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\", service_name=~\"$service\"}[5m])))",
+              "legendFormat": "{{service_name}}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "5xx error rate by service",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\", status_code=~\"5..\", service_name=~\"$service\"}[5m])) / clamp_min(sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind=\"SPAN_KIND_SERVER\", service_name=~\"$service\"}[5m])), 1)",
+              "legendFormat": "{{service_name}}"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "table",
+          "title": "Top operations by call rate",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "refId": "A",
+              "instant": true,
+              "format": "table",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "topk(15, sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{service_name=~\"$service\"}[5m])))"
+            }
+          ]
+        }
+      ]
+    }

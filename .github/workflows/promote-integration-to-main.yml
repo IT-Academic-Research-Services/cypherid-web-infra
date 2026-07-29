@@ -35,7 +35,12 @@ concurrency:
 
 jobs:
   promote:
-    if: github.repository == 'thorvath-slower/cypherid-web-infra'
+    # Was `github.repository == 'thorvath-slower/cypherid-web-infra'`. That compare is FALSE in the UCSF
+    # org (IT-Academic-Research-Services), so the integration -> main roll-up would NEVER RUN there --
+    # merged gitops/terraform changes would never reach main, and it would report as a SKIPPED, GREEN
+    # job. Now an explicit repo variable. NOT `!github.event.repository.fork`: GitHub's fork flags are
+    # inverted here relative to which repo is really canonical. See platform-overhaul #692.
+    if: ${{ vars.TRUNK_ROLLUP_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,10 +61,23 @@ jobs:
             echo "integration is $ahead commit(s) ahead of main."
           fi
 
+      # IT-ARS forbids the default GITHUB_TOKEN from opening PRs ("GitHub Actions is not permitted to
+      # create or approve pull requests"), so `gh pr create` below failed and integration never reached
+      # main -- the roll-up reported success while silently doing nothing. Mint an App token instead, the
+      # same mechanism gitops-promote.yml / sync-main-to-integration.yml already use (#683). On a fork with
+      # no app installed the step is skipped and the token falls back to GITOPS_TOKEN, then github.token.
+      - name: Generate app token
+        id: app_token
+        if: ${{ steps.diff.outputs.ahead != '0' && vars.CI_APP_ENABLED == 'true' }}
+        uses: chanzuckerberg/github-app-token@365b1f2db827eb8f17288ec335b1a7e3c03ff683 # v1.1.4
+        with:
+          app_id: ${{ secrets.GH_ACTIONS_HELPER_APP_ID }}
+          private_key: ${{ secrets.GH_ACTIONS_HELPER_PK }}
+
       - name: Open or reuse the promotion PR + enable auto-merge
         if: steps.diff.outputs.ahead != '0'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITOPS_TOKEN || github.token }}
           REASON: ${{ github.event.inputs.reason }}
           TRIGGER: ${{ github.event_name }}
         run: |
@@ -78,4 +96,29 @@ jobs:
             echo "Reusing open promotion PR #${existing}."
           fi
 
-          gh pr merge integration --auto --merge --subject "${title}"
+          # Land the promotion PR unattended. Two distinct failure modes have to be handled:
+          #   1. When main's required checks all skip, the PR is immediately CLEAN and
+          #      `gh pr merge --auto` is REJECTED ("Pull request is in clean status").
+          #   2. A freshly-opened PR briefly reports clean BEFORE its checks register, so falling
+          #      straight through to a direct merge races the queue and fails with
+          #      "N of N required status checks are queued".
+          # So: try auto-merge first; if it is rejected, RETRY the direct merge until branch
+          # protection actually allows it. Retrying is safe -- protection refuses the merge while
+          # checks are queued/running/failing, so this can only succeed once main's gates are
+          # genuinely satisfied. It never force-merges a red PR; it just stops racing the queue.
+          if gh pr merge integration --auto --merge --subject "${title}"; then
+            echo "auto-merge enabled; the PR will land when main's required checks pass."
+            exit 0
+          fi
+
+          echo "auto-merge unavailable (PR already clean); waiting for branch protection to allow the merge..."
+          for attempt in $(seq 1 40); do
+            if gh pr merge integration --merge --subject "${title}"; then
+              echo "promotion merged on attempt ${attempt}."
+              exit 0
+            fi
+            echo "not mergeable yet (checks queued/running); retrying in 30s [${attempt}/40]"
+            sleep 30
+          done
+          echo "::error::promotion PR was still not mergeable after ~20 minutes -- check its required checks."
+          exit 1

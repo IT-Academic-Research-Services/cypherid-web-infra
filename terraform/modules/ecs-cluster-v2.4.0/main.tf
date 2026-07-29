@@ -1,6 +1,14 @@
+data "aws_caller_identity" "current" {}
+
 locals {
   name = var.ecs_cluster_name == "" ? "${var.project}-${var.env}-${var.service}" : var.ecs_cluster_name
-  ami  = var.ami == "" ? format("%s", module.images.czi_amazon2_ecs) : var.ami
+
+  # The IAM policy and the boothook survive even when the compute is gated, so they cannot index the
+  # cluster. These fallbacks render the SAME strings the live resource would, so nothing diffs when
+  # create_compute is true, and nothing breaks when it is false.
+  cluster_name = try(aws_ecs_cluster.cluster[0].name, local.name)
+  cluster_arn  = try(aws_ecs_cluster.cluster[0].arn, "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:cluster/${local.name}")
+  ami          = var.ami == "" ? format("%s", module.images.czi_amazon2_ecs) : var.ami
 
   max_servers = max(var.max_servers, var.min_servers + 1)
 
@@ -26,6 +34,11 @@ resource "random_id" "rand" {
 }
 
 resource "aws_ecs_cluster" "cluster" {
+  # Gated: dev moved to EKS and its ECS cluster + ASG were torn down, but terraform still declared
+  # them, so a refreshed plan wanted to RE-CREATE the cluster and an ASG of real EC2 instances.
+  # Defaults true -- staging/prod/sandbox are still on ECS and are unaffected. See #687.
+  count = var.create_compute ? 1 : 0
+
   name = local.name
 
   setting {
@@ -59,8 +72,9 @@ module "logs" {
 # }
 
 resource "aws_autoscaling_lifecycle_hook" "graceful_shutdown_asg_hook" {
+  count                  = var.create_compute ? 1 : 0
   name                   = local.name
-  autoscaling_group_name = aws_autoscaling_group.ecs.name
+  autoscaling_group_name = aws_autoscaling_group.ecs[0].name
   default_result         = "CONTINUE"
   heartbeat_timeout      = var.heartbeat_timeout
   lifecycle_transition   = "autoscaling:EC2_INSTANCE_TERMINATING"
@@ -85,7 +99,7 @@ data "aws_iam_policy_document" "ecs-policy" {
     ]
 
     resources = [
-      aws_ecs_cluster.cluster.arn,
+      local.cluster_arn,
     ]
   }
   statement {
@@ -101,7 +115,7 @@ data "aws_iam_policy_document" "ecs-policy" {
     condition {
       test     = "ArnEquals"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.cluster.arn]
+      values   = [local.cluster_arn]
     }
 
   }
@@ -207,6 +221,8 @@ resource "aws_launch_template" "ecs" {
 }
 
 resource "aws_autoscaling_group" "ecs" {
+  count = var.create_compute ? 1 : 0
+
   name_prefix         = "${local.name}-"
   vpc_zone_identifier = var.subnets
 
@@ -255,23 +271,23 @@ resource "aws_autoscaling_group" "ecs" {
 }
 
 resource "aws_autoscaling_schedule" "ecs-up" {
-  count                  = var.cluster_asg_rolling_interval_hours > 0 ? 1 : 0
+  count                  = var.create_compute && var.cluster_asg_rolling_interval_hours > 0 ? 1 : 0
   scheduled_action_name  = "${local.name}-up"
   desired_capacity       = var.min_servers + 1
   min_size               = var.min_servers
   max_size               = local.max_servers
-  autoscaling_group_name = aws_autoscaling_group.ecs.name
+  autoscaling_group_name = aws_autoscaling_group.ecs[0].name
 
   recurrence = "${local.rolling_start_hour_offset} */${var.cluster_asg_rolling_interval_hours} * * *"
 }
 
 resource "aws_autoscaling_schedule" "ecs-down" {
-  count                  = var.cluster_asg_rolling_interval_hours > 0 ? 1 : 0
+  count                  = var.create_compute && var.cluster_asg_rolling_interval_hours > 0 ? 1 : 0
   scheduled_action_name  = "${local.name}-down"
   desired_capacity       = var.min_servers
   min_size               = var.min_servers
   max_size               = local.max_servers
-  autoscaling_group_name = aws_autoscaling_group.ecs.name
+  autoscaling_group_name = aws_autoscaling_group.ecs[0].name
 
   recurrence = "${local.rolling_end_hour_offset} */${var.cluster_asg_rolling_interval_hours} * * *"
 }
@@ -294,7 +310,7 @@ data "template_file" "boothook" {
   template = file("${path.module}/templates/boothook.tpl")
 
   vars = {
-    cluster_name = aws_ecs_cluster.cluster.name
+    cluster_name = local.cluster_name
   }
 }
 

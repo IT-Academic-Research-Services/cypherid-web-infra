@@ -227,6 +227,14 @@ class TarWriterTask:
 class TarWriter:
     def __init__(self, src_objects, s3_key_to_tar_name, on_progress):
         self.http = urllib3.PoolManager()
+        # Dedicated client that signs presigned URLs with SigV4. S3 rejects
+        # SigV2 presigned GETs on SSE-KMS objects with HTTP 400
+        # (InvalidArgument: requests for aws:kms objects require Signature
+        # Version 4). s3v4 presigned URLs are also valid for non-KMS objects,
+        # so this is safe for all sources. See Forgejo #846 / SMP-1477.
+        self.presign_client = boto3.client(
+            's3', config=botocore.client.Config(signature_version="s3v4")
+        )
         # src objects can be s3.Object or s3.ObjectSummary
         self.src_objects = src_objects
         # A map from the key of the src s3 object to the intended tar name (or path) in the tarfile.
@@ -239,7 +247,7 @@ class TarWriter:
         self.total_size_processed = 0
 
     def get_presigned_url(self, s3_object):
-        return s3_object.meta.client.generate_presigned_url(
+        return self.presign_client.generate_presigned_url(
             ClientMethod='get_object',
             Params=dict(Bucket=s3_object.bucket_name, Key=s3_object.key)
         )
@@ -269,6 +277,15 @@ class TarWriter:
                 src_url = self.get_presigned_url(src_object)
                 try:
                     with closing(self.http.request("GET", src_url, preload_content=False)) as fh:
+                        # urllib3 does not raise on 4xx/5xx. Guard against a
+                        # non-200 (e.g. an S3 XML error body) being streamed
+                        # into the tarfile, which would read fewer bytes than
+                        # content_length and raise "unexpected end of data".
+                        if fh.status != 200:
+                            body_snippet = fh.read(512).decode("utf-8", "replace")
+                            raise IOError(
+                                f"Unexpected HTTP {fh.status} fetching {original_s3_path}: {body_snippet}"
+                            )
                         if s3_object_file_extension == ".zip":
                             self.stream_zip_files_to_tar(src_object, fh, tar)
                         else:

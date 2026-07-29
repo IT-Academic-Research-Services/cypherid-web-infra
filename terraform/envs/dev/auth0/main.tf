@@ -22,6 +22,21 @@ locals {
   # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
   assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
   assets_url  = "https://${local.assets_fqdn}"
+  audience    = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/"
+
+  # Per-PR preview sandboxes serve on pr-<N>.dev.seqtoid.org (the preview ApplicationSet sets
+  # ingress.host = pr-{{.number}}.dev.seqtoid.org, #616/#619). PR numbers are unbounded, so the
+  # callback allowlist cannot enumerate them; Auth0 permits a single `*` in the LEFTMOST subdomain,
+  # which covers every current and future sandbox in one entry.
+  #
+  # DEV ONLY -- DO NOT COPY THIS TO staging/prod.
+  # A wildcard callback means ANY host under dev.seqtoid.org can receive an OAuth authorization
+  # code for this client, so a dangling or attacker-controlled subdomain in this zone becomes a
+  # code-theft path. That is an accepted risk in dev (we control the zone; external-dns only
+  # publishes records for our own ALBs, and the tenant holds no real user data) and an
+  # unacceptable one anywhere real. staging/prod must keep enumerating exact callback URLs.
+  # Approved by Tom 2026-07-16 for the dev tenant only.
+  preview_sandbox_wildcard_url = "https://*.${local.env_seqtoid_org_fqdn}"
 }
 
 resource "auth0_custom_domain" "auth_env_seqtoid_org" {
@@ -55,6 +70,18 @@ resource "auth0_custom_domain_default" "auth_env_seqtoid_org" {
   depends_on = [auth0_custom_domain_verification.auth_env_cname]
 }
 
+resource "auth0_resource_server" "env_seqtoid" {
+  name        = "SeqtoID API"
+  identifier  = local.env_seqtoid_org_url
+  signing_alg = "RS256"
+
+  # allow_offline_access                            = true
+  # NOTE: This is important, as otherwise users get a confusing "consent" page when trying to login
+  skip_consent_for_verifiable_first_party_clients = true
+  # token_dialect                                   = "access_token"
+  token_lifetime = 86400
+}
+
 resource "auth0_tenant" "env_tenant" {
   allow_organization_name_in_authentication_api = false
   # allowed_logout_urls = ["${local.env_seqtoid_org_url}/logout"]
@@ -80,7 +107,7 @@ resource "auth0_tenant" "env_tenant" {
   # }
 
   flags {
-    # enable_custom_domain_in_emails         = true
+    enable_custom_domain_in_emails = true
     # enable_dynamic_client_registration     = false
     # enable_public_signup_user_exists_error = true
   }
@@ -116,11 +143,14 @@ resource "auth0_client" "idseq_web" {
     local.env_seqtoid_org_url,
     # local.meta_env_seqtoid_org_url,
     "http://localhost:3000",
+    # Preview sandboxes (dev only) -- see preview_sandbox_wildcard_url in locals.
+    local.preview_sandbox_wildcard_url,
   ]
   allowed_origins = [
     local.env_seqtoid_org_url,
     # local.meta_env_seqtoid_org_url,
     "http://localhost:3000",
+    local.preview_sandbox_wildcard_url,
   ]
   app_type = "regular_web"
   callbacks = [
@@ -129,10 +159,18 @@ resource "auth0_client" "idseq_web" {
     "${local.env_seqtoid_org_url}/auth/auth0/callback",
     "${local.env_seqtoid_org_url}/login",
     # "${local.meta_env_seqtoid_org_url}/auth/auth0/callback",
+    # Preview sandboxes: pr-<N>.dev.seqtoid.org. The app derives redirect_uri from the request
+    # host + OmniAuth's callback_path (/auth/auth0/callback, config/initializers/auth0.rb), and
+    # the sandbox now serves on its own host (SERVER_DOMAIN, app 2e0fb6e2f) -- so login sent
+    # pr-23.dev.seqtoid.org and Auth0 rejected it with "Callback URL mismatch".
+    "${local.preview_sandbox_wildcard_url}/auth/auth0/callback",
+    "${local.preview_sandbox_wildcard_url}/login",
   ]
-  initiate_login_uri = "${local.env_seqtoid_org_url}/login"
-  logo_uri           = "${local.assets_url}/assets/logo-new.png"
-  sso                = true
+  initiate_login_uri                                   = "${local.env_seqtoid_org_url}/login"
+  is_first_party                                       = true
+  logo_uri                                             = "${local.assets_url}/assets/logo-new.png"
+  skip_non_verifiable_callback_uri_confirmation_prompt = true
+  sso                                                  = true
   web_origins = [
     local.env_seqtoid_org_url,
     # local.meta_env_seqtoid_org_url,
@@ -153,7 +191,7 @@ resource "auth0_client" "idseq_web" {
 
 resource "auth0_client_grant" "idseq_web_grant" {
   client_id    = auth0_client.idseq_web.id
-  audience     = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/" # TODO: Should be auth0_resource_server.idseq_web.identifier ??
+  audience     = auth0_resource_server.env_seqtoid.identifier
   subject_type = "user"
   scopes       = []
 }
@@ -164,9 +202,9 @@ resource "auth0_client" "idseq_web_management" {
 }
 
 resource "auth0_client_grant" "idseq_web_management_grant" {
-  client_id = auth0_client.idseq_web_management.id
-  audience  = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/"
-  # subject_type = "client"
+  client_id    = auth0_client.idseq_web_management.id
+  audience     = local.audience
+  subject_type = "client"
   scopes = [
     "read:users",
     "update:users",
@@ -304,12 +342,22 @@ module "auth0-ssm-params" {
   owner   = var.owner
 
   parameters = {
-    AUTH0_CLIENT_ID                = auth0_client.idseq_web.client_id
-    AUTH0_CLIENT_SECRET            = data.auth0_client.idseq_web.client_secret
-    AUTH0_CONNECTION               = auth0_connection.username_password_authentication.name
-    AUTH0_DOMAIN                   = data.auth0_tenant.env_tenant.domain
+    AUTH0_CLIENT_ID     = auth0_client.idseq_web.client_id
+    AUTH0_CLIENT_SECRET = data.auth0_client.idseq_web.client_secret
+    AUTH0_CONNECTION    = auth0_connection.username_password_authentication.name
+    # The CUSTOM domain, not the tenant domain. This is what is live in SSM (auth.dev.seqtoid.org,
+    # v10) and what the app actually authenticates against; the config computed the tenant domain
+    # instead, so a refreshed plan wanted to overwrite a working login setting with a different value.
+    # It is also what upstream intended -- a2b4ff7: "Revert AUTH0_MANAGEMENT_DOMAIN to be the tenant
+    # domain, instead of the custom DNS name. The AUTH0_DOMAIN is still the custom DNS name."
+    # Config now matches reality, so the diff disappears and nothing changes in Auth0. See #695.
+    AUTH0_DOMAIN                   = aws_route53_record.auth_env_cname.name
+    AUTH0_CLI_AUDIENCE             = auth0_resource_server.env_seqtoid.identifier
     AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
     AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
-    AUTH0_MANAGEMENT_DOMAIN        = data.auth0_tenant.env_tenant.domain # TODO: Obsolete this, as it is always the same as AUTH0_DOMAIN; Need to replace it in idseq-web first, though.
+    # Deliberately the TENANT domain, NOT the custom one -- that is the whole point of a2b4ff7. The
+    # old TODO here ("always the same as AUTH0_DOMAIN") is the assumption that commit reverted: the
+    # Management API is addressed at the tenant domain even when logins use the custom domain.
+    AUTH0_MANAGEMENT_DOMAIN = data.auth0_tenant.env_tenant.domain
   }
 }

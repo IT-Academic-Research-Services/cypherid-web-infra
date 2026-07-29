@@ -1,0 +1,128 @@
+# E5 -- IOChaos -- local disk latency (platform-overhaul #794/#807-class). See ../DESIGN.md.
+#
+# WHY THIS WAS DEFERRED, AND WHAT CHANGED (do not re-derive this):
+#
+# THE CONSTRAINT: Chaos Mesh IOChaos works by injecting a FUSE layer over a VOLUME MOUNT. It
+# cannot intercept a container's overlay/root filesystem. A pod with no volume is therefore
+# untestable for disk faults, no matter how the experiment is written.
+#
+# THE ORIGINAL BLOCK (supervised game-day 2026-07-22): the dev web pods had NO volume at all --
+# verified live, their only volumes were the projected service-account tokens (aws-iam-token,
+# kube-api-access-*). `/tmp` was part of the container's writable overlay layer, not a mount,
+# so this experiment had nothing to attach to and was a no-op/failure. Tracked as Forgejo
+# ticket 837. This was INDEPENDENT of the Chaos Mesh 2.7.2 -> 2.8.3 upgrade (which fixed a
+# cgroup v2 / containerd 2.x daemon incompatibility and unblocked E2/E6/E7).
+#
+# CORRECTION to the earlier note: the nodes are NOT missing fuse. Re-verified on czid-dev-eks
+# under Chaos Mesh 2.8.3 -- `/dev/fuse` is present in the chaos-daemon (crw-rw-rw- 10,229) and
+# the kernel exposes fuse/fuseblk/fusectl in /proc/filesystems. The missing volume was the
+# real and only structural blocker; the old "fail to find device cgroup" symptom belongs to
+# the same cgroup-v2 daemon class that the 2.8.3 upgrade addressed.
+#
+# THE FIX: the web Rollout now mounts an emptyDir at /tmp (chart `scratchVolume`, enabled for
+# dev in deploy/argocd/values/seqtoid-web/dev.yaml). That is a REAL mount, so IOChaos can
+# attach. /tmp is also where the app's disk writes actually go, so the latency below exercises
+# real code rather than a synthetic path: TMPDIR is unset in the image, so Ruby's Dir.tmpdir
+# resolves to /tmp and every Tempfile lands there (phylo tree export, AMR BAI/BAM slicing,
+# mngs read-stats load, bulk-download assembly) as does Rack multipart buffering; and
+# PipelineRun::LOCAL_JSON_PATH (/tmp/results_json, staging result JSON from S3 to local disk)
+# plus the bulk-download TSV/BIOM writers hardcode /tmp outright.
+#
+# NOTE on the path glob: the chart points TMPDIR at /tmp/app (a 0700 subdir inside the mount)
+# because the kubelet creates emptyDir 0777 WITHOUT the sticky bit and Ruby's Dir.tmpdir
+# refuses a world-writable non-sticky dir. Tempfiles therefore sit one level down, which the
+# `/tmp/**/*` glob below matches.
+#
+# STILL NOT DEPLOYED / STILL DISARMED. The volume must reach the dev pods first (the chart PR
+# and the dev values PR, then a Rollout that actually restarts the pods), and seqtoid-dev
+# carries no chaos annotation. The HIGH-VALUE disk experiment remains the pipeline-sandbox P3
+# scratch-exhaustion case (AWS Batch EBS, ../DESIGN.md section 9) -- this E5 proves only the
+# web tier's tolerance of slow local I/O; keep the two distinct.
+#
+# Hypothesis: slow local filesystem I/O on a web pod (logging, tmp, session scratch) does NOT
+# turn into user-facing 503s -- request handling tolerates a degraded local disk because the hot
+# path is DB/OpenSearch/S3, not local disk. This is the app-tier cousin of the failure class that
+# bit the pipeline for real: the NT/NR scratch-volume exhaustion (#799). NOTE: that pipeline
+# failure lives on AWS Batch scratch (EBS), NOT a k8s pod -- so the HIGH-VALUE disk experiment
+# (fill/slow the index-generation scratch and assert the SFN retries + AUPR still holds) is a
+# PIPELINE-SANDBOX experiment (see ../DESIGN.md section 9), not this one. This E5 proves only the
+# web tier's tolerance of slow local I/O; keep the two distinct.
+#
+# SAFETY: Schedule -> Workflow, gated by a pre-flight StatusCheck (do not inject into an unhealthy
+# system) and a continuous in-flight StatusCheck that aborts the moment /health_check breaks past
+# tolerance. mode: one -> a single pod. Fires only when seqtoid-dev is labeled
+# chaos-mesh.org/inject=enabled. NOT DEPLOYED -- apply only after Chaos Mesh is installed + the
+# namespace is armed (../DESIGN.md "What deploying takes").
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e5-io
+  namespace: chaos-mesh
+spec:
+  schedule: "20 6 * * *" # 06:20 UTC = 02:20 America/New_York -- overnight window, staggered off E1
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e5
+    templates:
+      - name: e5
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - impair-and-watch
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      - name: impair-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - slow-local-io
+          - steady-state-during
+      # Inject I/O latency on the pod's writable scratch path. attr-based delay on all operations;
+      # mode:one -> a single web pod, duration-bounded, auto-recovered when the workflow ends.
+      #
+      # volumePath MUST be a real volume MOUNT POINT in the target container -- this is the
+      # mount IOChaos wraps in FUSE, and it is why this experiment could not run until the web
+      # Rollout grew the emptyDir at /tmp. `path` is the glob of files WITHIN that mount whose
+      # I/O gets delayed; keep it inside volumePath or nothing matches.
+      - name: slow-local-io
+        templateType: IOChaos
+        deadline: 3m  # was chaos duration (illegal inside a Workflow); bounds the fault node
+        ioChaos:
+          action: latency
+          mode: one
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+          volumePath: /tmp
+          path: "/tmp/**/*"
+          delay: "100ms"
+          percent: 100
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 3m
+          intervalSeconds: 2
+          failureThreshold: 3
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"

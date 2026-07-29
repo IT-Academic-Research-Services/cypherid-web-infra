@@ -1,0 +1,44 @@
+# Observability Phase 4 (#608/#700): scrape Argo CD + Argo Rollouts metrics into Prometheus.
+# This Argo install has NO dedicated metrics Services (the argocd ns exposes only server/repo/
+# appset/dex/redis), so we scrape the component pods' `metrics` ports DIRECTLY via PodMonitors.
+# Prometheus discovers these because the kps values set podMonitorSelectorNilUsesHelmValues=false
+# (match all). Applied by hand:
+#   kubectl apply -f deploy/argocd/_deliberate/argocd-podmonitors.yaml
+#
+# Ports (verified 2026-07-15): application-controller 8082, server 8083, repo-server 8084,
+# applicationset 8080, notifications 9001 -- ALL named "metrics"; argo-rollouts 8090 ("metrics").
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: argocd
+  namespace: argocd
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: ["argocd"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: argocd   # controller/server/repo/appset/notifications; dex+redis lack a metrics port and are skipped
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: argo-rollouts
+  namespace: argo-rollouts
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: ["argo-rollouts"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argo-rollouts
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

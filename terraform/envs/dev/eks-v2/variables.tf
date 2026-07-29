@@ -2,6 +2,11 @@ locals {
   owner_roles = [
     # TODO: Not sure if it is required to prevent Unauthorized in Github Actions
     data.terraform_remote_state.access-management.outputs.gh_actions_executor_role.name,
+    # The APPLY role is the identity CI actually assumes for terraform apply (the executor role
+    # above is legacy). The kubernetes/helm/kubectl providers authenticate via `aws eks get-token`
+    # as the caller, so without an aws-auth mapping the cluster answers "the server has asked for
+    # the client to provide credentials" and every eks/eks-v2 apply fails. Map it. See #687.
+    data.terraform_remote_state.access-management.outputs.gh_actions_apply_role.name,
     # TODO: SSO role used when locally applying terraform with an SSO profile; shouldn't be hardcoded tho!
     "AWSReservedSSO_AWSAdministratorAccess_0527ae95c0a72f8c",
     # "gha-seqtoid", // Role used by GH Actions for applying terraform (cypherid-infra & cypherid-web-infra)
@@ -12,8 +17,23 @@ locals {
     # "tfe-si",
   ]
 
-  cluster_name            = var.eks_cluster_name
-  iam_cluster_name_prefix = null
+  read_only_roles = [
+    # The PLAN role. With `-refresh=false` a plan never touched the cluster, so this was never
+    # needed; now that refresh is on, the kubernetes/helm providers must READ k8s state during
+    # plan, and they authenticate via `aws eks get-token` as the CALLING identity. Without an
+    # aws-auth mapping the cluster answers "the server has asked for the client to provide
+    # credentials" and the whole eks-v2 plan fails Unauthorized.
+    #
+    # It goes in read_only_roles, NOT owner_roles: owner_roles grants system:masters, and the
+    # plan role is read-only in AWS by deliberate design (least-privilege). read_only_roles binds
+    # it to the eks-readonly ClusterRole -- get/list/watch on everything, write nothing -- so a
+    # read-only identity stays read-only inside the cluster too. The cluster-wide read does cover
+    # Secrets, which is unavoidable: helm_release stores its state in them, so refreshing a helm
+    # release requires reading them.
+    data.terraform_remote_state.access-management.outputs.gh_actions_plan_role.name,
+  ]
+
+  cluster_name = var.eks_cluster_name
 
   # Public API endpoint allow-list. During bring-up this defaults to 0.0.0.0/0
   # (see var.eks_public_access_cidrs in terraform.tf) so kubectl/Argo can reach the

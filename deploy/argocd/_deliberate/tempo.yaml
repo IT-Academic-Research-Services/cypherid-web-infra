@@ -1,0 +1,50 @@
+# Observability Phase 2a (LGTM epic, #608/#426): Grafana Tempo -- the TRACES backend.
+# Single-binary Tempo on dev eks-v2, local storage on a gp2 PVC, OTLP receiver only (the
+# in-cluster OTel collector, Phase 3, exports spans here over OTLP). Wired into Grafana as
+# the "Tempo" datasource by the kube-prometheus-stack app (grafana.additionalDataSources).
+#
+# Dev sizing: local filesystem storage (no S3/IRSA needed) + 48h retention. Swap the backend
+# to S3 for staging/prod. Deliberate (see ../README.md); project: default (#698).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: tempo
+    targetRevision: 1.24.4   # app: Tempo 2.9.0. Pinned; bump deliberately.
+    helm:
+      values: |
+        # Local (filesystem) trace storage on a persistent gp2 volume -- no default SC on dev.
+        persistence:
+          enabled: true
+          storageClassName: gp2
+          size: 10Gi
+        tempo:
+          retention: 48h
+          # Only OTLP in (the collector speaks OTLP). Overriding receivers drops the
+          # jaeger/zipkin/opencensus defaults we do not use.
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+          # Raised from 512Mi: with real trace volume flowing (app spans + spanmetrics), Tempo
+          # OOMKilled (exit 137) during WAL replay + compaction and crash-looped. 1.5Gi gives headroom.
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { memory: 1536Mi }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

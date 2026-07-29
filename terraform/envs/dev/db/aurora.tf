@@ -63,9 +63,22 @@ resource "aws_rds_cluster_instance" "db" {
 }
 
 resource "aws_rds_cluster_parameter_group" "db_8" {
-  name        = "${var.project}-${var.env}-rds-cluster-pg-8"
-  family      = "aurora-mysql8.0"
-  description = "RDS cluster parameter group (Aurora MySQL 8.0)"
+  name   = "${var.project}-${var.env}-rds-cluster-pg-8"
+  family = "aurora-mysql8.0"
+
+  # DO NOT "improve" this string. AWS makes description IMMUTABLE, so changing it forces
+  # terraform to REPLACE the parameter group -- and because the name is fixed (no
+  # create_before_destroy is possible without a name_prefix), terraform destroys FIRST.
+  # That destroy can never succeed while the cluster's instances are members
+  # (InvalidDBParameterGroupState), so every `db` apply spent 2+ minutes retrying the
+  # deletion of the LIVE database's parameter group before failing. A cosmetic string was
+  # one detached instance away from deleting it for real. This value is kept EXACTLY as it
+  # exists in AWS so terraform sees no diff and never attempts the replacement.
+  #
+  # If it ever genuinely must change: create a NEW parameter group, modify the cluster to
+  # use it, reboot the instance, and only then remove the old one -- deliberately, in a
+  # maintenance window. See platform-overhaul #687.
+  description = "RDS default cluster parameter group"
 
   parameter {
     name  = "character_set_server"

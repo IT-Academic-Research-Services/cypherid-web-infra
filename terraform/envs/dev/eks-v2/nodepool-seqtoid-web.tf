@@ -20,9 +20,18 @@ resource "kubectl_manifest" "seqtoid_web_nodepool" {
     kind       = "NodePool"
     metadata   = { name = "seqtoid-web" }
     spec = {
+      # See platform-overhaul #696. consolidateAfter was 1m: Karpenter churned nodes fast enough to
+      # repeatedly evict the SINGLE-REPLICA ArgoCD control plane (repo-server, application-controller,
+      # server, redis -- every one of them 1/1), killing in-flight syncs with "connection refused" to a
+      # brand-new repo-server pod. Karpenter was dead until 2026-07-14, so nothing was ever consolidated
+      # and the cluster was accidentally static; the moment it started working, this surfaced.
+      # 15m plus a disruption budget keeps consolidation useful without shredding running work.
       disruption = {
         consolidationPolicy = "WhenEmptyOrUnderutilized"
-        consolidateAfter    = "1m"
+        consolidateAfter    = "15m"
+        budgets = [
+          { nodes = "10%" },
+        ]
       }
       template = {
         metadata = { labels = { "seqtoid.io/pool" = "web" } }
@@ -38,7 +47,14 @@ resource "kubectl_manifest" "seqtoid_web_nodepool" {
             { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
             { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
-            # Small nodes only — dev right-sizing.
+            # Non-burstable, right-sized dev nodes: c/m/r families, 4-8 vCPU. Burstable t2/t3
+            # (excluded by instance-category) were the root cause of the NotReady flapping:
+            # under load a 2-vCPU t3 pegged CPU to ~100%, starved the kubelet, and the node
+            # dropped its heartbeat. c/m/r at >=4 vCPU gives fixed performance with headroom
+            # for the app plus the kubelet reservation (see the module EC2NodeClass). Still
+            # "small for dev" (<=8 vCPU) and spot-eligible for cost. See platform-overhaul #699.
+            { key = "karpenter.k8s.aws/instance-category", operator = "In", values = ["c", "m", "r"] },
+            { key = "karpenter.k8s.aws/instance-cpu", operator = "Gt", values = ["3"] },
             { key = "karpenter.k8s.aws/instance-cpu", operator = "Lt", values = ["9"] },
             # Exclude the ancient/instance-store families (mirrors the default pool).
             { key = "karpenter.k8s.aws/instance-family", operator = "NotIn",

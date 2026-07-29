@@ -1,0 +1,35 @@
+# Observability Phase 2 (LGTM epic, #608/#426): Grafana datasources for Tempo (traces) +
+# Loki (logs). Provisioned as a sidecar-loaded ConfigMap (label grafana_datasource) rather
+# than through the kube-prometheus-stack chart's additionalDataSources, so datasource
+# provisioning is DECOUPLED from that chart's Helm sync -- the Grafana sidecar merges this in
+# live, regardless of whether the kps app is mid-roll. Prometheus + Alertmanager come from
+# the chart itself; this adds the two Phase 2 stores.
+#
+# Apply by hand (this is a raw resource, not an Argo Application):
+#   kubectl apply -f deploy/argocd/_deliberate/grafana-lgtm-datasources.yaml
+# The kube-prometheus-stack Grafana sidecar picks it up within ~60s (no restart needed).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-lgtm-datasources
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"   # the kps Grafana sidecar watches for this label
+data:
+  lgtm-datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://tempo:3200
+        jsonData:
+          # jump from a trace's spans to the matching logs in Loki
+          tracesToLogsV2:
+            datasourceUid: loki
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://loki:3100

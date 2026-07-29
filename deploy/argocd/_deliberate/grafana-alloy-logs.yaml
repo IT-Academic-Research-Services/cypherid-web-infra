@@ -1,0 +1,192 @@
+# Observability Phase 4 (#608/#700): Grafana Alloy DaemonSet shipping ALL pod/app container logs
+# to Loki, labeled by namespace/pod/container/node/app so they are sortable in Grafana Explore +
+# joinable to metrics/traces. Uses loki.source.kubernetes (reads pod logs via the Kubernetes API)
+# instead of host-path file tailing -- no hostPath, no /var/log/pods glob fragility, resilient to
+# the node churn. Raw manifests (SA + RBAC + ConfigMap + DaemonSet), NOT a Helm chart, so there is
+# no chart-version drift; the Alloy image is pinned.
+#
+# Apply by hand: kubectl apply -f deploy/argocd/_deliberate/grafana-alloy-logs.yaml
+# Verify: Grafana Explore -> Loki -> `{namespace="seqtoid-dev"}` returns app logs.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: alloy-logs
+value: 1000000000   # below system-cluster-critical (2000000000); above default app pods (0)
+globalDefault: false
+description: >-
+  Node-level log agent. High priority so the scheduler always finds it a pod slot -- on nodes at
+  their max-pods cap (non-prefix vpc-cni limits pods/node), a normal-priority Alloy pod is left
+  Pending and that node's logs go unshipped. This lets it preempt a lower-priority pod for a slot,
+  the way aws-node/kube-proxy DaemonSets do, guaranteeing full log coverage.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy-logs
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alloy-logs
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "nodes/metrics", "pods", "pods/log", "namespaces", "endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alloy-logs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alloy-logs
+subjects:
+  - kind: ServiceAccount
+    name: alloy-logs
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-logs
+  namespace: monitoring
+data:
+  config.alloy: |
+    // Discover every pod in the cluster.
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+
+    // Map k8s metadata -> Loki labels (sortable dimensions).
+    discovery.relabel "pod_logs" {
+      targets = discovery.kubernetes.pods.targets
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_node_name"]
+        target_label  = "node"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        target_label  = "app_name"
+      }
+    }
+
+    // Tail container logs via the Kubernetes API (no host mounts).
+    loki.source.kubernetes "pods" {
+      targets    = discovery.relabel.pod_logs.output
+      forward_to = [loki.process.default.receiver]
+    }
+
+    loki.process "default" {
+      forward_to = [loki.write.default.receiver]
+
+      // Parse a log LEVEL and expose it as a sortable `level` label so logs can be filtered by
+      // debug/info/warn/error in Grafana (instead of everything reading as "unknown"). The app emits
+      // two shapes: (1) structured JSON (the otel_action_logging concern) with a level/severity field;
+      // (2) Ruby/Rails Logger lines like "D, [2026-... #1] DEBUG -- : msg". Try both; anything that
+      // matches neither becomes "unknown" (a real, filterable bucket rather than an empty value).
+      stage.json {
+        expressions = { jlevel = "level", jsev = "severity" }
+      }
+      stage.regex {
+        expression = "\\]\\s+(?P<rlevel>DEBUG|INFO|WARN|ERROR|FATAL|UNKNOWN)\\s+--"
+      }
+      stage.template {
+        source   = "level"
+        template = "{{ ToLower (or .jlevel .jsev .rlevel \"unknown\") }}"
+      }
+      stage.labels {
+        values = { level = "level" }
+      }
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+      }
+      external_labels = {
+        cluster = "czid-dev-eks-v2",
+      }
+    }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: alloy-logs
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alloy-logs
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy-logs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alloy-logs
+    spec:
+      serviceAccountName: alloy-logs
+      priorityClassName: alloy-logs   # always get a pod slot on busy (max-pods) EC2 nodes
+      # Exclude Fargate nodes: they are one-pod-per-microVM (pod-capacity=1, already used by the
+      # workload pod) so a DaemonSet agent can NEVER schedule there and sits Pending forever. Fargate
+      # pods route their own logs (Fargate logging -> CloudWatch), so nothing is lost here.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: eks.amazonaws.com/compute-type
+                    operator: NotIn
+                    values: ["fargate"]
+      tolerations:
+        - operator: Exists   # ship logs from every (non-Fargate) node, including tainted/control-plane
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.5.1
+          args:
+            - run
+            - /etc/alloy/config.alloy
+            - --server.http.listen-addr=0.0.0.0:12345
+            - --storage.path=/tmp/alloy
+          ports:
+            - name: http
+              containerPort: 12345
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+            - name: tmp
+              mountPath: /tmp/alloy
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-logs
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,83 @@
+# PodDisruptionBudgets for the ArgoCD control plane (platform-overhaul #696).
+#
+# Karpenter was DEAD until 2026-07-14 -- its EC2NodeClass matched zero subnets, so it could not
+# provision or consolidate anything and the cluster was accidentally static. The moment it started
+# working it did its job: `consolidationPolicy: WhenEmptyOrUnderutilized` with `consolidateAfter: 1m`
+# aggressively bin-packed nodes and repeatedly evicted the ArgoCD control plane along with everything
+# else. In-flight syncs died with:
+#
+#   ComparisonError: Failed to load target state: failed to generate manifest:
+#   rpc error: code = Unavailable desc = dial tcp <repo-server>:8081: connect: connection refused
+#
+# -- a brand-new repo-server pod each time.
+#
+# EVERY ArgoCD component is single-replica (repo-server, application-controller, server, redis, dex,
+# applicationset-controller, notifications-controller are all 1/1). So one eviction is a full outage
+# of that component, and a deploy landing in a consolidation window fails spuriously.
+#
+# Karpenter honours PDBs. With 1 replica, `minAvailable: 1` means there is no safe eviction, so
+# Karpenter will simply not consolidate a node running these pods -- the effect of
+# `karpenter.sh/do-not-disrupt` without having to fork the upstream argo-cd Helm values (the ArgoCD
+# install is an out-of-band Helm release and is not in this repo -- itself a gap worth closing).
+#
+# The NodePools' consolidateAfter was also raised 1m -> 15m with a 10% disruption budget
+# (terraform/envs/dev/eks-v2/nodepool-*.tf); these PDBs are the belt to that braces.
+#
+# TRADE-OFF, deliberate: a node running an ArgoCD component will not be consolidated away on its own.
+# That is the point. Draining such a node for a real reason (an upgrade) requires scaling the
+# component to 2 first, or deleting the PDB -- a conscious act, which is exactly what we want for a
+# control plane that has no redundancy.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-application-controller
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argocd-redis
+  namespace: argocd
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argocd-applicationset-controller
+  namespace: argocd
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-applicationset-controller

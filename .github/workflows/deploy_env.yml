@@ -20,7 +20,10 @@ on:
         required: true
       AUTH0_DOMAIN:
         required: true
-
+      TF_VAR_LOCATION_IQ_API_KEY:
+        required: true
+      TF_VAR_MAPTILER_API_KEY:
+        required: true
 permissions:
   id-token: write
   contents: read

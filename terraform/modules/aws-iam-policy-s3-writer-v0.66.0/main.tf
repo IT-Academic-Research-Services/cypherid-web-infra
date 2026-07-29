@@ -11,6 +11,7 @@ data "aws_iam_policy_document" "s3-bucket-writer" {
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:PutObjectTagging",
       "s3:ListBucket",
     ]
 

@@ -1,0 +1,33 @@
+# seqtoid-web @ exp-sandbox (fully separate throwaway rehearsal env, same account 941377154785 as sandbox).
+# Mirrors apps/sandbox/seqtoid-web-sandbox.yaml. New env -> new-scheme namespace seqtoid-exp-sandbox.
+# Values in $values/.../exp-sandbox.yaml. Governed by the `seqtoid` AppProject (which must whitelist the
+# seqtoid-exp-sandbox namespace -- see deploy/argocd/projects/seqtoid.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seqtoid-web-exp-sandbox
+  namespace: argocd
+spec:
+  project: seqtoid
+  sources:
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
+      targetRevision: main
+      path: deploy/charts/seqtoid-web
+      helm:
+        valueFiles:
+          - $values/deploy/argocd/values/seqtoid-web/exp-sandbox.yaml
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+      # main is the steady state (after this lands on integration -> main). For a PRE-MERGE rehearsal
+      # apply, override this to the feature branch where exp-sandbox.yaml lives.
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: seqtoid-exp-sandbox
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

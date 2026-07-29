@@ -10,7 +10,7 @@ locals {
 # versioned in this env's config. Defaults to empty ([]) = fully fail-closed, nothing exempted.
 resource "aws_wafv2_ip_set" "corporate_allowlist" {
   name               = "${var.tags.project}-${var.tags.env}-corporate-allowlist"
-  description        = "Known-good corporate egress IPs allowlisted ahead of the export-control geo/anonymizer blocks (CZID-324)."
+  description        = "Known-good corporate egress IPs allowlisted ahead of the export-control geo/anonymizer blocks - CZID-324."
   scope              = "REGIONAL"
   ip_address_version = "IPV4"
   addresses          = var.corporate_allowlist_cidrs

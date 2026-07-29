@@ -134,12 +134,29 @@ resource "kubectl_manifest" "karpenter_node_class" {
       "amiSelectorTerms" = [
         { "alias" : "al2023@latest" }
       ]
+      # Kubelet resource management. The previous config (systemReserved 100m/100Mi,
+      # no kubeReserved, podsPerCore 14) left the kubelet with no protected CPU/memory:
+      # under load, application pods saturated small nodes to ~100% CPU and >100% memory,
+      # the kubelet missed its node-status heartbeats, and nodes flapped NotReady
+      # ("Kubelet stopped posting node status") in an endless die/recover cycle. Reserve a
+      # real slice for the kubelet + system daemons and add eviction thresholds so the node
+      # sheds pods before it takes itself down. podsPerCore lowered so nodes are not
+      # oversubscribed (14 permitted 28 pods on a 2-vCPU node). See platform-overhaul #699.
       "kubelet" = {
-        "systemReserved" : {
-          "cpu"    = "100m"
-          "memory" = "100Mi"
+        "kubeReserved" = {
+          "cpu"    = "250m"
+          "memory" = "600Mi"
         }
-        "podsPerCore" = 14
+        "systemReserved" = {
+          "cpu"    = "250m"
+          "memory" = "300Mi"
+        }
+        "evictionHard" = {
+          "memory.available"  = "200Mi"
+          "nodefs.available"  = "10%"
+          "imagefs.available" = "10%"
+        }
+        "podsPerCore" = 8
       }
       "blockDeviceMappings" = [
         {

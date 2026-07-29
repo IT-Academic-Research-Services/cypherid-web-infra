@@ -1,0 +1,77 @@
+# Chaos Mesh -- the chaos-engineering operator for dev resilience testing
+# (platform-overhaul #794/#795). See ../../chaos/DESIGN.md.
+#
+# BUILT, NOT DEPLOYED. This is deliberate (see ./README.md): applying it installs a
+# cluster-wide operator with a privileged DaemonSet (chaos-daemon mounts the container
+# runtime socket to inject faults), so it is applied and observed by hand, never by a
+# root app. It does NOTHING on its own -- no experiment runs until (a) an experiment
+# manifest is applied AND (b) the target namespace carries chaos-mesh.org/inject=enabled.
+#
+# AL2023 NODE PREREQUISITE: also apply ../../chaos/node-prep/kmod-loader.yaml alongside this.
+# On AL2023 nodes the tc-netem/ipset kernel modules the daemon needs for NetworkChaos/DNSChaos/
+# HTTPChaos are not auto-loaded; the loader DaemonSet modprobes them (proven 2026-07-26: 2.8.3 +
+# the loader recovered E2/E7 and E6's transport). IOChaos stays blocked by cgroup-v2 /dev/fuse
+# -> use AWS FIS for IO faults.
+#
+# BLAST-RADIUS GUARDRAIL (the important line): controllerManager.enableFilterNamespace=true.
+# With it on, chaos can be injected ONLY into namespaces labeled
+# `chaos-mesh.org/inject=enabled`. We label ONLY seqtoid-dev, only during an authorized
+# window. argocd / monitoring / kube-system / the LB controller / other tenants are
+# physically un-targetable. Removing the label is the global disarm switch.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chaos-mesh
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.chaos-mesh.org
+    chart: chaos-mesh
+    targetRevision: 2.8.3 # app: Chaos Mesh 2.8.3 (was 2.7.2). Bumped to pick up the daemon
+    # fixes for the AL2023 cgroup v2 / containerd 2.x path that blocks E2/E5/E6/E7
+    # (network/DNS/HTTP/IO) -- see the chaos-daemon startup error on 2.7.2:
+    #   "grant access to /dev/fuse: fail to find device cgroup" (pkg/fusedev, cgroup-v1 assumption).
+    # Forgejo ticket 836. Pinned; bump deliberately, apply in an authorized chaos window.
+    helm:
+      values: |
+        # EKS/AL2023 runs containerd 2.x. chaos-daemon must point at the containerd socket to
+        # inject pod/network/stress faults; the docker default would silently no-op. containerd
+        # 2.x keeps the same default socket path.
+        chaosDaemon:
+          runtime: containerd
+          socketPath: /run/containerd/containerd.sock
+        controllerManager:
+          # THE guardrail: no namespace can be targeted unless it is labeled
+          # chaos-mesh.org/inject=enabled. Default off in the chart; we force it on.
+          enableFilterNamespace: true
+          replicaCount: 1 # dev: single controller is fine (the operator, not the app)
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+        # Dashboard for authoring/observing experiments. Not exposed publicly here:
+        # reach it via `kubectl port-forward`, or front it with the same ingress-auth
+        # pattern as Grafana when we want a URL. securityMode on = it enforces RBAC
+        # tokens rather than trusting the network.
+        dashboard:
+          create: true
+          securityMode: true
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: chaos-mesh
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # ServerSideApply is REQUIRED for this chart: the schedules/workflows/workflownodes
+      # CRDs exceed the 262144-byte client-side apply limit (the last-applied-configuration
+      # annotation overflows), so a normal apply fails with "metadata.annotations: Too long"
+      # and those 3 CRDs never install -- which silently disables the Workflow/Schedule
+      # features the whole Chaos Engine (E1-E8 Schedules, dual-gate Workflow) depends on.
+      # Server-side apply doesn't write that annotation, so it installs them cleanly.
+      - ServerSideApply=true

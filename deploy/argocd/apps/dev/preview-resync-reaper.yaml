@@ -1,0 +1,30 @@
+# Deploys the preview sandbox auto-resync reaper (platform-overhaul 860).
+#
+# Argo-managed from the outset, deliberately. The chaos TTL reaper and the AppProjects
+# were both applied by hand and then drifted from the repo, which is how the sandbox
+# breakage stayed unfixed for days. A component whose entire job is to keep sandboxes
+# healthy must not itself be a hand-applied artifact.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: preview-resync-reaper
+  namespace: argocd
+spec:
+  project: czid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    targetRevision: main
+    path: deploy/argocd/preview-resync
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # Drift here is the failure mode being fixed, so correct it.
+      selfHeal: true
+      # Safe to prune: everything this app owns is its own reaper machinery, and
+      # nothing else references it. Contrast with the AppProject app, where pruning
+      # would orphan unrelated Applications.
+      prune: true
+    syncOptions:
+      - CreateNamespace=false

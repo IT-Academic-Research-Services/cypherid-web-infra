@@ -19,7 +19,7 @@ metadata:
 spec:
   project: czid
   source:
-    repoURL: https://github.com/thorvath-slower/cypherid-web-infra.git
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
     targetRevision: main
     path: deploy/argocd/policies
   destination:

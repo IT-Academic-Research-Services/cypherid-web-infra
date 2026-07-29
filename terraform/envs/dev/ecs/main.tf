@@ -6,6 +6,16 @@ locals {
 }
 
 module "ecs-cluster" {
+  # Dev runs on EKS/Argo. The ECS cluster and its ASG were torn down at the migration, but terraform
+  # still declared them -- so a refreshed plan wanted to RE-CREATE the cluster plus an ASG of real EC2
+  # instances, duplicating workloads that already run as k8s pods and costing money.
+  #
+  # This gates ONLY the compute plane. The security group, log group, instance profile and IAM policy
+  # the module also owns are deliberately NOT gated: dev/redis reads the SG, and dev/batch keys
+  # random_id.batch on it -- if that SG id changed, the AWS Batch compute environment would be
+  # REPLACED. See platform-overhaul #687.
+  create_compute = false
+
   source = "../../../modules/ecs-cluster-v2.4.0"
 
   region  = var.region
@@ -75,125 +85,10 @@ resource "aws_cloudwatch_log_group" "ecs" {
   kms_key_id        = aws_kms_key.ecs_logs.arn # CMK-encrypted (CKV_AWS_158)
 }
 
-resource "aws_autoscaling_policy" "scale-up" {
-  name                   = "ecs-scale-up-${var.env}"
-  scaling_adjustment     = 1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 120
-  autoscaling_group_name = module.ecs-cluster.asg_name
-}
-
-resource "aws_autoscaling_policy" "scale-down" {
-  name                   = "ecs-scale-down-${var.env}"
-  scaling_adjustment     = -1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = module.ecs-cluster.asg_name
-}
-
-resource "aws_cloudwatch_metric_alarm" "memory-res-high" {
-  alarm_name  = "mem-res-high-ecs-${var.env}"
-  namespace   = "AWS/ECS"
-  metric_name = "MemoryReservation"
-
-  dimensions = {
-    ClusterName = module.ecs-cluster.cluster_name
-  }
-
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = "2"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "80"
-
-  alarm_actions = [
-    aws_autoscaling_policy.scale-up.arn,
-  ]
-}
-
-# resource "aws_cloudwatch_metric_alarm" "memory-res-high" {
-#   alarm_name          = "mem-res-high-ecs-${var.env}"
-#   comparison_operator = "GreaterThanOrEqualToThreshold"
-#   evaluation_periods  = "2"
-#   threshold           = "80"
-#   alarm_actions = [
-#     aws_autoscaling_policy.scale-up.arn
-#   ]
-#
-#   metric_query {
-#     id          = "e1"
-#     expression  = "IF((HOUR(m1) >= ${local.off_hour_utc} AND HOUR(m1) < ${local.on_hour_utc}) OR DAY(m1)==7 OR (DAY(m1) == 6 AND HOUR(m1) >= ${local.off_hour_utc}) OR (DAY(m1) == 1 AND HOUR(m1) < ${local.on_hour_utc}), 70, m1)"
-#     label       = "Off Hours"
-#     return_data = "true"
-#   }
-#
-#   metric_query {
-#     id = "m1"
-#
-#     metric {
-#       metric_name = "MemoryReservation"
-#       namespace   = "AWS/ECS"
-#       period      = "300"
-#       stat        = "Average"
-#
-#       dimensions = {
-#         ClusterName = module.ecs-cluster.cluster_name
-#       }
-#     }
-#   }
-# }
-
-resource "aws_cloudwatch_metric_alarm" "memory-res-low" {
-  alarm_name  = "mem-res-low-ecs-${var.env}"
-  namespace   = "AWS/ECS"
-  metric_name = "MemoryReservation"
-
-  dimensions = {
-    ClusterName = module.ecs-cluster.cluster_name
-  }
-
-  comparison_operator = "LessThanOrEqualToThreshold"
-  evaluation_periods  = "2"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "60"
-
-  alarm_actions = [
-    aws_autoscaling_policy.scale-down.arn,
-  ]
-}
-
-# resource "aws_cloudwatch_metric_alarm" "memory-res-low" {
-#   alarm_name  = "mem-res-low-ecs-${var.env}"
-#   comparison_operator = "LessThanOrEqualToThreshold"
-#   evaluation_periods  = "2"
-#   threshold           = "60"
-#   alarm_actions = [
-#     aws_autoscaling_policy.scale-down.arn
-#   ]
-#
-#   metric_query {
-#     id          = "e1"
-#     expression  = "IF((HOUR(m1) >= ${local.off_hour_utc} AND HOUR(m1) < ${local.on_hour_utc}) OR DAY(m1)==7 OR (DAY(m1) == 6 AND HOUR(m1) >= ${local.off_hour_utc}) OR (DAY(m1) == 1 AND HOUR(m1) < ${local.on_hour_utc}), 70, m1)"
-#     label       = "Off Hours"
-#     return_data = "true"
-#   }
-#
-#   metric_query {
-#     id = "m1"
-#
-#     metric {
-#       metric_name = "MemoryReservation"
-#       namespace   = "AWS/ECS"
-#       period      = "300"
-#       stat        = "Average"
-#
-#       dimensions = {
-#         ClusterName = module.ecs-cluster.cluster_name
-#       }
-#     }
-#   }
-# }
+# The ASG scaling policies and the ECS memory-reservation alarms that lived here were removed: they
+# only ever scaled the dev ECS AutoScalingGroup, which was torn down at the EKS migration. They do not
+# exist in AWS (the refreshed plan wanted to CREATE them), so dropping them from config is a no-op, not
+# a destroy. The intent -- scale down when idle -- moves to EKS/Karpenter (#688).
 
 resource "aws_ecs_cluster" "idseq-fargate-tasks" {
   name = "idseq-fargate-tasks-development"
@@ -210,10 +105,11 @@ resource "aws_s3_bucket" "aegea-ecs-execute" {
 
 # Inline `acl` and `lifecycle_rule` were deprecated in AWS provider v4 and moved
 # to dedicated `aws_s3_bucket_*` resources (#475). Apply-safe: no bucket recreation.
-resource "aws_s3_bucket_acl" "aegea-ecs-execute" {
-  bucket = aws_s3_bucket.aegea-ecs-execute.id
-  acl    = "private"
-}
+#
+# The aws_s3_bucket_acl "private" resource was REMOVED: S3 disables ACLs by default
+# (BucketOwnerEnforced) since April 2023, so PutBucketAcl now fails outright with
+# InvalidArgument and took the whole ecs stack down. A "private" canned ACL was always a
+# no-op here anyway -- the bucket is private by default and access is governed by IAM.
 
 resource "aws_s3_bucket_lifecycle_configuration" "aegea-ecs-execute" {
   bucket = aws_s3_bucket.aegea-ecs-execute.id
@@ -263,10 +159,13 @@ module "web-params" {
 
   parameters = {
     S3_AEGEA_ECS_EXECUTE_BUCKET = local.s3_bucket_aegea_ecs_execute
-    # OpenTelemetry (#426): the OTLP HTTP endpoint of the in-cluster ADOT collector.
-    # Chamber surfaces this to every service (web + Resque/Shoryuken workers all load
-    # idseq-<env>-web); the app's initializer is inert until this is present.
-    OTEL_EXPORTER_OTLP_ENDPOINT = "http://collector.${var.env}.otel.internal:4318"
+    # OpenTelemetry (#426/#608): the OTLP HTTP endpoint of the in-cluster OTel collector on eks-v2.
+    # Chamber surfaces this to every service (web + Resque/Shoryuken workers all load idseq-<env>-web);
+    # the app's initializer is inert until this is present. The old ECS ADOT collector
+    # (collector.<env>.otel.internal) was RETIRED when dev moved to eks-v2 -- this now points at the
+    # Kubernetes OTel Collector service (monitoring ns), which is what the live app already uses and
+    # what makes traces/span-metrics flow to Tempo/Prometheus. Same across eks envs (same ns/release).
+    OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
   }
 }
 

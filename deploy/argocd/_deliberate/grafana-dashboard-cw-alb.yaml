@@ -1,0 +1,62 @@
+# Observability Phase 4 (#608/#700): CloudWatch ALB dashboard -- edge RED for every app/preview/
+# grafana ALB (k8s-* + idseq-dev-web) via the read-only CloudWatch datasource. Panels empty until
+# the grafana-cloudwatch IRSA is applied. Loaded by the kps Grafana sidecar. Apply: kubectl apply -f <this file>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-cw-alb
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  cw-alb.json: |
+    {
+      "uid": "seqtoid-cw-alb",
+      "title": "seqtoid - CloudWatch Load Balancers (ALB)",
+      "tags": ["seqtoid", "cloudwatch", "alb", "aws"],
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "1m",
+      "time": { "from": "now-6h", "to": "now" },
+      "templating": {
+        "list": [
+          { "name": "region", "type": "custom", "query": "us-west-2", "current": { "text": "us-west-2", "value": "us-west-2" } }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "timeseries", "title": "Request count",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [ { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/ApplicationELB", "metricName": "RequestCount", "dimensions": { "LoadBalancer": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "{{LoadBalancer}}" } ]
+        },
+        {
+          "id": 2, "type": "timeseries", "title": "Target response time (p95)",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+          "targets": [ { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/ApplicationELB", "metricName": "TargetResponseTime", "dimensions": { "LoadBalancer": "*" }, "statistic": "p95", "matchExact": false, "period": "300", "label": "{{LoadBalancer}}" } ]
+        },
+        {
+          "id": 3, "type": "timeseries", "title": "5xx (target + ELB)",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/ApplicationELB", "metricName": "HTTPCode_Target_5XX_Count", "dimensions": { "LoadBalancer": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "target5xx {{LoadBalancer}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/ApplicationELB", "metricName": "HTTPCode_ELB_5XX_Count", "dimensions": { "LoadBalancer": "*" }, "statistic": "Sum", "matchExact": false, "period": "300", "label": "elb5xx {{LoadBalancer}}" }
+          ]
+        },
+        {
+          "id": 4, "type": "timeseries", "title": "Healthy / unhealthy hosts",
+          "datasource": { "type": "cloudwatch", "uid": "cloudwatch" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            { "refId": "A", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/ApplicationELB", "metricName": "HealthyHostCount", "dimensions": { "LoadBalancer": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "healthy {{LoadBalancer}}" },
+            { "refId": "B", "datasource": { "type": "cloudwatch", "uid": "cloudwatch" }, "region": "$region", "namespace": "AWS/ApplicationELB", "metricName": "UnHealthyHostCount", "dimensions": { "LoadBalancer": "*" }, "statistic": "Average", "matchExact": false, "period": "300", "label": "unhealthy {{LoadBalancer}}" }
+          ]
+        }
+      ]
+    }

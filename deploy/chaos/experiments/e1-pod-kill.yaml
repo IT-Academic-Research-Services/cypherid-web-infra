@@ -1,0 +1,83 @@
+# E1 -- pod-kill (platform-overhaul #794/#796). See ../DESIGN.md.
+#
+# Hypothesis: killing ONE dev web pod causes ZERO user-facing 503, because the PDB
+# (maxUnavailable:1) + topology spread (pods on separate nodes) + pingpong readiness
+# gates keep a healthy target serving throughout. This is the experiment that turns the
+# hand-found SPOF fix (#146) + the pingpong fix (#782) into a repeatable proof.
+#
+# SAFETY: this is a Schedule -> Workflow, not a bare fault. The workflow gates the fault
+# behind a StatusCheck (dev must be healthy BEFORE we inject) and runs a second
+# StatusCheck in parallel with the fault (if /health_check breaks past tolerance, the
+# workflow aborts and the fault is removed early). mode: one -> a single pod. Nothing
+# fires unless seqtoid-dev is annotated chaos-mesh.org/inject=enabled (ANNOTATION, not a label).
+#
+# NOT DEPLOYED. `kubectl apply` this only after Chaos Mesh is installed and the target
+# namespace is armed (see ../DESIGN.md "What deploying takes").
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: e1-pod-kill
+  namespace: chaos-mesh
+spec:
+  # Cron is UTC. 06:00 UTC = 02:00 America/New_York -- inside the overnight window.
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid # never overlap runs
+  historyLimit: 5
+  type: Workflow
+  workflow:
+    entry: e1
+    templates:
+      - name: e1
+        templateType: Serial
+        deadline: 10m
+        children:
+          - preflight-health
+          - kill-and-watch
+      # 1) Do not inject chaos into an already-broken system. If dev is not 200 now,
+      #    abort the whole workflow before any fault is applied.
+      - name: preflight-health
+        templateType: StatusCheck
+        deadline: 2m
+        statusCheck:
+          mode: Synchronous
+          type: HTTP
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
+      # 2) Kill one web pod while continuously asserting steady state. The parallel
+      #    node fails (and aborts the workflow, removing the fault) if health breaks.
+      - name: kill-and-watch
+        templateType: Parallel
+        deadline: 5m
+        children:
+          - kill-one-web-pod
+          - steady-state-during
+      - name: kill-one-web-pod
+        templateType: PodChaos
+        podChaos:
+          action: pod-kill
+          mode: one # a SINGLE pod, never all
+          selector:
+            namespaces:
+              - seqtoid-dev
+            labelSelectors:
+              app.kubernetes.io/component: web
+      # Poll health across the kill + reschedule. abortWithStatusCheck stops the
+      # experiment the moment steady state is violated past the failure threshold.
+      - name: steady-state-during
+        templateType: StatusCheck
+        deadline: 4m
+        statusCheck:
+          mode: Continuous
+          type: HTTP
+          duration: 3m
+          intervalSeconds: 2
+          failureThreshold: 3
+          recordsHistoryLimit: 100
+          http:
+            url: https://dev.seqtoid.org/health_check
+            method: GET
+            criteria:
+              statusCode: "200"
