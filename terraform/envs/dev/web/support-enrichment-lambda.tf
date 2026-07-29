@@ -113,12 +113,18 @@ resource "aws_iam_role_policy" "seqtoid_web_invoke_support_enrichment" {
 
 # --- publish the ARN as the chamber/SSM param the app's feature guard reads ---
 # The app (SupportEnrichmentLambda) is inert until SUPPORT_ENRICHMENT_LAMBDA_ARN is set;
-# chamber exposes /idseq-${env}-web/* params as env vars in the pod.
+# chamber exposes /idseq-${env}-web/* params as env vars in the pod. SecureString with
+# the repo's parameter_store CMK matches how the other web params are written (and
+# satisfies CKV_AWS_337); the web role already has kms:Decrypt for chamber.
+data "aws_kms_key" "support_enrichment_param_store" {
+  key_id = "alias/parameter_store_key"
+}
+
 resource "aws_ssm_parameter" "support_enrichment_lambda_arn" {
-  #checkov:skip=CKV_AWS_337:non-secret lambda ARN, plain String param is intentional (already baselined for SSM params in this repo)
   name        = "/idseq-${var.env}-web/SUPPORT_ENRICHMENT_LAMBDA_ARN"
   description = "ARN of the support-enrichment lambda; enables the app's async L2/L3 enrichment when set."
-  type        = "String"
+  type        = "SecureString"
+  key_id      = data.aws_kms_key.support_enrichment_param_store.id
   value       = aws_lambda_function.support_enrichment.arn
 }
 
