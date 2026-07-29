@@ -1,0 +1,25 @@
+name: terraform-plan (PR diff)
+
+# CI v2 / P0: show the `terraform plan` diff on the PR before merge/apply, via the shared
+# reusable (IT-Academic-Research-Services/seqtoid-ci-workflows). Read-only OIDC plan role
+# (czid-<env>-gh-actions-plan), refresh-on (drift-visible), diff posted as a PR comment,
+# saved tf.plan uploaded. This complements the repo's manual plan_all/apply linkage by
+# putting a plan diff in front of every reviewer.
+#
+# Scope: plans the dev/web component on each PR (the primary stack). Extend to changed-
+# component detection / more components as a follow-up.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  plan-dev-web:
+    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/terraform-plan.yml@v1
+    with:
+      working_directory: terraform/envs/dev/web
+      environment: dev
