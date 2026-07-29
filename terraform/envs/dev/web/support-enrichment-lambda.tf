@@ -115,7 +115,7 @@ resource "aws_iam_role_policy" "seqtoid_web_invoke_support_enrichment" {
 # The app (SupportEnrichmentLambda) is inert until SUPPORT_ENRICHMENT_LAMBDA_ARN is set;
 # chamber exposes /idseq-${env}-web/* params as env vars in the pod.
 resource "aws_ssm_parameter" "support_enrichment_lambda_arn" {
-  #checkov:skip=CKV_AWS_337:the value is a lambda ARN (not a secret); a plain String param is intentional -- no KMS CMK needed
+  #checkov:skip=CKV_AWS_337:non-secret lambda ARN, plain String param is intentional (already baselined for SSM params in this repo)
   name        = "/idseq-${var.env}-web/SUPPORT_ENRICHMENT_LAMBDA_ARN"
   description = "ARN of the support-enrichment lambda; enables the app's async L2/L3 enrichment when set."
   type        = "String"
