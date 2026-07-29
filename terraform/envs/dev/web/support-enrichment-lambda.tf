@@ -55,6 +55,14 @@ data "aws_iam_policy_document" "support_enrichment_perms" {
     actions   = ["logs:FilterLogEvents", "logs:GetLogEvents"]
     resources = ["arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:${var.pipeline_log_group}:*"]
   }
+  # L3 resolves the failed stage's log stream via the Batch JobId. batch:DescribeJobs has
+  # no resource-level scoping (AWS limitation), so it must be "*"; it is read-only and
+  # returns only job metadata (the log stream name), never job data.
+  statement {
+    sid       = "DescribeBatchJobs"
+    actions   = ["batch:DescribeJobs"]
+    resources = ["*"]
+  }
   statement {
     sid       = "OwnLogging"
     actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
