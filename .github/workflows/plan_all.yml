@@ -80,6 +80,14 @@ jobs:
         working-directory: './terraform/envs/${{ steps.calculate-environment.outputs.environment }}/'
         run: |
           components=$(find . -maxdepth 1 -mindepth 1 -type d -printf '%P\n' | jq -R . | jq -cs 'sort')
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR plans run under the all-branches dev-plan environment, which lacks the
+            # env-scoped secrets some components' providers require. auth0 needs AUTH0_*
+            # Management-API creds (only in the dev environment), so its plan fails under
+            # dev-plan. Drop it from PR plans; it still plans on manual dispatch (dev env)
+            # and on apply. Add other env-secret-only components here if they appear.
+            components=$(jq -c '[.[] | select(. != "auth0")]' <<< "$components")
+          fi
           echo "components=$components"
           echo "components=$components" >> "$GITHUB_OUTPUT"
       - name: Missing Environment means no Components
