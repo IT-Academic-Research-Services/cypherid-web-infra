@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   regression:
-    uses: thorvath-slower/seqtoid-ci-workflows/.github/workflows/regression-gate.yml@main
+    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/regression-gate.yml@v1
     with:
       measure_checkov: true
       checkov_dir: terraform
