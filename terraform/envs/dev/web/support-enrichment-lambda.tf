@@ -69,14 +69,11 @@ resource "aws_iam_role_policy" "support_enrichment" {
 }
 
 # --- the function ---
-# checkov:skip=CKV_AWS_116: retry + DLQ live in the Rails SupportEnrichmentJob (Resque
-#   dead-letter); a lambda-level DLQ would be redundant for this sync-invoked function.
-# checkov:skip=CKV_AWS_117: no VPC resources are touched -- the function calls the SFN
-#   and CloudWatch Logs AWS APIs only.
-# checkov:skip=CKV_AWS_173: environment variables are non-secret (a log-group name and a
-#   line cap); no KMS CMK is warranted.
-# checkov:skip=CKV_AWS_272: code signing is not used elsewhere in this stack.
 resource "aws_lambda_function" "support_enrichment" {
+  #checkov:skip=CKV_AWS_116:retry + DLQ live in the Rails SupportEnrichmentJob (Resque dead-letter); a lambda-level DLQ is redundant for this sync-invoked function
+  #checkov:skip=CKV_AWS_117:no VPC resources are touched -- the function calls the SFN + CloudWatch Logs AWS APIs only
+  #checkov:skip=CKV_AWS_173:environment variables are non-secret (a log-group name + a line cap); no KMS CMK is warranted
+  #checkov:skip=CKV_AWS_272:code signing is not used elsewhere in this stack
   function_name                  = local.support_enrichment_fn_name
   role                           = aws_iam_role.support_enrichment.arn
   runtime                        = "python3.12"
@@ -118,6 +115,7 @@ resource "aws_iam_role_policy" "seqtoid_web_invoke_support_enrichment" {
 # The app (SupportEnrichmentLambda) is inert until SUPPORT_ENRICHMENT_LAMBDA_ARN is set;
 # chamber exposes /idseq-${env}-web/* params as env vars in the pod.
 resource "aws_ssm_parameter" "support_enrichment_lambda_arn" {
+  #checkov:skip=CKV_AWS_337:the value is a lambda ARN (not a secret); a plain String param is intentional -- no KMS CMK needed
   name        = "/idseq-${var.env}-web/SUPPORT_ENRICHMENT_LAMBDA_ARN"
   description = "ARN of the support-enrichment lambda; enables the app's async L2/L3 enrichment when set."
   type        = "String"
