@@ -11,8 +11,11 @@ exactly one isolated, staging-shaped candidate env in the **dev** cluster for th
 - `gauntlet_env down <envName>` — removes `<envName>.yaml`, commits it → Argo deletes the Application;
   its finalizer + the chart PostDelete hook reap the namespace, DB schema, and SSM path.
 
-A TTL reaper (mirroring `../appsets/seqtoid-preview-ttl-reaper.yaml`) removes orphaned element files
-whose gauntlet run died without a `down`, so a crashed CI job can never leak a candidate forever.
+A scheduled TTL reaper (`seqtoid-web/.github/workflows/gauntlet-ttl-reaper.yml`, hourly) removes any
+element file older than a TTL (default 24h, `var GAUNTLET_CANDIDATE_TTL_HOURS`) by calling
+`gauntlet_env down` for it — so a gauntlet run that died before its teardown can never leak a candidate
+forever. Staleness is each element's last-commit age, so a file whose Application never rendered is
+reaped too.
 
 ## Element file schema (all fields required)
 
