@@ -59,6 +59,25 @@ jobs:
           done
           echo "promotion gates OK (dev/staging auto, prod manual; analysis on everywhere)"
 
+      - name: Assert env-staging runs an immutable image tag (SMP gauntlet pin)
+        run: |
+          set -eu
+          # env-staging must never run an arbitrary MUTABLE tag: the seqtoid staging promotion
+          # gauntlet only clears an immutable sha-<commit>, and gitops-promote.yml pins exactly that
+          # into staging.yaml on a vetted promotion. This guard enforces the invariant durably --
+          # once env-staging leaves 'latest', it must be on an immutable sha and can never regress to
+          # a mutable tag. 'latest' is tolerated ONLY as the pre-cutover transitional value (a
+          # warning, not a failure), so this never breaks the current state; the cutover to a sha
+          # happens via the first gauntlet-vetted promotion (see the activation runbook).
+          f=deploy/argocd/values/seqtoid-web/staging.yaml
+          tag="$(awk '/^image:/{f=1;next} f&&/^[a-zA-Z]/{f=0} f&&$1=="tag:"{print $2; exit}' "$f")"
+          case "$tag" in
+            sha-*)  echo "OK: env-staging pinned to immutable ${tag}" ;;
+            latest) echo "::warning::env-staging is on mutable 'latest' -- pin it to an immutable sha via a gauntlet-vetted promotion (SMP staging gauntlet)" ;;
+            "")     echo "::error::${f} has no image.tag under image:"; exit 1 ;;
+            *)      echo "::error::env-staging image.tag '${tag}' is neither an immutable sha-<commit> nor 'latest' -- env-staging must run a vetted immutable digest"; exit 1 ;;
+          esac
+
       - name: Assert the load-balancer wiring (improvement-#015)
         run: |
           set -e
