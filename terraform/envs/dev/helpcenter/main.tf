@@ -12,6 +12,10 @@ module "static_site" {
   response_headers_policy_id = data.terraform_remote_state.web.outputs.cloudfront_response_headers_policy_id
   log_prefix                 = "helpcenter/"
 
+  # Serve per-directory index files: /articles/<slug>/ -> /articles/<slug>/index.html.
+  # web-assets deliberately leaves this off (default false).
+  enable_index_rewrite = true
+
   providers = {
     aws           = aws
     aws.us-east-1 = aws.us-east-1
