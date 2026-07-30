@@ -180,6 +180,24 @@ resource "aws_acm_certificate_validation" "this" {
 }
 
 # ---------------------------------------------------------------------------
+# Optional viewer-request CloudFront Function: rewrite extensionless URIs to
+# /index.html so a REST/OAI S3 origin can serve per-directory index files
+# (e.g. /articles/<slug>/ -> /articles/<slug>/index.html). Off by default so
+# consumers that serve flat files (web-assets) are unaffected; enabled only by
+# static sites with per-directory index files (helpcenter). Mirrors the
+# glacier_noncurrent optional-toggle idiom.
+# ---------------------------------------------------------------------------
+resource "aws_cloudfront_function" "add_index" {
+  count = var.enable_index_rewrite ? 1 : 0
+
+  name    = "${var.service}-${var.env}-add-index"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrite extensionless URIs to /index.html for seqtoid-${var.service}-${var.env}"
+  publish = true
+  code    = file("${path.module}/functions/add-index.js")
+}
+
+# ---------------------------------------------------------------------------
 # CloudFront distribution
 # ---------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "this" {
@@ -229,6 +247,17 @@ resource "aws_cloudfront_distribution" "this" {
     # Security response-headers policy, injected by the env stack from its
     # cloudfront-security-headers module. Optional — null attaches no policy.
     response_headers_policy_id = var.response_headers_policy_id
+
+    # Optional viewer-request rewrite of extensionless URIs to /index.html.
+    # Emitted only when var.enable_index_rewrite is set (see the function above).
+    dynamic "function_association" {
+      for_each = var.enable_index_rewrite ? [1] : []
+
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.add_index[0].arn
+      }
+    }
 
     forwarded_values {
       query_string = false

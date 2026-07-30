@@ -73,3 +73,9 @@ variable "s3_log_bucket_name" {
     Injected by the env stack. Optional — when null, no aws_s3_bucket_logging is created.
   EOT
 }
+
+variable "enable_index_rewrite" {
+  type        = bool
+  default     = false
+  description = "rewrite extensionless URIs to /index.html; needed for static sites with per-directory index files"
+}
