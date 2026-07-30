@@ -1,0 +1,58 @@
+# seqtoid-web env-staging gauntlet admission policy (SMP staging promotion gauntlet).
+#
+# The in-cluster backstop for the staging promotion gate: env-staging admits a seqtoid-web image
+# ONLY if it is (a) signed by our build workflow AND (b) carries a `gauntlet-passed` attestation
+# from the staging gauntlet. Even a hand-edited staging.yaml or a manual `kubectl set image` cannot
+# deploy an image that has not cleared the full test gauntlet.
+#
+# HOW THE ATTESTATION GETS HERE: the build pushes dev-account only and there is no ECR replication,
+# so gitops-promote.yml's `cosign copy` is the official delivery path -- on a dev->staging promotion
+# it copies the vetted image AND its gauntlet attestation from the dev registry into the
+# staging-account registry (030998640247/seqtoid-web), same digest. This policy verifies that copy.
+#
+# IMAGE MATCH: the STAGING-account ECR repo env-staging actually pulls
+# (deploy/argocd/values/seqtoid-web/staging.yaml -> image.repository). The dev-account repo is
+# covered by the separate cosign-clusterimagepolicy.yaml.
+#
+# POSTURE: mode: warn (audit, non-blocking) -- same audit-first posture as the signature policy.
+# FLIP-TO-ENFORCE is a deliberate, gated follow-up after a clean warn-mode window on env-staging.
+#
+# ACTIVATION (this gates NOTHING until all hold):
+#   1. the sigstore policy-controller runs in the STAGING cluster (czid-staging-eks) and this policy
+#      is synced there (extend the sigstore Argo app to the staging cluster),
+#   2. the env-staging namespace is labeled:  kubectl label ns <env-staging-ns> policy.sigstore.dev/include=true
+#      (do NOT label system namespaces -- under enforce their unsigned images would be denied),
+#   3. gitops-promote.yml's cosign-copy step has run at least once so the attestation exists in the
+#      staging registry.
+apiVersion: policy.sigstore.dev/v1alpha1
+kind: ClusterImagePolicy
+metadata:
+  name: seqtoid-web-env-staging-gauntlet
+spec:
+  # Audit-first. Change to `enforce` only as the deliberate, gated go-live step for env-staging.
+  mode: warn
+  images:
+    - glob: "030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web**"
+  authorities:
+    # (a) Provenance: signed by OUR build workflow (keyless), same identity as the dev policy.
+    - name: seqtoid-web-build-signature
+      keyless:
+        identities:
+          - issuer: https://token.actions.githubusercontent.com
+            subjectRegExp: "^https://github\\.com/(thorvath-slower|IT-Academic-Research-Services)/seqtoid-web/\\.github/workflows/build-docker-image\\.yml@refs/.*$"
+        ctlog:
+          url: https://rekor.sigstore.dev
+    # (b) Gauntlet: a `gauntlet-passed` attestation from staging-gauntlet.yml. The workflow identity
+    # is the trust anchor -- only the gauntlet produces this attestation, and only on a 100% green
+    # board -- so requiring it (keyless, from that workflow) is the "passed the full gauntlet" proof.
+    - name: seqtoid-web-gauntlet-passed
+      keyless:
+        identities:
+          - issuer: https://token.actions.githubusercontent.com
+            subjectRegExp: "^https://github\\.com/(thorvath-slower|IT-Academic-Research-Services)/seqtoid-web/\\.github/workflows/staging-gauntlet\\.yml@refs/.*$"
+        ctlog:
+          url: https://rekor.sigstore.dev
+      attestations:
+        # `cosign attest --type custom` -> predicateType https://cosign.sigstore.dev/attestation/v1.
+        - name: gauntlet-passed
+          predicateType: https://cosign.sigstore.dev/attestation/v1

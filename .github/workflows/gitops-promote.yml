@@ -109,6 +109,36 @@ jobs:
             || { echo "::error::${TAG} has no valid gauntlet-passed attestation -- run the staging gauntlet on it first"; exit 1; }
           echo "gauntlet attestation verified -- ${TAG} is cleared to promote to env-staging"
 
+      # Deliver the VETTED artifact to the staging registry. The build pushes dev-account only and
+      # there is no ECR replication, so `cosign copy` is the official image-delivery path into
+      # 030998640247/seqtoid-web -- it moves the image AND its gauntlet-passed attestation together
+      # (same digest, provenance intact), which is exactly what the env-staging admission policy then
+      # verifies. Cross-account: dev creds (previous step) log into the source; a staging-account
+      # ECR-write role (assumed by chaining) logs into the destination. Both stay in the cosign
+      # keychain so `cosign copy` can read dev + write staging in one shot.
+      - name: Assume staging ECR-write role (destination)
+        if: ${{ github.event.inputs.target == 'staging' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::030998640247:role/${{ vars.STAGING_ECR_WRITE_ROLE }}
+          role-chaining: true
+          aws-region: us-west-2
+      - name: Copy vetted image + attestation dev -> staging registry
+        if: ${{ github.event.inputs.target == 'staging' }}
+        env:
+          SRC: ${{ github.event.inputs.source }}
+        run: |
+          set -euo pipefail
+          DEV_REPO=491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+          STG_REPO=030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+          TAG="$(yq '.image.tag' "deploy/argocd/values/seqtoid-web/${SRC}.yaml")"
+          # Log into the STAGING registry (creds are now the staging role). The DEV registry is
+          # already in the cosign keychain from the verify step's `cosign login`.
+          aws ecr get-login-password --region us-west-2 | cosign login "$STG_REPO" -u AWS --password-stdin
+          echo "copying ${DEV_REPO}:${TAG} -> ${STG_REPO}:${TAG} (image + signatures + attestations)"
+          cosign copy "${DEV_REPO}:${TAG}" "${STG_REPO}:${TAG}"
+          echo "vetted image + gauntlet attestation now present in the staging registry"
+
       - name: Copy the source tag onto the target
         id: promote
         env:
