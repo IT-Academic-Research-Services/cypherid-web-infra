@@ -30,6 +30,14 @@ concurrency:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    # dev->staging waits for a required reviewer on the `promote-staging` GitHub Environment -- the
+    # human "this is the image we want" approval. staging->prod uses `promote-prod`. Configure the
+    # required reviewers per environment in repo settings. A future AUTO_PROMOTE auto-trigger would
+    # skip only this manual selection; the gauntlet attestation gate below ALWAYS runs.
+    environment: promote-${{ github.event.inputs.target }}
+    permissions:
+      contents: read
+      id-token: write # keyless cosign verify-attestation
     steps:
       # IT-ARS authenticates gitops writes with a GitHub App (repo var CI_APP_ENABLED=true);
       # the thorvath-slower fork has no app, so this step is skipped and the tokens below fall
@@ -63,6 +71,43 @@ jobs:
           YQ=v4.44.3
           curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ}/yq_linux_amd64" -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
+
+      # env-staging only accepts images the staging gauntlet has attested (SMP staging-gauntlet).
+      # Before copying dev's tag onto staging, require a `gauntlet-passed` cosign attestation on the
+      # DEV image digest (produced by seqtoid-web/staging-gauntlet.yml). No attestation -> refuse.
+      # The env-staging sigstore admission ClusterImagePolicy is the in-cluster backstop (separate PR).
+      # Skipped for staging->prod (prod gets its own gate/gauntlet).
+      - name: Configure AWS for attestation verify (dev ECR read)
+        if: ${{ github.event.inputs.target == 'staging' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::491013321714:role/${{ vars.GAUNTLET_VERIFY_ROLE }}
+          aws-region: us-west-2
+      - name: Install cosign
+        if: ${{ github.event.inputs.target == 'staging' }}
+        uses: sigstore/cosign-installer@v3
+      - name: Require gauntlet-passed attestation (dev -> staging)
+        if: ${{ github.event.inputs.target == 'staging' }}
+        env:
+          SRC: ${{ github.event.inputs.source }}
+          # Override via repo var if the workflow path/org differs.
+          GAUNTLET_ID_REGEXP: ${{ vars.GAUNTLET_WORKFLOW_REGEXP || '^https://github\.com/IT-Academic-Research-Services/seqtoid-web/\.github/workflows/staging-gauntlet\.yml@refs/.*$' }}
+        run: |
+          set -euo pipefail
+          REPO=491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+          TAG="$(yq '.image.tag' "deploy/argocd/values/seqtoid-web/${SRC}.yaml")"
+          [ -n "$TAG" ] && [ "$TAG" != "null" ] || { echo "::error::source ${SRC} has no tag to verify"; exit 1; }
+          aws ecr get-login-password --region us-west-2 | cosign login "$REPO" -u AWS --password-stdin
+          DIGEST="$(aws ecr describe-images --repository-name seqtoid-web --region us-west-2 \
+            --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text)"
+          [ -n "$DIGEST" ] && [ "$DIGEST" != "None" ] || { echo "::error::no ECR digest for tag ${TAG}"; exit 1; }
+          echo "verifying gauntlet-passed attestation on ${REPO}@${DIGEST} ..."
+          cosign verify-attestation --type custom \
+            --certificate-identity-regexp "$GAUNTLET_ID_REGEXP" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${REPO}@${DIGEST}" >/dev/null \
+            || { echo "::error::${TAG} has no valid gauntlet-passed attestation -- run the staging gauntlet on it first"; exit 1; }
+          echo "gauntlet attestation verified -- ${TAG} is cleared to promote to env-staging"
 
       - name: Copy the source tag onto the target
         id: promote
