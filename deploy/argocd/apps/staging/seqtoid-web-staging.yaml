@@ -22,6 +22,13 @@ spec:
     server: https://kubernetes.default.svc
     namespace: seqtoid-staging
   syncPolicy:
+    # pingpong readiness gates: the AWS LB Controller injects pod readiness gates into pods
+    # in a namespace carrying this label, so the canary weight shift waits until the new pods'
+    # ALB target is healthy (paired with rolloutStrategy: pingpong + --aws-verify-target-group
+    # on the rollouts controller). Mirrors apps/dev/seqtoid-web-dev.yaml.
+    managedNamespaceMetadata:
+      labels:
+        elbv2.k8s.aws/pod-readiness-gate-inject: enabled
     automated:
       prune: true
       selfHeal: true
