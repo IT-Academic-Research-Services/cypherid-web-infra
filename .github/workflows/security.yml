@@ -18,7 +18,7 @@ jobs:
   security:
     # SSOT reusable, pinned to the @v1 moving major tag. checkov_baseline landed in v1 (#416); the
     # previously-archived ci-workflows repo is retired in favor of seqtoid-ci-workflows.
-    uses: thorvath-slower/seqtoid-ci-workflows/.github/workflows/security.yml@v1
+    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/security.yml@v1
     with:
       run_checkov: true                   # checkov is now a GATE on every run (was workflow_dispatch-only)
       checkov_soft_fail: false            # hard-fail on findings NOT in the baseline

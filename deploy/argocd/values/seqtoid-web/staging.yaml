@@ -36,6 +36,16 @@ extraEnv:
   # idseq-<env>-web); set it explicitly to the fresh seqtoid path the IRSA role is scoped to.
   - name: CHAMBER_SERVICE
     value: seqtoid-staging-web
+
+# Zero-downtime cutover: match dev's proven pingpong methodology (canary + ALB weighted
+# target groups with static selectors, so pod readiness gates inject) instead of blueGreen,
+# whose atomic activeService flip drops ALB traffic ~30s (503s) on every promotion. A PreSync
+# smoke gate still validates the build at zero user traffic before the cutover. Requires on
+# the staging cluster (terraform/envs/staging/eks): --aws-verify-target-group on the Argo
+# Rollouts controller + its IRSA, and the elbv2.k8s.aws/pod-readiness-gate-inject namespace
+# label (set on the seqtoid-web-staging Application's managedNamespaceMetadata). Roll back to
+# blueGreen by removing this one key -- the blueGreen block below is the fallback.
+rolloutStrategy: pingpong
 blueGreen:
   autoPromotionEnabled: true     # promote on smoke pass (the gate is proven on dev)
   scaleDownDelaySeconds: 60
