@@ -351,8 +351,14 @@ module "auth0-ssm-params" {
     # It is also what upstream intended -- a2b4ff7: "Revert AUTH0_MANAGEMENT_DOMAIN to be the tenant
     # domain, instead of the custom DNS name. The AUTH0_DOMAIN is still the custom DNS name."
     # Config now matches reality, so the diff disappears and nothing changes in Auth0. See #695.
-    AUTH0_DOMAIN                   = aws_route53_record.auth_env_cname.name
-    AUTH0_CLI_AUDIENCE             = auth0_resource_server.env_seqtoid.identifier
+    AUTH0_DOMAIN = aws_route53_record.auth_env_cname.name
+    # AUTH0_CLI_AUDIENCE is the `aud` the server's JsonWebToken.verify_cli requires on the seqtoid
+    # CLI's bearer token. The CLI authenticates by presenting its Auth0 ID token, whose `aud` is the
+    # CLI app's client_id (an id_token's aud is ALWAYS the client_id, NOT an API/resource-server URL),
+    # and which also carries the `email` claim the server uses to find the user. Setting this to the
+    # resource-server identifier (auth0_resource_server.env_seqtoid.identifier) rejected every CLI
+    # command with 401 "not authenticated" (SMP-1486). It must equal the CLI app's client_id.
+    AUTH0_CLI_AUDIENCE             = "ZUgpnLfFY64pS1LdW9PR6bMZFwhATuec" # seqtoid CLI Auth0 client_id
     AUTH0_MANAGEMENT_CLIENT_ID     = auth0_client.idseq_web_management.client_id
     AUTH0_MANAGEMENT_CLIENT_SECRET = data.auth0_client.idseq_web_management.client_secret
     # Deliberately the TENANT domain, NOT the custom one -- that is the whole point of a2b4ff7. The
