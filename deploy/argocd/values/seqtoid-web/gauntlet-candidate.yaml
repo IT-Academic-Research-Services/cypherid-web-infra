@@ -1,0 +1,43 @@
+# Shared values for every gauntlet-candidate env (SMP staging promotion gauntlet).
+#
+# Goal: STAGING-SHAPED fidelity in the DEV cluster/account. The gauntlet must exercise the candidate
+# under conditions as close to env-staging as possible so a green board really means "safe for
+# env-staging" -- while staying isolated in dev (a candidate never touches the staging account, and
+# certainly never Jay's legacy env). The seqtoid-gauntlet-candidate ApplicationSet layers this over
+# the chart defaults; per-candidate image.tag / host / DB / SSM come from the element file + params.
+#
+# Sizing/rollout mirror deploy/argocd/values/seqtoid-web/staging.yaml (keep them in sync when staging
+# sizing changes). Anything not set here inherits the chart defaults.
+
+# Dev cluster/account (491013321714). Drives names + app_configs seeding.
+environment: dev
+
+# Pull the exact candidate sha every sync (the tag is immutable, but be explicit).
+image:
+  pullPolicy: Always
+
+# Staging-shaped HA: 2 replicas (matches staging.yaml; exercises PDB + topology spread + the
+# ping-pong cutover with real surge, not a single-pod shortcut).
+replicaCount: 2
+
+# Match staging's zero-downtime methodology so the gauntlet validates the SAME cutover path:
+# ping-pong (canary + ALB weighted target groups, static selectors) with the PreSync smoke gate,
+# not blueGreen. The smoke gate validates the build at zero user traffic before any cutover.
+rolloutStrategy: pingpong
+blueGreen:
+  autoPromotionEnabled: true # promote on smoke pass
+  analysis:
+    enabled: true
+    postPromotion: true # re-smoke the new active color, like staging
+
+# Ephemeral, self-contained: run migrations, and DO load reference data -- the gauntlet's
+# data-integrity / pipeline tiers need host genomes + taxon data present (unlike preview, which
+# skips taxonLoad for speed). Each candidate loads into its OWN isolated schema.
+migrate:
+  enabled: true
+taxonLoad:
+  enabled: true
+
+# Marker for the TTL reaper + dashboards.
+podLabels:
+  seqtoid.io/gauntlet-candidate: "true"

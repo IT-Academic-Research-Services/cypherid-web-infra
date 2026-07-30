@@ -1,0 +1,85 @@
+# Gauntlet-candidate ApplicationSet (SMP staging promotion gauntlet).
+#
+# Provisions the ISOLATED, staging-shaped candidate env the staging gauntlet runs against, in the
+# DEV cluster (so a candidate never touches the staging account / Jay's env). One Application per
+# element file under deploy/argocd/gauntlet-candidates/*.yaml -- seqtoid-web/bin/gauntlet_env writes
+# a `<envName>.yaml` on `up` (commit) and removes it on `down` (the finalizer + chart PostDelete hook
+# reap the namespace, DB schema, and SSM path, exactly like the preview sandboxes).
+#
+# Why a git-directory generator (not the preview pullRequest generator): the gauntlet is sha-driven
+# and CI-invoked, not PR-driven. A git-dir generator gives gitops-native, auditable, concurrent
+# candidates with the same reaper story.
+#
+# DELIBERATELY unlike preview in two ways:
+#   1. it deploys the REAL promotable dev image (491013321714/seqtoid-web:<candidate sha>), not the
+#      throwaway preview ECR -- the whole point is to vet the exact image that will promote.
+#   2. it layers gauntlet-candidate.yaml (staging-shaped sizing/replicas/pingpong+smoke) for fidelity.
+# Each element file supplies the per-candidate params (bin/gauntlet_env computes DNS/DB-safe names).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: seqtoid-web-gauntlet-candidate
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+        revision: main
+        files:
+          - path: "deploy/argocd/gauntlet-candidates/*.yaml"
+  template:
+    metadata:
+      name: "seqtoid-{{.envName}}"
+      labels:
+        seqtoid.io/gauntlet-candidate: "true"
+        seqtoid.io/candidate: "{{.envName}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: seqtoid-preview
+      sources:
+        # 1) the app chart @ the candidate's git commit, running the promotable dev image.
+        - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
+          targetRevision: "{{.gitRevision}}"
+          path: deploy/charts/seqtoid-web
+          helm:
+            valueFiles:
+              - $values/deploy/argocd/values/seqtoid-web/gauntlet-candidate.yaml
+            parameters:
+              # The REAL promotable dev image (not the preview ECR) -- vet the exact artifact.
+              - name: image.repository
+                value: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+              - name: image.tag
+                value: "{{.imageTag}}"
+              - name: ingress.host
+                value: "{{.host}}"
+              # Per-candidate DB + SSM isolation (own schema + own chamber path).
+              - name: extraEnv[0].name
+                value: CHAMBER_SERVICE
+              - name: extraEnv[0].value
+                value: "{{.chamberService}}"
+              - name: extraEnv[1].name
+                value: DB_NAME
+              - name: extraEnv[1].value
+                value: "{{.dbName}}"
+        # 2) this repo (main) supplies the shared gauntlet-candidate values via $values.
+        - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "seqtoid-{{.envName}}"
+      syncPolicy:
+        managedNamespaceMetadata:
+          labels:
+            seqtoid.io/gauntlet-candidate: "true"
+            # Same pod-readiness-gate as preview/staging so the pingpong cutover is zero-downtime.
+            elbv2.k8s.aws/pod-readiness-gate-inject: enabled
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ApplyOutOfSyncOnly=true
