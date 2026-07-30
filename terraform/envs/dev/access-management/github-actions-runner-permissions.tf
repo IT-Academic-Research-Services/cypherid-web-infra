@@ -683,3 +683,78 @@ data "aws_iam_policy_document" "ci_cd_policy_document" {
     resources = ["*"]
   }
 }
+
+# ===========================================================================
+# APPLICATIONS deploy role (STATIC-005) -- help-center static-site deploy.
+#
+# The help-center repo's deploy workflow assumes this role via GitHub OIDC to
+# push the built static site to its S3 origin bucket and invalidate CloudFront.
+# Trust is scoped to a SINGLE repo (seqtoid-help-center) in the live
+# IT-Academic-Research-Services org and to the `environment:${var.env}*`
+# subject (the workflow sets `environment: <ref_name>`, so GitHub issues the
+# OIDC token with sub `repo:<org>/<repo>:environment:<env>`). Only a run under
+# a dev GitHub Environment can assume it; the module's C1 :pull_request deny
+# still applies. seqtoid-help-center-middleware and its lambda grant are
+# intentionally deferred until that infra lands, keeping this trust and policy
+# least-privilege.
+# ===========================================================================
+module "czid_gh_actions_applications" {
+  source = "../../../modules/aws-iam-role-github-action-v0.104.2" # cztack v0.104.2
+
+  tags = var.tags # TODO: var.tags is deprecated
+
+  role = {
+    name = "czid-${var.env}-gh-actions-applications"
+  }
+  authorized_github_repos = {
+    "IT-Academic-Research-Services" = ["seqtoid-help-center"]
+  }
+  subject_ref_pattern = "environment:${var.env}*"
+}
+
+# Scoped help-center static-site deploy: write objects to the origin bucket and
+# invalidate the distribution. No resource wildcards -- the bucket and
+# distribution ARNs are pinned to the applied dev helpcenter component (bucket
+# seqtoid-helpcenter-dev, distribution E1E6JBC7XWE181).
+resource "aws_iam_policy" "applications_helpcenter_deploy" {
+  name   = "czid-${var.env}-gh-actions-applications-helpcenter-deploy"
+  policy = data.aws_iam_policy_document.applications_helpcenter_deploy.json
+}
+
+data "aws_iam_policy_document" "applications_helpcenter_deploy" {
+  statement {
+    sid = "HelpcenterBucketObjects"
+    actions = [
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:GetObject",
+    ]
+    resources = [
+      "arn:aws:s3:::seqtoid-helpcenter-dev/*",
+    ]
+  }
+  statement {
+    sid = "HelpcenterBucketList"
+    actions = [
+      "s3:ListBucket",
+    ]
+    resources = [
+      "arn:aws:s3:::seqtoid-helpcenter-dev",
+    ]
+  }
+  statement {
+    sid = "HelpcenterCloudFrontInvalidation"
+    actions = [
+      "cloudfront:CreateInvalidation",
+      "cloudfront:GetInvalidation",
+    ]
+    resources = [
+      "arn:aws:cloudfront::${local.account_id}:distribution/E1E6JBC7XWE181",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "applications_helpcenter_deploy" {
+  role       = module.czid_gh_actions_applications.role.name
+  policy_arn = aws_iam_policy.applications_helpcenter_deploy.arn
+}
