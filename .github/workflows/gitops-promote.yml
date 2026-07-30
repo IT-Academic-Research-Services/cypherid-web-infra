@@ -96,11 +96,11 @@ jobs:
           set -euo pipefail
           REPO=491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
           TAG="$(yq '.image.tag' "deploy/argocd/values/seqtoid-web/${SRC}.yaml")"
-          [ -n "$TAG" ] && [ "$TAG" != "null" ] || { echo "::error::source ${SRC} has no tag to verify"; exit 1; }
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then echo "::error::source ${SRC} has no tag to verify"; exit 1; fi
           aws ecr get-login-password --region us-west-2 | cosign login "$REPO" -u AWS --password-stdin
           DIGEST="$(aws ecr describe-images --repository-name seqtoid-web --region us-west-2 \
             --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text)"
-          [ -n "$DIGEST" ] && [ "$DIGEST" != "None" ] || { echo "::error::no ECR digest for tag ${TAG}"; exit 1; }
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "None" ]; then echo "::error::no ECR digest for tag ${TAG}"; exit 1; fi
           echo "verifying gauntlet-passed attestation on ${REPO}@${DIGEST} ..."
           cosign verify-attestation --type custom \
             --certificate-identity-regexp "$GAUNTLET_ID_REGEXP" \
