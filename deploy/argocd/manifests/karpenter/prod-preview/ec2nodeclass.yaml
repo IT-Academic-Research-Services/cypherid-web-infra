@@ -1,0 +1,29 @@
+# Karpenter EC2NodeClass for prod-preview -- HOW Karpenter builds nodes (AMI, role, subnets, SGs).
+# API v1beta1 = Karpenter 0.37.x, the version the ssot-infra addons module installs (aws-ia/eks-blueprints-
+# addons 1.22.0). Bump to karpenter.k8s.aws/v1 if/when the controller is moved to Karpenter 1.x.
+#
+# spec.role = the node IAM role the addons module creates with iam_role_use_name_prefix=false
+# (karpenter-<cluster_name>). Subnets = the foundation's private subnets (tagged internal-elb). Security
+# groups = the EKS cluster primary SG (tagged aws:eks:cluster-name). prod-preview only; never real prod.
+apiVersion: karpenter.k8s.aws/v1beta1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  amiFamily: AL2023
+  role: karpenter-seqtoid-prod-preview
+  subnetSelectorTerms:
+    - tags:
+        kubernetes.io/role/internal-elb: "1"
+  securityGroupSelectorTerms:
+    - tags:
+        aws:eks:cluster-name: seqtoid-prod-preview
+  # IMDSv2 required, hop limit 1 so pods cannot reach node credentials via IMDS (they use IRSA).
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  tags:
+    Environment: prod-preview
+    ManagedBy: karpenter
+    karpenter.sh/discovery: seqtoid-prod-preview
