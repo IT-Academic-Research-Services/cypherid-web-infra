@@ -2,7 +2,11 @@ locals {
   service     = "es"
   name        = "${var.project}-${var.env}-${local.service}"
   bucket_name = "idseq-${var.env}-heatmap-batch-jobs-${local.account_id}"
-  account_id  = var.aws_accounts.idseq-dev
+  # SMP-1626: the heatmap bucket the czid-heatmap-spark-service publishes to. Parameterized
+  # by env so every tier uses identical config and only the env token varies (dev mirrors
+  # staging/prod instead of borrowing staging's bucket).
+  heatmap_bucket_name = "idseq-${var.env}-heatmap"
+  account_id          = var.aws_accounts.idseq-dev
   tags = {
     managedBy = "terraform"
     Name      = local.name
@@ -178,10 +182,28 @@ module "gh_actions_executor" {
   }
 }
 
+# SMP-1626: dev must MIRROR staging/prod, which each publish to their own
+# idseq-<env>-heatmap bucket. dev previously granted its gh_actions_executor role write
+# to "idseq-staging-heatmap" (a hardcoded cross-env grant copy-pasted from staging), so
+# the czid-heatmap-spark-service dev job wrote into the STAGING bucket. Create dev's own
+# idseq-dev-heatmap bucket (dev is the base tier; staging/prod already own theirs and
+# would adopt this in-repo creation via `terraform import` when this pattern propagates
+# up). force_destroy=true matches the dev batch-jobs bucket (dev is ephemeral).
+module "aws-s3-heatmap-private-bucket" {
+  source        = "../../../modules/aws-s3-private-bucket-v0.104.2" # cztack v0.104.2
+  bucket_name   = local.heatmap_bucket_name
+  env           = var.env
+  owner         = var.owner
+  project       = var.project
+  service       = var.component
+  force_destroy = true
+}
+
 module "idseq-heatmap-iam-s3-writer" {
   source = "../../../modules/aws-iam-policy-s3-writer-v0.66.0"
 
-  bucket_name   = "idseq-staging-heatmap"
+  # SMP-1626: was hardcoded "idseq-staging-heatmap"; now dev's own bucket via the env-parameterized local.
+  bucket_name   = local.heatmap_bucket_name
   bucket_prefix = ""
 
   env       = var.env
