@@ -2303,6 +2303,21 @@
                     "check_ids": [
                         "CKV2_AWS_65"
                     ]
+                },
+                {
+                    "resource": "module.aws-s3-heatmap-private-bucket.aws_kms_key.bucket_kms_key[0]",
+                    "check_ids": [
+                        "CKV2_AWS_64",
+                        "CKV_AWS_7"
+                    ]
+                },
+                {
+                    "resource": "module.aws-s3-heatmap-private-bucket.aws_s3_bucket.bucket",
+                    "check_ids": [
+                        "CKV2_AWS_62",
+                        "CKV_AWS_144",
+                        "CKV_AWS_145"
+                    ]
                 }
             ]
         },
