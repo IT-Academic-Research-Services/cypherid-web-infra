@@ -3,9 +3,12 @@ locals {
   name        = "${var.project}-${var.env}-${local.service}"
   bucket_name = "idseq-${var.env}-heatmap-batch-jobs-${local.account_id}"
   # SMP-1626: the heatmap bucket the czid-heatmap-spark-service publishes to. Parameterized
-  # by env so every tier uses identical config and only the env token varies (dev mirrors
-  # staging/prod instead of borrowing staging's bucket).
-  heatmap_bucket_name = "idseq-${var.env}-heatmap"
+  # by env, and account-suffixed for a globally-unique name -- the same convention as the
+  # batch-jobs bucket above. The un-suffixed "idseq-<env>-heatmap" names are legacy CZI
+  # buckets that still exist in CZI accounts (creating "idseq-dev-heatmap" fresh returns
+  # S3 BucketAlreadyExists), so the UCSF accounts mint their own suffixed buckets. dev
+  # mirrors staging/prod instead of borrowing staging's bucket.
+  heatmap_bucket_name = "idseq-${var.env}-heatmap-${local.account_id}"
   account_id          = var.aws_accounts.idseq-dev
   tags = {
     managedBy = "terraform"
