@@ -1,0 +1,26 @@
+# Karpenter NodePool + EC2NodeClass @ prod-preview -- the deploy half of the Karpenter build (infra half =
+# ssot-infra addons enable_karpenter, which installs the controller + node role + interruption queue).
+# Discovered by root-app-prod-preview.yaml (directory.recurse over apps/prod-preview/). The CRDs are
+# installed by the Karpenter controller (TF/addons), so Argo retries this app until they exist.
+# prune/selfHeal start disabled (greenfield posture, like the root) -- flip on after the first sync is
+# inspected. prod-preview only; never touches real prod (seqtoid.org static site).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter-prod-preview
+  namespace: argocd
+spec:
+  project: seqtoid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    targetRevision: main
+    path: deploy/argocd/manifests/karpenter/prod-preview
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: karpenter
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - ServerSideApply=true
