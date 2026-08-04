@@ -1,0 +1,49 @@
+# Bulk-download warm-keeper for env-staging (SMP-1636 #957/#958) -- mirrors dev. A single low-priority
+# pause pod pinned to the bulk-download pool keeps ONE node always warm, so a download starts instantly
+# instead of waiting for Karpenter to provision a fresh node. Its PriorityClass is NEGATIVE with
+# preemptionPolicy=Never, so a real tar Job (default priority 0) preempts the balloon and takes the warm
+# node immediately; Karpenter then provisions a replacement to re-warm. This is what makes the pool
+# "always up + scales" (Tom's intent). staging only.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: seqtoid-bulk-download-warm
+value: -10
+preemptionPolicy: Never
+globalDefault: false
+description: "Warm-keeper balloon for the bulk-download pool; real tar Jobs (priority 0) preempt it."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seqtoid-bulk-download-warmpool
+  namespace: seqtoid-staging
+  labels:
+    app: seqtoid-bulk-download-warmpool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seqtoid-bulk-download-warmpool
+  template:
+    metadata:
+      labels:
+        app: seqtoid-bulk-download-warmpool
+    spec:
+      priorityClassName: seqtoid-bulk-download-warm
+      nodeSelector:
+        seqtoid.io/pool: bulk-download
+      tolerations:
+        - { key: seqtoid.io/pool, value: bulk-download, effect: NoSchedule }
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          # Match the tar Job's request (2 CPU / 4Gi) so the warm node is sized to actually hold a Job.
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi

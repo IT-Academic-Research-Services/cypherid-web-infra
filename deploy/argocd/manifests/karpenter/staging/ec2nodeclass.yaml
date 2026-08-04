@@ -1,0 +1,27 @@
+# Karpenter EC2NodeClass for env-staging -- HOW Karpenter builds nodes (AMI, role, subnets, SGs).
+# Mirrors prod-preview. API v1beta1 = Karpenter 0.37.x (the version ssot-infra addons enable_karpenter
+# installs). spec.role = the node IAM role the addons module creates with iam_role_use_name_prefix=false
+# (karpenter-<cluster>). Subnets = the foundation private subnets (internal-elb tag). SGs = the EKS
+# cluster primary SG (aws:eks:cluster-name). SMP-1636 #958. staging only; never touches Jay's czid-staging.
+apiVersion: karpenter.k8s.aws/v1beta1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  amiFamily: AL2023
+  role: karpenter-seqtoid-staging
+  subnetSelectorTerms:
+    - tags:
+        kubernetes.io/role/internal-elb: "1"
+  securityGroupSelectorTerms:
+    - tags:
+        aws:eks:cluster-name: seqtoid-staging
+  # IMDSv2 required, hop limit 1 so pods cannot reach node credentials via IMDS (they use IRSA).
+  metadataOptions:
+    httpEndpoint: enabled
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  tags:
+    Environment: staging
+    ManagedBy: karpenter
+    karpenter.sh/discovery: seqtoid-staging
