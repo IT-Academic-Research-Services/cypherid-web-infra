@@ -40,6 +40,10 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: kube-system # AWS Load Balancer Controller
     - server: https://kubernetes.default.svc
+      namespace: karpenter # Karpenter NodePools/EC2NodeClass Applications (karpenter-<env>); CRs are
+      # cluster-scoped (clusterResourceWhitelist */* below), but Argo still validates the App's destination
+      # namespace against this list -- both karpenter-staging and karpenter-prod-preview target ns=karpenter.
+    - server: https://kubernetes.default.svc
       namespace: cosign-system # sigstore policy-controller + cosign ClusterImagePolicy (#77)
   # The Rollouts controller installs cluster-scoped CRDs + RBAC.
   clusterResourceWhitelist:
