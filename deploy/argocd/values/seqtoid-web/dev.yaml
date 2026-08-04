@@ -25,6 +25,9 @@ replicaCount: 2
 # free the node quickly. Merged with the chart's amd64 pin (both keys kept explicitly).
 nodeSelector:
   kubernetes.io/arch: amd64
+  # DEV-ONLY: requires the dev web NodePool (terraform/envs/dev/eks-v2/nodepool-seqtoid-web.tf). Do NOT
+  # propagate this key to an env that has no web pool (e.g. staging) -- it makes the web tier Unschedulable.
+  # See staging.yaml's guarded nodeSelector (SMP-1636 #953).
   seqtoid.io/pool: web
 # Dev worker memory, sized to MEASURED usage.
 #

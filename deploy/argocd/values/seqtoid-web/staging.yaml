@@ -13,6 +13,15 @@ image:
   pullPolicy: Always
 # 2 replicas for HA (PDB maxUnavailable:1 + hard hostname topologySpread) -- see sandbox.yaml rationale.
 replicaCount: 2
+# Node scheduling (SMP-1636 #953). Staging has NO dedicated seqtoid.io/pool=web NodePool -- that is a
+# DEV-ONLY Karpenter pool (terraform/envs/dev/eks-v2/nodepool-seqtoid-web.tf). Staging runs on a single
+# managed nodegroup until it gets Karpenter (#958). So pin ONLY the chart's amd64 requirement here and do
+# NOT add `seqtoid.io/pool: web`: adding it (e.g. by copying dev.yaml's nodeSelector under the "propagate
+# dev up" doctrine) leaves the ENTIRE web tier Unschedulable (no node carries that label). Set explicitly
+# (not left to the chart default) so the deliberate difference is visible and not "corrected" away. When
+# staging gets its own web pool, add `seqtoid.io/pool: web` here to match dev.
+nodeSelector:
+  kubernetes.io/arch: amd64
 migrate:
   # Fresh env: create the DB, migrate, then seed (app_configs incl. SFN ARNs from AWS_ACCOUNT_ID +
   # host_genomes + alignment_configs). All idempotent on re-runs.
