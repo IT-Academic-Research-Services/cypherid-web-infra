@@ -1,10 +1,15 @@
 # Karpenter NodePools for env-staging (SMP-1636 #958) -- mirror dev's dedicated pools so staging gets
 # real node parity: a `web` pool for the app tier + a tainted, always-warm `bulk-download` pool for the
 # s3-tar-writer Jobs (kept warm by the warmpool balloon in warmpool.yaml). Replaces the single static
-# managed nodegroup + the temporary bridge nodegroup. API v1beta1 (Karpenter 0.37.x). staging only.
+# managed nodegroup + the temporary bridge nodegroup. API v1beta1 (Karpenter 0.37.x -- the version
+# ssot-infra addons enable_karpenter installs). staging only.
+#
+# v1beta1 SCHEMA NOTES (differs from Karpenter 1.x / v1): `expireAfter` lives under `spec.disruption`
+# (NOT spec.template.spec), and consolidationPolicy is `WhenEmpty` or `WhenUnderutilized` (there is no
+# `WhenEmptyOrUnderutilized` -- that is a v1-only value). Mirrors the proven prod-preview nodepool.
 ---
 # Web pool: small right-sized amd64 nodes (2-8 vCPU c/m/r) for web + workers (nodeSelector
-# seqtoid.io/pool=web). spot+on-demand; consolidate empties after 15m.
+# seqtoid.io/pool=web). spot+on-demand; WhenUnderutilized consolidation (continuous, like prod-preview).
 apiVersion: karpenter.sh/v1beta1
 kind: NodePool
 metadata:
@@ -19,7 +24,6 @@ spec:
         apiVersion: karpenter.k8s.aws/v1beta1
         kind: EC2NodeClass
         name: default
-      expireAfter: 360h
       requirements:
         - { key: kubernetes.io/arch, operator: In, values: ["amd64"] }
         - { key: kubernetes.io/os, operator: In, values: ["linux"] }
@@ -29,15 +33,15 @@ spec:
         - { key: karpenter.k8s.aws/instance-cpu, operator: Lt, values: ["9"] }
         - { key: karpenter.k8s.aws/instance-family, operator: NotIn, values: ["a1", "c1", "cc1", "cc2", "cg1", "cg2", "cr1", "g1", "g2", "hi1", "hs1", "m1", "m2", "m3", "t1"] }
   disruption:
-    consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 15m
+    consolidationPolicy: WhenUnderutilized
+    expireAfter: 360h
   limits:
     cpu: "64"
 ---
 # Bulk-download pool: TAINTED (seqtoid.io/pool=bulk-download:NoSchedule) so ONLY the tar Jobs + the
 # warmpool balloon land here; a big tar never fights the app for a node, and node reclaim = a failed
 # download can't strand app pods. on-demand only (a spot reclaim mid-tar = a failed download). Up to
-# 16-vCPU nodes; consolidate after 5m so bursty downloads keep a node briefly warm.
+# 16-vCPU nodes; WhenEmpty + consolidateAfter 5m so a burst node lingers briefly then reclaims when empty.
 apiVersion: karpenter.sh/v1beta1
 kind: NodePool
 metadata:
@@ -54,7 +58,6 @@ spec:
         name: default
       taints:
         - { key: seqtoid.io/pool, value: bulk-download, effect: NoSchedule }
-      expireAfter: 168h
       requirements:
         - { key: kubernetes.io/arch, operator: In, values: ["amd64"] }
         - { key: kubernetes.io/os, operator: In, values: ["linux"] }
@@ -64,8 +67,9 @@ spec:
         - { key: karpenter.k8s.aws/instance-cpu, operator: Lt, values: ["17"] }
         - { key: karpenter.k8s.aws/instance-family, operator: NotIn, values: ["a1", "c1", "cc1", "cc2", "cg1", "cg2", "cr1", "g1", "g2", "hi1", "hs1", "m1", "m2", "m3", "t1"] }
   disruption:
-    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidationPolicy: WhenEmpty
     consolidateAfter: 5m
+    expireAfter: 168h
   limits:
     cpu: "32"
     memory: 128Gi
