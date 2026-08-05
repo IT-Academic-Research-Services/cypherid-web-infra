@@ -26,3 +26,9 @@ variable "known_bad_inputs_count_rules" {
   description = "AWSManagedRulesKnownBadInputsRuleSet sub-rules to run in COUNT (tuning). Empty = block all."
   default     = []
 }
+
+variable "anonymous_ip_count_rules" {
+  type        = list(string)
+  description = "AWSManagedRulesAnonymousIpList sub-rules to run in COUNT (tuning, e.g. HostingProviderIPList catching legit cloud/CI clients). Empty = block all (AnonymousIPList, HostingProviderIPList, TorExitNodeList)."
+  default     = []
+}
