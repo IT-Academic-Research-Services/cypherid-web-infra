@@ -25,9 +25,16 @@
 # =============================================================================
 
 locals {
+  # The workflows artifact bucket this role publishes WDL bundles to (CZID-987). Name mirrors
+  # cypherid-workflow-infra/terraform/buckets.tf so the four envs stay parallel:
+  # seqtoid-workflows-<env>-<account>. dev -> seqtoid-workflows-dev-491013321714.
+  workflows_bucket = "seqtoid-workflows-${var.env}-${local.account_id}"
+
   # wdl-ci names each image after its workflow dir (workflows/<dir> -> ECR repo <dir>),
   # so the push scope is exactly the set of dirs that have a corresponding dev ECR repo.
   # `legacy-host-filter` is intentionally absent: it has no ECR repository in dev.
+  # This list doubles as the S3 bundle-prefix scope below -- the two artifacts of a published
+  # version travel together, so one list keeps them from drifting apart.
   workflows_build_ecr_repos = [
     "amr",
     "benchmark",
@@ -94,6 +101,61 @@ resource "aws_iam_policy" "workflows_build_ecr_push" {
 resource "aws_iam_role_policy_attachment" "workflows_build_ecr_push" {
   role       = module.czid_gh_actions_workflows_build.role.name
   policy_arn = aws_iam_policy.workflows_build_ecr_push.arn
+}
+
+# CZID-987 -- S3 access to the workflows artifact bucket.
+#
+# The publisher (seqtoid-workflows scripts/publish_workflow_version.py, CZID-971) publishes a version
+# as TWO artifacts: an ECR image `:v<semver>` (covered by the policy above) and a WDL bundle at
+# s3://<workflows-bucket>/<workflow>-v<version>/. Without S3 the publish job assumed the role, pushed
+# nothing, and died on the very first call -- the idempotency check -- with
+# "not authorized to perform: s3:ListBucket".
+#
+# Three operations, each load-bearing:
+#   GetObject   read <prefix>/manifest.json to answer "is this version already published?"
+#   ListBucket  the guard that REFUSES to overwrite a prefix holding objects but no manifest
+#               (bundles copied from upstream predate the publisher). Prefix-scoped: the publisher
+#               always lists with Prefix="<workflow>-v<version>/", never bare.
+#   PutObject   upload the WDL bundle + manifest
+#
+# Scoped to the same workflow set as the ECR policy, so this role can only touch prefixes for images
+# it is already allowed to push. DeleteObject is deliberately NOT granted: a published version is
+# immutable, and the publisher never deletes.
+data "aws_iam_policy_document" "workflows_build_s3_publish" {
+  statement {
+    sid = "ReadWriteWorkflowBundles"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+    ]
+    resources = [
+      for workflow in local.workflows_build_ecr_repos :
+      "arn:aws:s3:::${local.workflows_bucket}/${workflow}-v*"
+    ]
+  }
+  statement {
+    sid       = "ListWorkflowBundlePrefixes"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${local.workflows_bucket}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values = [
+        for workflow in local.workflows_build_ecr_repos :
+        "${workflow}-v*"
+      ]
+    }
+  }
+}
+
+resource "aws_iam_policy" "workflows_build_s3_publish" {
+  name   = "czid-${var.env}-gh-actions-workflows-build-s3-publish"
+  policy = data.aws_iam_policy_document.workflows_build_s3_publish.json
+}
+
+resource "aws_iam_role_policy_attachment" "workflows_build_s3_publish" {
+  role       = module.czid_gh_actions_workflows_build.role.name
+  policy_arn = aws_iam_policy.workflows_build_s3_publish.arn
 }
 
 output "workflows_build_role_arn" {
