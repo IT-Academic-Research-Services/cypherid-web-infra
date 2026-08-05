@@ -10,5 +10,5 @@ variable "MAPTILER_API_KEY" {
 
 variable "MAP_STYLE_ID" {
   type    = string
-  default = "base-v4"
+  default = "019f8c62-6299-71cf-a76e-36ea36c544a5"
 }
