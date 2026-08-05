@@ -103,3 +103,21 @@ variable "auth_token" {
   description = "Token for accessing the elasticache cluster"
   sensitive   = true
 }
+
+# --- Backup (added 2026-08-05) -------------------------------------------------
+# Days of automatic ElastiCache snapshots to retain. The upstream cztack module exposed no snapshot
+# settings, so every caller ran on the AWS default of 0 -- NO backup at all. Default 0 here preserves
+# that exactly for any caller that does not opt in, so prod and the legacy czid-staging plan unchanged.
+variable "snapshot_retention_limit" {
+  type        = number
+  description = "Days of automatic snapshots to retain. 0 disables backup entirely (the prior behaviour)."
+  default     = 0
+}
+
+# Daily UTC snapshot window, e.g. "08:00-09:00". Empty -> not set -> AWS assigns one. Must not overlap
+# the maintenance window.
+variable "snapshot_window" {
+  type        = string
+  description = "Daily UTC window in which the snapshot is taken. Empty = let AWS assign."
+  default     = ""
+}

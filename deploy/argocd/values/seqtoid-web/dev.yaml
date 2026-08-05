@@ -168,6 +168,19 @@ ingress:
   certificateArn: arn:aws:acm:us-west-2:491013321714:certificate/9881060c-5652-40b6-9132-72a94171e18b
   annotations:
     alb.ingress.kubernetes.io/subnets: subnet-06bfffadf91e2c189,subnet-0f94623d782341d71
+    # WAF (2026-08-05). Until now this ingress had NO Web ACL -- verified live:
+    # get-web-acl-for-resource on the LBC ALB returned null, while the ACL was bound only to the retired
+    # ECS ALB idseq-dev-web (zero registered targets). dev.seqtoid.org is a direct A record to this ALB
+    # (no CloudFront), so nothing else was applying the export-control geo-block either.
+    # The ACL is deployed with count_only = true: the AWS-managed rule groups and the rate limit are in
+    # COUNT (cannot break legitimate traffic), while the georestriction rule group still BLOCKS the
+    # export-control jurisdictions. Pinned here rather than associated out of band, because the LBC
+    # reconciles this ALB and would drop an out-of-band association, bringing the endpoint up OPEN.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:491013321714:regional/webacl/idseq-dev-web-waf/bbe1c49e-c64a-41ac-a646-9fdc86d12286
+    # TLS policy is now a CHART default (seqtoid-web/deploy/charts/seqtoid-web/values.yaml ->
+    # ingress.sslPolicy = ELBSecurityPolicy-TLS13-1-2-2021-06), so it is deliberately NOT repeated here.
+    # It was set per-env briefly on 2026-08-05 before being moved to the chart, so every environment
+    # inherits it and a future env cannot silently miss it. Override here only for a real exception.
 # Dev runs RAILS_ENV=development, whose deployed-logging block defaults to :debug.
 # At :debug ActiveRecord echoes every statement WITH its bound values, so the resque
 # worker wrote whole `INSERT INTO contigs` statements including the `sequence`
