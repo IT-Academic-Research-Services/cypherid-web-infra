@@ -11,6 +11,8 @@ module "elasticache_secure" {
   tags                       = local.tags
   transit_encryption_enabled = local.transit_encryption_enabled
   vpc_id                     = local.vpc_id
+  snapshot_retention_limit   = local.snapshot_retention_limit
+  snapshot_window            = local.snapshot_window
 
 
 
