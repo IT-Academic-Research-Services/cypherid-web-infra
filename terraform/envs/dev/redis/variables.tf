@@ -10,4 +10,12 @@ locals {
   description                = "resque-secure"
   tags                       = var.tags # TODO: var.tags is deprecated
   auth_token                 = null
+  # Backup. Found 2026-08-05 at SnapshotRetentionLimit=0 (the AWS default) -- i.e. NO recovery point
+  # for Redis in this environment, matching what was found in every other env. Redis is not purely a
+  # cache here: it backs the Rails cache store AND the Resque job queues, so a loss drops queued and
+  # in-flight pipeline work. 7 days matches the Aurora window and env-staging.
+  # cache.t4g.small supports snapshots (only t1.micro / t2.* do not). Window sits off the maintenance
+  # window and matches the one AWS had already assigned to this group.
+  snapshot_retention_limit = 7
+  snapshot_window          = "08:00-09:00"
 }
