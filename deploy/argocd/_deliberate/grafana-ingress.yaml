@@ -22,6 +22,21 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-path: /api/health
     alb.ingress.kubernetes.io/group.name: grafana-dev
     external-dns.alpha.kubernetes.io/hostname: grafana.dev.seqtoid.org
+    # TLS policy (2026-08-05). Verified live: this listener ran the AWS Load Balancer Controller DEFAULT,
+    # ELBSecurityPolicy-2016-08, which still permits TLS 1.0 and TLS 1.1 on an INTERNET-FACING endpoint.
+    # TLS13-1-2-2021-06 negotiates only TLSv1.2 and TLSv1.3.
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    # WAF (2026-08-05). This ALB had NO Web ACL. Attaching the dev ACL brings the export-control
+    # georestriction BLOCK (the counsel-owned jurisdiction set) plus AWS managed-rule and rate-limit
+    # visibility in COUNT mode, so it cannot break operator access. The ACL is deployed count_only=true.
+    #
+    # NOTE -- this is a mitigation, not the right answer. Grafana is an internal operations console that
+    # is reachable from the entire internet and gated only by a hand-created local admin password (there
+    # is no SSO on it; DEV-PIPELINE-GUIDE.md:16 wrongly documents it as Okta-authenticated). The correct
+    # control is an IP allowlist restricting it to UCSF egress ranges, which needs those CIDRs supplied --
+    # they are deliberately NOT guessed here. Until then this is the strongest control available without
+    # risking locking operators out. Tracked with the Grafana auth gap.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:491013321714:regional/webacl/idseq-dev-web-waf/bbe1c49e-c64a-41ac-a646-9fdc86d12286
 spec:
   ingressClassName: alb
   rules:

@@ -59,4 +59,12 @@ resource "aws_elasticache_replication_group" "default" {
   preferred_cache_cluster_azs = var.preferred_cache_cluster_azs
   auth_token                  = var.auth_token
   tags                        = var.tags
+
+  # Backup passthrough (added 2026-08-05). The upstream cztack module exposed no snapshot settings, so
+  # every replication group ran on the AWS default of retention 0 -- i.e. NO backup at all, in every
+  # environment. Redis here is not purely a cache: it backs the Rails cache store AND the Resque job
+  # queues, so a loss drops queued and in-flight pipeline work. Defaults are 0 / "" so the two callers
+  # that do not opt in (prod, and the legacy czid-staging) plan byte-identically to before.
+  snapshot_retention_limit = var.snapshot_retention_limit
+  snapshot_window          = var.snapshot_window != "" ? var.snapshot_window : null
 }
