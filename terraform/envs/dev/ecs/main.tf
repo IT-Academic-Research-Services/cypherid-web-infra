@@ -166,6 +166,12 @@ module "web-params" {
     # Kubernetes OTel Collector service (monitoring ns), which is what the live app already uses and
     # what makes traces/span-metrics flow to Tempo/Prometheus. Same across eks envs (same ns/release).
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
+    # Help center host (SW-1): env-specific, consumed by seqtoid-web for all
+    # in-app help links. Explicit literal per env - prod drops the env segment
+    # and staging uses "env-staging", so this is never interpolated from var.env.
+    # Staging and prod are deliberately absent until their static-site components
+    # exist (STATIC-008 / STATIC-009).
+    HELP_CENTER_HOST = "https://helpcenter.dev.seqtoid.org"
   }
 }
 
