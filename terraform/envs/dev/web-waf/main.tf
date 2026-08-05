@@ -33,6 +33,22 @@ module "web-service-waf" {
   rule_groups                    = [{ arn : module.georestriction-rule.arn, name : module.georestriction-rule.name }]
   corporate_allowlist_ip_set_arn = aws_wafv2_ip_set.corporate_allowlist.arn
   enable_panther_ingest          = false
+
+  # STAGED ENFORCEMENT (2026-08-05, Tom). This Web ACL is being attached to the LIVE EKS ingress serving
+  # dev.seqtoid.org, which until now had NO WAF at all (verified live: get-web-acl-for-resource returned
+  # null; the ACL was bound only to the retired ECS ALB idseq-dev-web, which has zero registered targets).
+  #
+  # count_only = true puts the AWS-managed rule groups and the rate limit into COUNT, so attaching the ACL
+  # cannot break legitimate traffic. It does NOT affect the georestriction rule group: custom rule groups
+  # always render `override_action { none {} }` in the module, so the export-control geo BLOCK on
+  # blocked-jurisdictions.json stays fully enforced. That is the intent -- restore the Layer 1-2 network
+  # geo-block now (Layer 3 ships dark and has no AppConfig row, so today NOTHING enforces export control),
+  # while the managed rules observe and emit CloudWatch metrics.
+  #
+  # PROMOTION PATH: review the per-rule Count metrics (especially CommonRuleSet against the GraphQL paths
+  # and SQLi against free-text sample metadata), tune via czi_baseline_count_rules / anonymous_ip_count_rules,
+  # then flip this to false. Do NOT flip it without reading those metrics first.
+  count_only = true
   czi_baseline_count_rules = {
     CommonRuleSet = [
       "NoUserAgent_HEADER",
