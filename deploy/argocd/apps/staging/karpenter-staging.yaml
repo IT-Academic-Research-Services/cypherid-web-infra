@@ -1,0 +1,26 @@
+# Karpenter NodePools + EC2NodeClass + bulk-download warmpool @ env-staging (SMP-1636 #958) -- the DEPLOY
+# half. The INFRA half (controller + node IAM role karpenter-seqtoid-staging + SQS interruption queue) is
+# ssot-infra addons enable_karpenter=true (config/envs.conf staging). Discovered by root-app-staging.yaml
+# (directory.recurse over apps/staging/). The Karpenter CRDs are installed by the controller, so Argo
+# retries this app until they exist. prune/selfHeal start disabled (inspect the first sync, like the other
+# staging apps) -- flip on once verified. staging only; never touches Jay's legacy czid-staging.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter-staging
+  namespace: argocd
+spec:
+  project: seqtoid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    targetRevision: integration
+    path: deploy/argocd/manifests/karpenter/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: karpenter
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - ServerSideApply=true
