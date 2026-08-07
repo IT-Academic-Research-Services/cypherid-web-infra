@@ -117,6 +117,30 @@ data "aws_iam_policy_document" "seqtoid_web_provisioner" {
     ]
     resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/idseq-sandbox-web/*"]
   }
+  # Provision-time seed of the pathogen list: `rake update_pathogen_list` reads two CSVs --
+  # pathogen-list/global_pathogen_list_<ver>.csv and pathogen-list/global_citation_list_<ver>.csv --
+  # from the public-references bucket (the app's S3_DATABASE_BUCKET = var.s3_bucket_public_references).
+  # This is the ONLY S3 the provisioner is granted, and it is deliberately narrower than the app role's
+  # bucket-wide read (eks-irsa-preview.tf SandboxAndReferenceRead): read-only, and scoped to the single
+  # pathogen-list/ prefix. Everything else about this role stays secrets + DB only (platform-overhaul
+  # issue 1114 / SMP-1712).
+  statement {
+    sid       = "ReadPathogenListSeed"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${var.s3_bucket_public_references}/pathogen-list/*"]
+  }
+  # parse_input_file_csv lists the prefix to resolve the object before reading it. Scoped to the same
+  # single prefix via an s3:prefix condition so this grants no visibility beyond pathogen-list/.
+  statement {
+    sid       = "ListPathogenListPrefix"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.s3_bucket_public_references}"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["pathogen-list/*"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "seqtoid_web_provisioner" {
