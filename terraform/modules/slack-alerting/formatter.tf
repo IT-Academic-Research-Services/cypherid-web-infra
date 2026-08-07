@@ -95,12 +95,12 @@ resource "aws_cloudwatch_event_rule" "alarms" {
 
 resource "aws_cloudwatch_event_target" "formatter" {
   rule      = aws_cloudwatch_event_rule.alarms.name
-  target_id = "formatter"
+  target_id = "1"
   arn       = aws_lambda_function.formatter.arn
 }
 
 resource "aws_lambda_permission" "formatter_events" {
-  statement_id  = "AllowEventBridgeInvoke"
+  statement_id  = "eventbridge-invoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.formatter.function_name
   principal     = "events.amazonaws.com"

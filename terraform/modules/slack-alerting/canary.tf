@@ -75,12 +75,12 @@ resource "aws_cloudwatch_event_rule" "canary_schedule" {
 
 resource "aws_cloudwatch_event_target" "canary" {
   rule      = aws_cloudwatch_event_rule.canary_schedule.name
-  target_id = "canary"
+  target_id = "1"
   arn       = aws_lambda_function.canary.arn
 }
 
 resource "aws_lambda_permission" "canary_schedule" {
-  statement_id  = "AllowScheduleInvoke"
+  statement_id  = "schedule-invoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.canary.function_name
   principal     = "events.amazonaws.com"
