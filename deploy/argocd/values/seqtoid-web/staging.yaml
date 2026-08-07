@@ -9,8 +9,21 @@ image:
   # Persistent seqtoid-web repo in the staging account (seqtoid-ssot-infra/infra/app-registry). Simple
   # repo name, like dev/sandbox.
   repository: 030998640247.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: latest            # repointed on each image rebuild; pull every time (see pullPolicy)
-  pullPolicy: Always
+  # PINNED. This env previously ran `tag: latest` + `pullPolicy: Always`, so ANY pod restart -- a
+  # rollout, a node replacement, Karpenter expiry, a scale event, an incident recovery -- silently
+  # moved it onto whatever was last pushed to :latest, with no gitops commit, no review and no record.
+  # For the environment holding real alpha-tester P4 data that meant the declared state could not
+  # express the running state, a behaviour change could not be correlated to a deploy, and rollback had
+  # no previous tag to return to. It is also how the 2026-08-07 upload outage arrived: the pods rolled
+  # forward onto an image needing an IAM permission the upload role did not have.
+  #
+  # digest wins over tag (chart helper `seqtoid-web.image`). The promotion pipeline (CZID-464,
+  # promote-to-env.yml) advances BOTH on a tested promotion; do not hand-edit them out of step.
+  tag: sha-5339f280d
+  digest: sha256:6673980a199c59e104566648b91a63411ac950c348a25707cd358ebc0e5c9000
+  # IfNotPresent, not Always: with an immutable digest there is nothing to re-pull, and Always would
+  # reintroduce the drift this pin exists to remove.
+  pullPolicy: IfNotPresent
 # 2 replicas for HA (PDB maxUnavailable:1 + hard hostname topologySpread) -- see sandbox.yaml rationale.
 replicaCount: 2
 # Node scheduling (SMP-1636 #953). Staging has NO dedicated seqtoid.io/pool=web NodePool -- that is a
