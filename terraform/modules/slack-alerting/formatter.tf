@@ -40,11 +40,27 @@ resource "aws_iam_role_policy" "formatter" {
         Action   = "sns:Publish"
         Resource = aws_sns_topic.alerts.arn
       },
+      {
+        # Required to publish to the SSE-enabled topic (alias/aws/sns). Constrained to SNS use in
+        # this region via kms:ViaService so it is not unconstrained write access (CKV_AWS_111).
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          StringEquals = { "kms:ViaService" = "sns.${var.region}.amazonaws.com" }
+        }
+      },
     ]
   })
 }
 
 resource "aws_lambda_function" "formatter" {
+  # checkov:skip=CKV_AWS_117:not in a VPC by design -- it calls the public SNS endpoint; a VPC would need a NAT/endpoint for no benefit
+  # checkov:skip=CKV_AWS_173:env vars are non-secret (topic ARN, env label); default AWS-managed at-rest encryption is sufficient
+  # checkov:skip=CKV_AWS_116:no DLQ -- EventBridge retries delivery, and this is best-effort alerting; a DLQ would itself go unmonitored
+  # checkov:skip=CKV_AWS_50:X-Ray tracing adds no value for a single-call, no-downstream formatter
+  # checkov:skip=CKV_AWS_115:no reserved concurrency -- alarm state-changes are low-volume and reserving concurrency needlessly consumes the account pool
+  # checkov:skip=CKV_AWS_272:code-signing not warranted for an in-repo, source-built internal function
   function_name    = "${var.name_prefix}-alert-formatter"
   role             = aws_iam_role.formatter.arn
   runtime          = var.lambda_runtime

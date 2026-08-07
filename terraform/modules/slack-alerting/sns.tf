@@ -5,6 +5,10 @@
 resource "aws_sns_topic" "alerts" {
   name = "${var.name_prefix}-alerts"
   tags = var.tags
+
+  # SSE at rest with the AWS-managed SNS key (CKV_AWS_26). The formatter role is granted
+  # kms:GenerateDataKey*/Decrypt (see formatter.tf) so it can still publish to the encrypted topic.
+  kms_master_key_id = "alias/aws/sns"
 }
 
 # The endpoint is confirmed out-of-band in Slack (a click in the channel); SNS reports the sub as

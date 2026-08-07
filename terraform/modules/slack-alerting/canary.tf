@@ -45,6 +45,12 @@ resource "aws_iam_role_policy" "canary" {
 }
 
 resource "aws_lambda_function" "canary" {
+  # checkov:skip=CKV_AWS_117:MUST stay out of a VPC -- the canary probes the PUBLIC URL; a private-subnet Lambda could not reach it without a NAT
+  # checkov:skip=CKV_AWS_173:env vars are non-secret (the public URL); default AWS-managed at-rest encryption is sufficient
+  # checkov:skip=CKV_AWS_116:no DLQ -- a dropped probe is retried on the next 1-minute schedule; a DLQ would go unmonitored
+  # checkov:skip=CKV_AWS_50:X-Ray tracing adds no value for a single HTTP GET
+  # checkov:skip=CKV_AWS_115:no reserved concurrency -- one invocation per minute does not need a concurrency reservation
+  # checkov:skip=CKV_AWS_272:code-signing not warranted for an in-repo, source-built internal function
   function_name    = "${var.name_prefix}-web-canary"
   role             = aws_iam_role.canary.arn
   runtime          = var.lambda_runtime

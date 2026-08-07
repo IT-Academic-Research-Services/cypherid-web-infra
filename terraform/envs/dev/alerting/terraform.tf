@@ -65,7 +65,10 @@ variable "tags" {
   }
 }
 
-# The Slack channel's email-to-channel address. Set via TF_VAR_alert_email at apply time.
+# The Slack channel's email-to-channel address. Not committed -- default "" keeps `terraform plan`
+# apply-safe in CI (mirrors monitoring's alarm_actions_sns_topic_arn). Apply MUST set the real value
+# via TF_VAR_alert_email.
 variable "alert_email" {
-  type = string
+  type    = string
+  default = ""
 }
