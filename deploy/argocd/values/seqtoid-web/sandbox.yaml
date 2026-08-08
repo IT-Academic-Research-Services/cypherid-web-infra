@@ -21,7 +21,11 @@ replicaCount: 2
 migrate:
   # Fresh env: create the DB, migrate, then seed (db:seed builds app_configs incl. the Step Functions
   # ARNs from AWS_ACCOUNT_ID + host_genomes + alignment_configs). All idempotent on re-runs.
-  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+  # seed:migrate applies pending SeedMigration migrations after db:seed so the workflow_versions
+  # catalog is reconciled with the configured *-version app_configs. Without it a fresh bootstrap
+  # 500s on project create via CZID-982 fail-closed. Mirrors bin/rebuild_system; idempotent.
+  # platform-overhaul #1115 / SMP-1715.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed", "seed:migrate"]
 taxonLoad:
   # Enabled: the data layer's OpenSearch domain is up, and the chamber-seed points S3_DATABASE_BUCKET at
   # the same-account seqtoid-public-references bucket (which holds the taxon slice at ncbi-indexes-prod/
