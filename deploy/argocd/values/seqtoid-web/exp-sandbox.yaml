@@ -26,7 +26,11 @@ image:
 replicaCount: 2
 migrate:
   # Fresh env: create -> migrate -> seed. db:seed is idempotent (seqtoid-web #203), so re-runs are safe.
-  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+  # seed:migrate applies pending SeedMigration migrations after db:seed so the workflow_versions
+  # catalog is reconciled with the configured *-version app_configs. Without it a fresh bootstrap
+  # 500s on project create via CZID-982 fail-closed. Mirrors bin/rebuild_system; idempotent.
+  # platform-overhaul #1115 / SMP-1715.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed", "seed:migrate"]
 taxonLoad:
   # Enabled: this env's own OpenSearch domain is up and the chamber-seed points S3_DATABASE_BUCKET at this
   # env's reference bucket (the taxon-lineage slice). taxon-load imports the slice into taxon_lineages AND
