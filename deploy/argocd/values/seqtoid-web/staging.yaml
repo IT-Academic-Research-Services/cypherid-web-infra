@@ -25,7 +25,12 @@ nodeSelector:
 migrate:
   # Fresh env: create the DB, migrate, then seed (app_configs incl. SFN ARNs from AWS_ACCOUNT_ID +
   # host_genomes + alignment_configs). All idempotent on re-runs.
-  command: ["rails", "db:create", "db:migrate:with_data", "db:seed"]
+  # seed:migrate applies pending SeedMigration migrations after db:seed (the generated db/seeds.rb
+  # snapshot is stale against the catalog it ships). Without it, a FRESH bootstrap has app_config
+  # *-version pins with no matching workflow_versions catalog row, and VersionRetrievalService
+  # (CZID-982) fail-closes -> 500 on project create / project_pipeline_versions. Mirrors
+  # bin/rebuild_system; idempotent (only unapplied migrations run). platform-overhaul #1115 / SMP-1715.
+  command: ["rails", "db:create", "db:migrate:with_data", "db:seed", "seed:migrate"]
 taxonLoad:
   # The chamber-seed points S3_DATABASE_BUCKET at the same-account seqtoid-public-references bucket; the
   # data layer's OpenSearch domain is up -- taxon-load imports the slice + builds the heatmap index.
