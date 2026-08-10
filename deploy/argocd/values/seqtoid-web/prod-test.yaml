@@ -62,3 +62,22 @@ ingress:
     # egress CIDRs + the dev team's IPs. Build it like the sandbox one (default action Block + one
     # IPSetReferenceStatement allow rule). Fill this ARN once the prod-test edge is stood up.
     alb.ingress.kubernetes.io/wafv2-acl-arn: REPLACE_PRODTEST_WAF_ACL_ARN
+
+# ---------------------------------------------------------------------------------------------
+# Seed-migration gate (SMP-1715). HELD OFF for the prod-family envs, deliberately.
+#
+# The chart defaults migrate.seedMigrate to true so dev and fresh envs reconcile the
+# workflow_versions catalog against the configured *-version app_configs (without it a fresh
+# bootstrap 500s on project create via the CZID-982 fail-closed path). This env opts OUT until
+# its pending set has been reviewed with `rake seed:migrate:status`, because the FIRST run on an
+# env with pending migrations is NOT value-preserving:
+#   - UpdatePipelineVersionAppConfig OVERWRITES short-read-mngs / consensus-genome /
+#     long-read-mngs version pins, so any hand-pinned version is silently reverted once.
+#   - RenameDatabaseBucket rewrites AlignmentConfig + HostGenome reference paths off
+#     czid-public-references.
+#   - SeedObservedIndexCompatibilityFloors computes per-version index floors from this env's own
+#     run history, after which older version/index pairings refuse to dispatch.
+# On a fresh, synthetic-data-only env those are additive and harmless; against real prod data at
+# the cutover they are not. Flip this to true only after reviewing the pending set for the env.
+migrate:
+  seedMigrate: false
