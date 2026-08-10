@@ -153,14 +153,9 @@ resource "aws_glue_job" "batch-taxon-indexing" {
   timeout      = 5760
 
   default_arguments = {
-    "--TempDir"             = "s3://${local.bucket_name}/temporary/"
-    "--enable-job-insights" = false
-    # SMP-1734: use local.bucket_name (the same account-suffixed name the bucket is created
-    # with above); never re-derive the bucket name inline. The inline form here omitted the
-    # account suffix and pointed at "idseq-<env>-heatmap-batch-jobs", which does not exist in
-    # the UCSF dev account (head-bucket 404) and in the staging account resolves to a foreign
-    # CZI-owned bucket (403). Same account-suffix miss as SMP-1626.
-    "--extra-py-files"       = "s3://${local.bucket_name}/releases/job.py,s3://${local.bucket_name}/releases/config.py"
+    "--TempDir"              = "s3://${local.bucket_name}/temporary/"
+    "--enable-job-insights"  = false
+    "--extra-py-files"       = "s3://idseq-${var.env}-heatmap-batch-jobs/releases/job.py,s3://idseq-${var.env}-heatmap-batch-jobs/releases/config.py"
     "--job-language"         = "python"
     "--pip-install"          = "tenacity==8.2.2"
     "library-set"            = "analytics"
