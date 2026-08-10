@@ -24,11 +24,28 @@ resource "aws_iam_role" "idseq-web" {
   assume_role_policy = data.aws_iam_policy_document.idseq-web-assume-role.json
 }
 
-# Attaching these permissions for the SSRF protections provided by ssrfs-up.
-# The policy "ssrfs-up-invoke" is added to the baseline so all accounts have
-# access to it.
-# https://github.com/chanzuckerberg/SSRFs-Up
 data "aws_caller_identity" "current" {}
+
+# SSRF egress-proxy IAM attachment: DELIBERATELY DISABLED in dev. Do not uncomment.
+# SMP-1628. Reasons, in order of severity:
+#   1. The managed policy "ssrfs-up-invoke" does NOT exist in the UCSF accounts. It is a
+#      CZI account-baseline artifact and no repo we own creates it: grepping
+#      cypherid-web-infra and czid-infra finds only attachment sites, never an
+#      aws_iam_policy resource. The comment that used to sit here claimed the policy was
+#      "added to the baseline so all accounts have access to it" - that is a CZI-era claim
+#      and it does not hold for us.
+#   2. SSRFs-Up (https://github.com/chanzuckerberg/SSRFs-Up) itself is not deployed to
+#      dev, staging, or sandbox. Only prod carries a live attachment, inherited from CZI.
+#      All three non-prod envs are disabled on purpose; dev is not drift.
+#   3. policy_arn below is a literal interpolated string, not a reference to a Terraform
+#      resource. Terraform does not validate managed-policy existence at plan time, so
+#      uncommenting produces a GREEN PLAN and then a FAILING APPLY (NoSuchEntity) after
+#      the merge - strictly worse than a plan-time error.
+#   4. Even if the policy existed the attachment would be inert: the app has no
+#      SSRF-proxy client path (grep for "ssrf" across seqtoid-web rb/yml/ts/tsx: zero hits).
+# The egress-SSRF protection strategy for the UCSF accounts (SSRFs-Up vs an alternative)
+# is tracked by SMP-1631. Until that decision lands, leave this commented out; do not
+# "enable it for parity" with prod.
 # resource "aws_iam_role_policy_attachment" "ssrfs-invoke" {
 #   role       = aws_iam_role.idseq-web.name
 #   policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/ssrfs-up-invoke"
