@@ -126,6 +126,11 @@ preview:
 # db:seed derives them from ENVIRONMENT (dev) + AWS_ACCOUNT_ID, so they point at the
 # shared dev state machines. Idempotent find_or_create-style seed.
 migrate:
+  # SMP-1715: preview already reaches seed:migrate INSIDE sandbox:seed_once, and the chart's
+  # `has "seed:migrate"` guard cannot see inside a rake task -- so leaving the flag on would
+  # append a second, redundant invocation. It would be a harmless no-op, but the rendered args
+  # should say exactly what runs. Opt out here; the seeding path is unchanged.
+  seedMigrate: false
   # taxon_lineage_slice:load_slice_if_needed is folded into the migrate hook (rather than
   # left to the separate taxonLoad PreSync Job) on purpose: in a sandbox, TAXON_LINEAGE_REF_SCHEMA
   # is set (below via chart default idseq_sandbox_ref), so that task takes the platform-overhaul-731
