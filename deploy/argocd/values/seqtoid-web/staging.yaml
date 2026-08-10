@@ -52,6 +52,29 @@ serviceAccount:
   # IRSA role naming is seqtoid-web-<env> (created by seqtoid-ssot-infra/infra/state-foundation/app),
   # NOT <env>-seqtoid-web.
   roleArn: arn:aws:iam::030998640247:role/seqtoid-web-staging
+
+# Bulk-download launcher RBAC, rendered by the chart rather than click-opsed (SMP-1672).
+#
+# KubeJobClient POSTs batch/v1 Jobs as the web pod's SA, so that SA needs a namespace Role
+# granting create on jobs.batch (plus read-only pods / pods/log). The chart comment says
+# dev/staging/prod get this from Terraform -- that is true of DEV only
+# (terraform/envs/dev/eks-v2/bulk-download-warmpool-rbac.tf). The fresh seqtoid-staging
+# cluster in 030998640247 has no such stack: terraform/envs/staging is the LEGACY
+# czid-staging tree and must not be repurposed for it. The Role/RoleBinding were applied by
+# hand on 2026-08-04 to clear the bulk-download 403s, so they carry no Argo tracking and a
+# reconstitute or a fresh env would silently lose them. Rendering them here puts them back
+# under SSOT.
+#
+# The rendered pair is byte-equivalent to what is live: Role/RoleBinding "bulk-download-launcher"
+# with the same three rules, bound to ServiceAccount czid-staging-seqtoid-web (this env sets
+# only serviceAccount.roleArn, so the SA name is the chart fullname <project>-<env>-seqtoid-web).
+# Enabling this therefore ADOPTS the existing objects; it does not create a second Role.
+#
+# Not covered here: the tar Job's own ServiceAccount seqtoid-web-bulk-download (IRSA ->
+# seqtoid-web-staging-bulk-download-job) is outside chart scope and is still unmanaged.
+bulkDownload:
+  rbac:
+    create: true
 secrets:
   chamber:
     # FRESH seqtoid chamber path (not the chart default idseq-<env>-web = the LIVE legacy config). The
