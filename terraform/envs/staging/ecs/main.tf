@@ -140,10 +140,11 @@ resource "aws_s3_bucket" "aegea-ecs-execute" {
 
 # Inline `acl` and `lifecycle_rule` were deprecated in AWS provider v4 and moved
 # to dedicated `aws_s3_bucket_*` resources (#475). Apply-safe: no bucket recreation.
-resource "aws_s3_bucket_acl" "aegea-ecs-execute" {
-  bucket = aws_s3_bucket.aegea-ecs-execute.id
-  acl    = "private"
-}
+#
+# The aws_s3_bucket_acl "private" resource was REMOVED: S3 disables ACLs by default
+# (BucketOwnerEnforced) since April 2023, so PutBucketAcl now fails outright with
+# InvalidArgument and took the whole ecs stack down. A "private" canned ACL was always a
+# no-op here anyway -- the bucket is private by default and access is governed by IAM.
 
 resource "aws_s3_bucket_lifecycle_configuration" "aegea-ecs-execute" {
   bucket = aws_s3_bucket.aegea-ecs-execute.id
