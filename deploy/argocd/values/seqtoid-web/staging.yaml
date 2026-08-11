@@ -19,8 +19,8 @@ image:
   #
   # digest wins over tag (chart helper `seqtoid-web.image`). The promotion pipeline (CZID-464,
   # promote-to-env.yml) advances BOTH on a tested promotion; do not hand-edit them out of step.
-  tag: sha-5339f280d
-  digest: sha256:6673980a199c59e104566648b91a63411ac950c348a25707cd358ebc0e5c9000
+  tag: sha-77514807
+  digest: sha256:8ed37ec577d7cfae22dacc7c58d424c06dd244507634ca80fec5dcabc229c231
   # IfNotPresent, not Always: with an immutable digest there is nothing to re-pull, and Always would
   # reintroduce the drift this pin exists to remove.
   pullPolicy: IfNotPresent
@@ -63,7 +63,6 @@ extraEnv:
   # idseq-<env>-web); set it explicitly to the fresh seqtoid path the IRSA role is scoped to.
   - name: CHAMBER_SERVICE
     value: seqtoid-staging-web
-
 # Zero-downtime cutover: match dev's proven pingpong methodology (canary + ALB weighted
 # target groups with static selectors, so pod readiness gates inject) instead of blueGreen,
 # whose atomic activeService flip drops ALB traffic ~30s (503s) on every promotion. A PreSync
@@ -74,11 +73,11 @@ extraEnv:
 # blueGreen by removing this one key -- the blueGreen block below is the fallback.
 rolloutStrategy: pingpong
 blueGreen:
-  autoPromotionEnabled: true     # promote on smoke pass (the gate is proven on dev)
+  autoPromotionEnabled: true # promote on smoke pass (the gate is proven on dev)
   scaleDownDelaySeconds: 60
   analysis:
     enabled: true
-    postPromotion: true          # also re-smoke the new active color
+    postPromotion: true # also re-smoke the new active color
 resources:
   requests:
     cpu: 500m
@@ -86,7 +85,7 @@ resources:
   limits:
     memory: 2Gi
 autoscaling:
-  enabled: false         # pre-prod: no autoscale for the first spin-up
+  enabled: false # pre-prod: no autoscale for the first spin-up
   minReplicas: 2
   maxReplicas: 4
 # Public edge for staging. ALB via the AWS Load Balancer Controller -> active service.
