@@ -8,7 +8,8 @@ environment: dev
 image:
   # Dev-account ECR, go-forward repo (the CZID-76 dual-push lands here too).
   repository: 491013321714.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: sha-cc5805eb # the current hardened known-good build; CI advances this per build
+  tag: sha-4d900d0f # the current hardened known-good build; CI advances this per build
+  digest: sha256:8f23a53978675bba4ef13e85d8e2519fee375251bb35627b0526390770ba90c1
 # COST SPIN-DOWN (dev): scale ALL workloads to 0 and skip the migrate/taxon-load hooks
 # (chart `suspend`). Safe + reversible — the app's data lives in Aurora + OpenSearch, not
 # the pods. The CD keeps advancing `image.tag` while suspended, so flipping this to false
