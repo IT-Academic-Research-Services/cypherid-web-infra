@@ -35,8 +35,12 @@ jobs:
       - name: Install kubeconform
         run: |
           KV=0.6.7
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KV}/kubeconform-linux-amd64.tar.gz" \
-            | tar -xz kubeconform
+          # Resilient download: --retry-all-errors makes a transient connection drop (curl 56,
+          # "Connection died") retry instead of failing the job. Download to a file first so a partial
+          # transfer is caught by curl (and retried) rather than feeding a truncated stream to tar.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 120 \
+            -o kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/v${KV}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf kubeconform.tar.gz kubeconform
           sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
 
       - name: Validate Argo CD manifests
@@ -159,13 +163,18 @@ jobs:
 
       - name: Install helm + kubeconform
         run: |
+          # Resilient downloads: --retry-all-errors retries a transient connection drop (curl 56,
+          # "Connection died" -- what wedged the dev tag-advance) instead of failing. Download to a
+          # file first so a partial transfer is caught by curl (and retried) rather than truncating
+          # the tar stream.
+          dl() { curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 120 -o "$1" "$2"; }
           HV=3.16.4
-          curl -fsSL "https://get.helm.sh/helm-v${HV}-linux-amd64.tar.gz" \
-            | tar -xz linux-amd64/helm
+          dl helm.tar.gz "https://get.helm.sh/helm-v${HV}-linux-amd64.tar.gz"
+          tar -xzf helm.tar.gz linux-amd64/helm
           sudo install -m 0755 linux-amd64/helm /usr/local/bin/helm
           KV=0.6.7
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KV}/kubeconform-linux-amd64.tar.gz" \
-            | tar -xz kubeconform
+          dl kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/v${KV}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf kubeconform.tar.gz kubeconform
           sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
 
       - name: helm lint
