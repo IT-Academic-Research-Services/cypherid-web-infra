@@ -19,8 +19,8 @@ image:
   #
   # digest wins over tag (chart helper `seqtoid-web.image`). The promotion pipeline (CZID-464,
   # promote-to-env.yml) advances BOTH on a tested promotion; do not hand-edit them out of step.
-  tag: sha-77514807
-  digest: sha256:8ed37ec577d7cfae22dacc7c58d424c06dd244507634ca80fec5dcabc229c231
+  tag: sha-4d900d0f
+  digest: sha256:8f23a53978675bba4ef13e85d8e2519fee375251bb35627b0526390770ba90c1
   # IfNotPresent, not Always: with an immutable digest there is nothing to re-pull, and Always would
   # reintroduce the drift this pin exists to remove.
   pullPolicy: IfNotPresent
