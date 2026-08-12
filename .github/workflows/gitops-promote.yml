@@ -69,7 +69,9 @@ jobs:
       - name: Install yq
         run: |
           YQ=v4.44.3
-          curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ}/yq_linux_amd64" -o /usr/local/bin/yq
+          # --retry-all-errors so a transient connection drop retries instead of failing the promote.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 120 \
+            "https://github.com/mikefarah/yq/releases/download/${YQ}/yq_linux_amd64" -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
       # env-staging only accepts images the staging gauntlet has attested (SMP staging-gauntlet).

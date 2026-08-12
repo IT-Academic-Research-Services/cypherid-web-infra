@@ -51,7 +51,9 @@ jobs:
 
       - name: Install yq
         run: |
-          curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
+          # --retry-all-errors so a transient connection drop retries instead of failing the job.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 120 \
+            https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
 
       - name: Flip suspend in dev.yaml + commit
