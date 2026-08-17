@@ -19,9 +19,11 @@ locals {
 
   core_ruleset_priority = 1
   bad_inputs_priority   = 2
+  anonymous_ip_priority = 3
 
   core_ruleset_rulename = "aws-common-rule-set"
   bad_inputs_rulename   = "aws-known-bad-inputs"
+  anonymous_ip_rulename = "aws-anonymous-ip-list"
 }
 
 resource "aws_wafv2_web_acl" "cloudfront" {
@@ -121,6 +123,52 @@ resource "aws_wafv2_web_acl" "cloudfront" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = local.bad_inputs_rulename
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # AWSManagedRulesAnonymousIpList -- block known VPNs, proxies, Tor exit nodes, and hosting/cloud
+  # IPs at the CloudFront edge (defense-in-depth alongside the CommonRuleSet + KnownBadInputs groups;
+  # SMP-1478). Enforces (block) unless the count_only canary is on; per-sub-rule false positives
+  # (e.g. HostingProviderIPList catching legit cloud/CI clients) are softened via
+  # var.anonymous_ip_count_rules. New group deploys in COUNT first via count_only, like the others.
+  rule {
+    name     = local.anonymous_ip_rulename
+    priority = local.anonymous_ip_priority
+
+    dynamic "override_action" {
+      for_each = (var.count_only == true) ? [1] : []
+      content {
+        count {}
+      }
+    }
+    dynamic "override_action" {
+      for_each = (var.count_only == false) ? [1] : []
+      content {
+        none {}
+      }
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesAnonymousIpList"
+        vendor_name = "AWS"
+
+        dynamic "rule_action_override" {
+          for_each = toset(var.anonymous_ip_count_rules)
+          content {
+            name = rule_action_override.key
+            action_to_use {
+              count {}
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = local.anonymous_ip_rulename
       sampled_requests_enabled   = true
     }
   }
