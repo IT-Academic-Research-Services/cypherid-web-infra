@@ -36,12 +36,21 @@ data:
     aupr_min: 0.98
     # POST here to start a benchmark run under the active fault. For pipeline experiments this is the
     # -chaos sandbox SFN start endpoint (idseq-dev-chaos-*), NEVER the shared idseq-dev-* pipeline.
-    # AUPR half: REQUIRES a benchmark trigger service. None exists in the cluster yet (the #388
-    # harness is not deployed), so require_aupr is false and the gate runs INTEGRITY-ONLY. The verdict
-    # always reports aupr_checked so a passing gate can never be mistaken for "AUPR verified".
-    # Flip require_aupr to true the moment chaos-benchmark-trigger exists -- then a missing/failing
-    # benchmark fails the gate closed, which is the correct end state.
-    require_aupr: false
+    # AUPR half: REQUIRES a benchmark trigger service. chaos-benchmark-trigger now provides it
+    # (deploy/chaos/benchmark-trigger/benchmark-trigger.yaml), so the gate no longer runs
+    # INTEGRITY-ONLY: a missing, failing or unreachable benchmark now fails the gate CLOSED, which is
+    # the correct end state. The verdict still reports aupr_checked, so a pass can never be mistaken
+    # for "AUPR verified" if this is ever flipped back.
+    #
+    # DO NOT APPLY THIS BEFORE ALL THREE HOLD, or every preflight fails closed and every experiment
+    # is blocked:
+    #   1. chaos-benchmark-trigger is deployed in this namespace,
+    #   2. GITHUB_TOKEN is present in the chaos-reporter secret,
+    #   3. aupr_min below is CALIBRATED to whatever benchmark the trigger actually runs.
+    # (3) is not cosmetic: the committed reference AUPRs for the viral samples
+    # (seqtoid-workflows .../auto_benchmark/ref_libs/default_viral/) are NT 0.24-0.36 / NR 0.36-0.43,
+    # so a 0.98 floor against the viral benchmark is permanently red, not a signal.
+    require_aupr: true
     benchmark_trigger_url: http://chaos-benchmark-trigger.chaos-mesh.svc.cluster.local/start
     # GET here (optionally with ?handle=<id> from the trigger response) -> {state, results?} until the
     # run reaches a terminal state. results = {sample: {NT_aupr, NR_aupr, ...}, ...}.
