@@ -6,7 +6,7 @@ image:
   # seqtoid-web ECR must exist in the prod account (survey found 0 ECR repos there -- create it).
   repository: 283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
   tag: latest            # CI advances this to the immutable git-sha tag on deploy
-replicaCount: 2          # prod-shaped, but lean; scale-to-zero when idle (cost)
+replicaCount: 1          # scale-to-zero rehearsal: idle at 1 replica -> 1 node; HPA scales up on demand
 serviceAccount:
   # IRSA role naming is seqtoid-web-<env> (mirror envs/dev/web/eks-irsa.tf into envs/prod-preview/web/).
   roleArn: arn:aws:iam::283694049553:role/seqtoid-web-prod-preview
@@ -26,9 +26,13 @@ resources:
   limits:
     memory: 2Gi
 autoscaling:
+  # Scale-to-zero rehearsal (Tom): idle at minReplicas 1 (-> 1 node with the foundation min-1 nodegroup,
+  # ssot-infra #42) so prod-preview idles cheap; HPA scales up on validation demand and the HARD hostname
+  # topologySpread then puts the scaled-up replicas on separate nodes (HA-faithful under load). maxReplicas
+  # 6 gives headroom within the node ceiling (eks_node_max_size=8).
   enabled: true
-  minReplicas: 2
-  maxReplicas: 4
+  minReplicas: 1
+  maxReplicas: 6
 # Public edge for prod.seqtoid.org -- DENY-BY-DEFAULT, whitelist only. Two layers:
 #   1. WAF IP-allowlist (UCSF egress CIDRs) associated to this ALB, on top of the export-control
 #      geofence WAF -- fill wafv2-acl-arn with the prod-preview allowlist Web ACL ARN.
