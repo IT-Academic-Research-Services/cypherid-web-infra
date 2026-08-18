@@ -16,14 +16,17 @@ resource "aws_sesv2_email_identity" "domain" {
 }
 
 # Publish the 3 Easy-DKIM CNAMEs so SES can verify the domain + sign outbound mail.
+# count = 3 (Easy DKIM always emits exactly 3 tokens), NOT for_each over the tokens: the token
+# VALUES are only known after the identity is created, and for_each keys must be known at plan
+# time -- for_each over them errors "Invalid for_each argument". A static count sidesteps that.
 resource "aws_route53_record" "dkim" {
-  for_each = toset(aws_sesv2_email_identity.domain.dkim_signing_attributes[0].tokens)
+  count = 3
 
   zone_id = var.zone_id
-  name    = "${each.value}._domainkey.${var.env_fqdn}"
+  name    = "${aws_sesv2_email_identity.domain.dkim_signing_attributes[0].tokens[count.index]}._domainkey.${var.env_fqdn}"
   type    = "CNAME"
   ttl     = 600
-  records = ["${each.value}.dkim.amazonses.com"]
+  records = ["${aws_sesv2_email_identity.domain.dkim_signing_attributes[0].tokens[count.index]}.dkim.amazonses.com"]
 }
 
 # --- Custom MAIL FROM (SPF alignment) ---------------------------------------------------
@@ -75,6 +78,9 @@ resource "aws_sesv2_email_identity" "support_recipient" {
 # SMTP_USER/SMTP_PASSWORD. A dedicated IAM user (least privilege: SendRawEmail from THIS identity
 # only) provides them. ses_smtp_password_v4 is the IAM secret converted to the SES SMTP password.
 resource "aws_iam_user" "ses_smtp" {
+  # checkov:skip=CKV_AWS_273:SES SMTP auth REQUIRES a long-lived IAM user access key (the SMTP
+  # password is derived from it via ses_smtp_password_v4); there is no SSO/role-based SMTP. The
+  # user is least-privilege (SendRawEmail from one identity only) and holds no console access.
   name = "seqtoid-${var.env_fqdn}-ses-smtp"
   path = "/ses/"
   tags = var.tags
@@ -114,12 +120,16 @@ data "aws_kms_key" "chamber" {
   key_id = "alias/parameter_store_key"
 }
 
+# All chamber params are SecureString under the CMK -- matches how `chamber write` stores params
+# (SecureString by default) and satisfies checkov CKV2_AWS_34/CKV_AWS_337. The app's IRSA grants
+# kms:Decrypt on this key, so `chamber exec` reads them transparently.
 resource "aws_ssm_parameter" "smtp_user" {
-  count = local.write_chamber ? 1 : 0
-  name  = "${var.chamber_ssm_prefix}SMTP_USER"
-  type  = "String"
-  value = aws_iam_access_key.ses_smtp.id
-  tags  = var.tags
+  count  = local.write_chamber ? 1 : 0
+  name   = "${var.chamber_ssm_prefix}SMTP_USER"
+  type   = "SecureString"
+  key_id = data.aws_kms_key.chamber[0].id
+  value  = aws_iam_access_key.ses_smtp.id
+  tags   = var.tags
 }
 
 resource "aws_ssm_parameter" "smtp_password" {
@@ -132,33 +142,37 @@ resource "aws_ssm_parameter" "smtp_password" {
 }
 
 resource "aws_ssm_parameter" "mail_from_address" {
-  count = local.write_chamber ? 1 : 0
-  name  = "${var.chamber_ssm_prefix}MAIL_FROM_ADDRESS"
-  type  = "String"
-  value = local.from_address
-  tags  = var.tags
+  count  = local.write_chamber ? 1 : 0
+  name   = "${var.chamber_ssm_prefix}MAIL_FROM_ADDRESS"
+  type   = "SecureString"
+  key_id = data.aws_kms_key.chamber[0].id
+  value  = local.from_address
+  tags   = var.tags
 }
 
 resource "aws_ssm_parameter" "support_inbox_email" {
-  count = local.write_chamber ? 1 : 0
-  name  = "${var.chamber_ssm_prefix}SUPPORT_INBOX_EMAIL"
-  type  = "String"
-  value = var.support_inbox_email
-  tags  = var.tags
+  count  = local.write_chamber ? 1 : 0
+  name   = "${var.chamber_ssm_prefix}SUPPORT_INBOX_EMAIL"
+  type   = "SecureString"
+  key_id = data.aws_kms_key.chamber[0].id
+  value  = var.support_inbox_email
+  tags   = var.tags
 }
 
 resource "aws_ssm_parameter" "support_log_group" {
-  count = local.write_chamber && var.support_log_group != "" ? 1 : 0
-  name  = "${var.chamber_ssm_prefix}SUPPORT_LOG_GROUP"
-  type  = "String"
-  value = var.support_log_group
-  tags  = var.tags
+  count  = local.write_chamber && var.support_log_group != "" ? 1 : 0
+  name   = "${var.chamber_ssm_prefix}SUPPORT_LOG_GROUP"
+  type   = "SecureString"
+  key_id = data.aws_kms_key.chamber[0].id
+  value  = var.support_log_group
+  tags   = var.tags
 }
 
 resource "aws_ssm_parameter" "otel_dashboard_base_url" {
-  count = local.write_chamber && var.otel_dashboard_base_url != "" ? 1 : 0
-  name  = "${var.chamber_ssm_prefix}OTEL_DASHBOARD_BASE_URL"
-  type  = "String"
-  value = var.otel_dashboard_base_url
-  tags  = var.tags
+  count  = local.write_chamber && var.otel_dashboard_base_url != "" ? 1 : 0
+  name   = "${var.chamber_ssm_prefix}OTEL_DASHBOARD_BASE_URL"
+  type   = "SecureString"
+  key_id = data.aws_kms_key.chamber[0].id
+  value  = var.otel_dashboard_base_url
+  tags   = var.tags
 }
