@@ -62,21 +62,21 @@ variable "support_inbox_email" {
   default = "seqtoid-support@ucsf.edu"
 }
 
-# Off by default: leave "" so this stack provisions SES only. Set to the app's chamber path
-# (e.g. "/idseq-dev-web/") to also write SMTP_USER/PASSWORD/MAIL_FROM_ADDRESS/SUPPORT_INBOX_EMAIL.
+# The app's chamber path (CHAMBER_SERVICE defaults to idseq-<env>-web; the IRSA role reads
+# /idseq-<env>-web/*). Setting it makes this stack also write the app's mail env vars.
 variable "chamber_ssm_prefix" {
   type    = string
-  default = ""
+  default = "/idseq-dev-web/"
 }
 
-# The two support deep-link values (set once confirmed; written to chamber only when both these
-# and chamber_ssm_prefix are set). Empty keeps plan apply-safe.
+# The support deep-link targets: the app's CloudWatch log group and the Grafana Support Inbox
+# dashboard. These make SupportRequestsController#build_log_links resolve (else TODO placeholders).
 variable "support_log_group" {
   type    = string
-  default = ""
+  default = "/aws/eks/czid-dev/seqtoid-web"
 }
 
 variable "otel_dashboard_base_url" {
   type    = string
-  default = ""
+  default = "https://grafana.dev.seqtoid.org/d/support-inbox"
 }

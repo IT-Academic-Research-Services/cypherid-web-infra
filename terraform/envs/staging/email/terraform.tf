@@ -62,19 +62,24 @@ variable "support_inbox_email" {
   default = "seqtoid-support@ucsf.edu"
 }
 
-# Off by default: leave "" so this stack provisions SES only. Set to the app's chamber path
-# (e.g. "/idseq-staging-web/") to also write SMTP_USER/PASSWORD/MAIL_FROM_ADDRESS/SUPPORT_INBOX_EMAIL.
+# The app's chamber path (CHAMBER_SERVICE defaults to idseq-<env>-web; the IRSA role reads
+# /idseq-<env>-web/*). Setting it makes this stack also write the app's mail env vars.
 variable "chamber_ssm_prefix" {
   type    = string
-  default = ""
+  default = "/idseq-staging-web/"
 }
 
+# The staging app's CloudWatch log group. Derived from the staging EKS cluster (czid-staging-eks),
+# mirroring dev's /aws/eks/czid-dev/seqtoid-web. CONFIRM against the live staging log-group name
+# before relying on the CloudWatch deep-link; email + the Grafana link + correlation-id work regardless.
 variable "support_log_group" {
   type    = string
-  default = ""
+  default = "/aws/eks/czid-staging-eks/seqtoid-web"
 }
 
+# The Support Inbox is a single central Grafana dashboard (on the dev LGTM stack), filtered by
+# correlation_id + env, so staging reports resolve there too. CONFIRM staging logs reach that Loki.
 variable "otel_dashboard_base_url" {
   type    = string
-  default = ""
+  default = "https://grafana.dev.seqtoid.org/d/support-inbox"
 }

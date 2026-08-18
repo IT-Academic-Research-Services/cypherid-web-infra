@@ -105,6 +105,15 @@ resource "aws_iam_access_key" "ses_smtp" {
 }
 
 # --- Optional chamber wiring ------------------------------------------------------------
+# The chamber SecureString CMK (alias "parameter_store_key" exists in every env account). The
+# app's IRSA role grants kms:Decrypt on THIS key only, so SMTP_PASSWORD must be encrypted with
+# it or `chamber exec` cannot read it. Using the CMK (not the default aws/ssm key) also satisfies
+# checkov CKV_AWS_337.
+data "aws_kms_key" "chamber" {
+  count  = local.write_chamber ? 1 : 0
+  key_id = "alias/parameter_store_key"
+}
+
 resource "aws_ssm_parameter" "smtp_user" {
   count = local.write_chamber ? 1 : 0
   name  = "${var.chamber_ssm_prefix}SMTP_USER"
@@ -114,11 +123,12 @@ resource "aws_ssm_parameter" "smtp_user" {
 }
 
 resource "aws_ssm_parameter" "smtp_password" {
-  count = local.write_chamber ? 1 : 0
-  name  = "${var.chamber_ssm_prefix}SMTP_PASSWORD"
-  type  = "SecureString"
-  value = aws_iam_access_key.ses_smtp.ses_smtp_password_v4
-  tags  = var.tags
+  count  = local.write_chamber ? 1 : 0
+  name   = "${var.chamber_ssm_prefix}SMTP_PASSWORD"
+  type   = "SecureString"
+  key_id = data.aws_kms_key.chamber[0].id
+  value  = aws_iam_access_key.ses_smtp.ses_smtp_password_v4
+  tags   = var.tags
 }
 
 resource "aws_ssm_parameter" "mail_from_address" {
