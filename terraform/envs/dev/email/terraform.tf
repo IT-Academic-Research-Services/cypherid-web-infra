@@ -69,11 +69,13 @@ variable "chamber_ssm_prefix" {
   default = "/idseq-dev-web/"
 }
 
-# The support deep-link targets: the app's CloudWatch log group and the Grafana Support Inbox
-# dashboard. These make SupportRequestsController#build_log_links resolve (else TODO placeholders).
+# Empty on purpose. The seqtoid-web pods ship container logs to Loki (the Grafana LGTM stack), NOT
+# to CloudWatch -- there is no /aws/eks/<cluster>/seqtoid-web log group in any env. Left unset, the
+# app omits the (dead) CloudWatch Logs deep-link from support tickets and keeps the working Grafana
+# Support Inbox link (OTEL_DASHBOARD_BASE_URL). Set a real group only if app->CloudWatch logging is added.
 variable "support_log_group" {
   type    = string
-  default = "/aws/eks/czid-dev/seqtoid-web"
+  default = ""
 }
 
 variable "otel_dashboard_base_url" {

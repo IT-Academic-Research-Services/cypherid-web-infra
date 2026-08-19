@@ -69,12 +69,13 @@ variable "chamber_ssm_prefix" {
   default = "/idseq-staging-web/"
 }
 
-# The staging app's CloudWatch log group. Derived from the staging EKS cluster (czid-staging-eks),
-# mirroring dev's /aws/eks/czid-dev/seqtoid-web. CONFIRM against the live staging log-group name
-# before relying on the CloudWatch deep-link; email + the Grafana link + correlation-id work regardless.
+# Empty on purpose. The seqtoid-web pods ship container logs to Loki (the Grafana LGTM stack), NOT
+# to CloudWatch -- there is no /aws/eks/<cluster>/seqtoid-web log group in any env. Left unset, the
+# app omits the (dead) CloudWatch Logs deep-link from support tickets and keeps the working Grafana
+# Support Inbox link (OTEL_DASHBOARD_BASE_URL). Set a real group only if app->CloudWatch logging is added.
 variable "support_log_group" {
   type    = string
-  default = "/aws/eks/czid-staging-eks/seqtoid-web"
+  default = ""
 }
 
 # The Support Inbox is a single central Grafana dashboard (on the dev LGTM stack), filtered by
