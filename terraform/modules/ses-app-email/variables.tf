@@ -43,13 +43,14 @@ variable "verify_support_recipient" {
 
 # --- Optional chamber wiring (off by default) ------------------------------------------
 # When chamber_ssm_prefix is set, the module writes the app's mail env vars as SSM params at
-# that path so `chamber exec` picks them up. Left "" by default so this PR provisions SES
-# only and does not depend on the exact chamber path being confirmed -- the creds/addresses
-# are exposed as outputs to wire by hand or in a follow-up. See the module README.
+# that path so `chamber exec` picks them up. Left "" by default so this module provisions SES
+# only and does not depend on the exact chamber path being confirmed -- the addresses are also
+# exposed as outputs to wire by hand or in a follow-up. See the module README. No SMTP creds are
+# written: the app authenticates to SES with its web IRSA role, not SMTP_USER/SMTP_PASSWORD.
 variable "chamber_ssm_prefix" {
   type        = string
   default     = ""
-  description = "SSM path prefix the app's chamber service reads (e.g. /idseq-dev-web/). When non-empty, SMTP_USER/SMTP_PASSWORD/MAIL_FROM_ADDRESS/SUPPORT_INBOX_EMAIL (and the two below when set) are written there."
+  description = "SSM path prefix the app's chamber service reads (e.g. /idseq-dev-web/). When non-empty, MAIL_FROM_ADDRESS/SUPPORT_INBOX_EMAIL (and SUPPORT_LOG_GROUP/OTEL_DASHBOARD_BASE_URL when set) are written there."
 }
 
 variable "support_log_group" {
