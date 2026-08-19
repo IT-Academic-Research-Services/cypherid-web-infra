@@ -18,6 +18,7 @@
 
   "staged_for_counsel": {
     "CN": { "basis": "DOJ country of concern (not a comprehensive embargo)", "note": "China -- candidate; named in the SeqToID Platform Requirements (User Screening / Country Access, DOJ countries of concern). NOT enforced. A full-country block is a major over-block with significant research-collaboration impact; counsel decision required before moving to blocked_country_codes." },
+    "HK": { "basis": "DOJ country of concern (China scope)", "note": "Hong Kong -- candidate; screened together with China (CN). Since 2020 US export-control treatment of Hong Kong aligns with the PRC (separate-customs-territory status removed). NOT enforced; counsel decision required, and should track the CN decision." },
     "VE": { "basis": "DOJ country of concern / program-specific sanctions", "note": "Venezuela -- candidate; named in the SeqToID Platform Requirements (DOJ countries of concern). Awaiting counsel decision. NOT enforced." },
     "BY": { "basis": "program-specific sanctions", "note": "Belarus -- candidate; awaiting counsel decision. NOT enforced." },
     "MM": { "basis": "program-specific sanctions", "note": "Myanmar/Burma -- candidate; awaiting counsel decision. NOT enforced." }
