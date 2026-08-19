@@ -1,0 +1,33 @@
+# seqtoid-web @ env-prod. Multi-source (chart from seqtoid-web, values from this repo).
+# env-prod = the real prod deployment staged at a hidden host; see the env-prod values file
+# and prod-standup-beta-plan-2026-08-19.md. Uses the canonical IT-Academic-Research-Services
+# repos (NOT the frozen thorvath-slower fork the dev/staging manifests still reference -- that
+# migration is a separate cleanup, tracked outside env-prod).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: seqtoid-web-env-prod
+  namespace: argocd
+spec:
+  project: czid
+  sources:
+    - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
+      targetRevision: main
+      path: deploy/charts/seqtoid-web
+      helm:
+        valueFiles:
+          - $values/deploy/argocd/values/seqtoid-web/env-prod.yaml
+    - repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    # env-prod runs its own argocd (per the reconstitute addons install), so in-cluster.
+    server: https://kubernetes.default.svc
+    namespace: seqtoid-env-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

@@ -1,0 +1,45 @@
+# =============================================================================
+# App-of-apps root -- ENV-PROD, app-layer only.
+#
+# Manages ONLY the env-prod app-layer Argo Applications under
+# deploy/argocd/apps/env-prod/. env-prod is its own cluster (cluster-per-env)
+# with its own argocd installed by the reconstitute addons stack, so the
+# destination is in-cluster (kubernetes.default.svc).
+#
+# Like the dev root, it deliberately does NOT manage infra addons (LBC,
+# argo-rollouts, cert-manager, external-dns, karpenter, ...) -- those are live
+# Helm releases owned by the eks Terraform module (SSOT); an Argo root over them
+# would make Argo fight Terraform.
+#
+# Uses the canonical IT-Academic-Research-Services repo (NOT the frozen
+# thorvath-slower fork the dev root still references).
+#
+# SAFE BRING-UP: prune + selfHeal START DISABLED. env-prod is a fresh env so the
+# first sync CREATES the app; flip both to true only after the first sync is
+# verified clean. See bootstrap/README.md.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: czid-root-env-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: czid
+  source:
+    repoURL: https://github.com/IT-Academic-Research-Services/cypherid-web-infra.git
+    targetRevision: main
+    path: deploy/argocd/apps/env-prod
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
