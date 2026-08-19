@@ -158,6 +158,56 @@ resource "aws_iam_role_policy_attachment" "workflows_build_s3_publish" {
   policy_arn = aws_iam_policy.workflows_build_s3_publish.arn
 }
 
+# -----------------------------------------------------------------------------
+# Read-only access to the shared reference (taxon index) bucket seqtoid-public-references.
+#
+# WHY: several WDL workflows default a File input to an object in this bucket, e.g.
+# long-read-mngs run.wdl defaults taxon_whitelist to
+#   s3://seqtoid-public-references/taxonomy/2020-02-10/respiratory_taxon_whitelist.txt
+# (seqtoid-workflows PR 95). wdl-ci runs the workflow's test with miniwdl, and PR 95
+# sets MINIWDL__DOWNLOAD_AWSCLI__HOST_CREDENTIALS=true so miniwdl localizes that s3://
+# input with a SIGNED `aws s3 cp` using this runner's assumed-role credentials. The
+# bucket is PRIVATE (S3 public-access-block on), so the unsigned fallback 403s and the
+# signed read requires this role to hold s3:GetObject on the object. Without this grant
+# the long-read-mngs wdl-ci job fails localizing the whitelist before it can run.
+#
+# CROSS-ACCOUNT NOTE: seqtoid-public-references is a single, globally-unique, manually
+# created bucket that lives in the idseq-support account 941377154785 (the old shared
+# registry account, not migrated when dev was isolated); this role is in the dev account
+# 491013321714. Cross-account S3 read is authorized on BOTH sides: an identity policy on
+# the caller AND the bucket policy on the bucket. The dev account already reads and
+# writes this bucket cross-account today (the dev index-generation lambda writes the
+# ncbi-indexes-dev/ prefix with an identity-only grant), which indicates the bucket
+# policy already delegates read to the dev account root -- so this identity grant is the
+# piece a dev role needs. If an audit shows the bucket policy does NOT delegate to
+# 491013321714, an added bucket-policy statement on seqtoid-public-references (owned
+# out-of-band in 941377154785, not managed by this stack) is also required.
+#
+# Read-only and bucket-scoped: GetObject on every object + ListBucket on the bucket,
+# nothing wider. This does NOT make the bucket public and grants no write/delete.
+data "aws_iam_policy_document" "workflows_build_reference_read" {
+  statement {
+    sid       = "ReadReferenceObjects"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::seqtoid-public-references/*"]
+  }
+  statement {
+    sid       = "ListReferenceBucket"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::seqtoid-public-references"]
+  }
+}
+
+resource "aws_iam_policy" "workflows_build_reference_read" {
+  name   = "czid-${var.env}-gh-actions-workflows-build-reference-read"
+  policy = data.aws_iam_policy_document.workflows_build_reference_read.json
+}
+
+resource "aws_iam_role_policy_attachment" "workflows_build_reference_read" {
+  role       = module.czid_gh_actions_workflows_build.role.name
+  policy_arn = aws_iam_policy.workflows_build_reference_read.arn
+}
+
 output "workflows_build_role_arn" {
   description = "ARN of czid-dev-gh-actions-workflows-build (seqtoid-workflows wdl-ci assumes this to push WDL workflow images to dev ECR)."
   value       = module.czid_gh_actions_workflows_build.role.arn
