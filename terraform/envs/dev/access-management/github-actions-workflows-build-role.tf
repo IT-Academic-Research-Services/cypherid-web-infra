@@ -183,12 +183,16 @@ resource "aws_iam_role_policy_attachment" "workflows_build_s3_publish" {
 # 491013321714, an added bucket-policy statement on seqtoid-public-references (owned
 # out-of-band in 941377154785, not managed by this stack) is also required.
 #
-# Read-only and bucket-scoped: GetObject on every object + ListBucket on the bucket,
+# Read-only and bucket-scoped: GetObject* on every object + ListBucket on the bucket,
 # nothing wider. This does NOT make the bucket public and grants no write/delete.
+# GetObject* (the wildcard) rather than plain GetObject because the pipeline downloads
+# references with s3parcp, which calls s3:GetObjectAttributes (a distinct action) to size
+# objects for parallel download; plain GetObject 403s that call. Mirrors the refs job
+# policy, which already grants s3:GetObject*.
 data "aws_iam_policy_document" "workflows_build_reference_read" {
   statement {
     sid       = "ReadReferenceObjects"
-    actions   = ["s3:GetObject"]
+    actions   = ["s3:GetObject*"]
     resources = ["arn:aws:s3:::seqtoid-public-references/*"]
   }
   statement {
