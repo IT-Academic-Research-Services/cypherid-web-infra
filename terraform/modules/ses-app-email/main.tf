@@ -73,48 +73,20 @@ resource "aws_sesv2_email_identity" "support_recipient" {
   tags           = var.tags
 }
 
-# --- SMTP credentials for ActionMailer :smtp --------------------------------------------
-# The app is already wired for ActionMailer :smtp against the SES SMTP endpoint; it only lacks
-# SMTP_USER/SMTP_PASSWORD. A dedicated IAM user (least privilege: SendRawEmail from THIS identity
-# only) provides them. ses_smtp_password_v4 is the IAM secret converted to the SES SMTP password.
-resource "aws_iam_user" "ses_smtp" {
-  # checkov:skip=CKV_AWS_273:SES SMTP auth REQUIRES a long-lived IAM user access key (the SMTP
-  # password is derived from it via ses_smtp_password_v4); there is no SSO/role-based SMTP. The
-  # user is least-privilege (SendRawEmail from one identity only) and holds no console access.
-  name = "seqtoid-${var.env_fqdn}-ses-smtp"
-  path = "/ses/"
-  tags = var.tags
-}
-
-data "aws_iam_policy_document" "ses_smtp" {
-  statement {
-    sid       = "SendFromVerifiedIdentityOnly"
-    effect    = "Allow"
-    actions   = ["ses:SendRawEmail", "ses:SendEmail"]
-    resources = [aws_sesv2_email_identity.domain.arn]
-    condition {
-      test     = "StringLike"
-      variable = "ses:FromAddress"
-      values   = ["${var.from_local_part}@${var.env_fqdn}"]
-    }
-  }
-}
-
-resource "aws_iam_user_policy" "ses_smtp" {
-  name   = "ses-send"
-  user   = aws_iam_user.ses_smtp.name
-  policy = data.aws_iam_policy_document.ses_smtp.json
-}
-
-resource "aws_iam_access_key" "ses_smtp" {
-  user = aws_iam_user.ses_smtp.name
-}
+# --- Sending identity ONLY: no SMTP IAM user ---------------------------------------------
+# The app sends via ActionMailer :sesv2 (the SESv2 SendEmail API), authenticating with the
+# seqtoid-web pod's IRSA role -- the AWS default credential chain resolves to that role in-pod.
+# So this module provisions the SES sending identity (above) but creates NO IAM user and NO
+# long-lived SMTP access key. The ses:SendEmail/SendRawEmail grant lives on the web IRSA role
+# in the web component (dev: terraform/envs/dev/web/eks-irsa-ses.tf; other envs: their own web
+# IRSA stack), scoped to THIS domain identity + a no-reply@<env_fqdn> From address. This also
+# removes the checkov CKV_AWS_273 long-lived-access-key finding entirely.
 
 # --- Optional chamber wiring ------------------------------------------------------------
 # The chamber SecureString CMK (alias "parameter_store_key" exists in every env account). The
-# app's IRSA role grants kms:Decrypt on THIS key only, so SMTP_PASSWORD must be encrypted with
-# it or `chamber exec` cannot read it. Using the CMK (not the default aws/ssm key) also satisfies
-# checkov CKV_AWS_337.
+# app's IRSA role grants kms:Decrypt on THIS key only, so these SecureString params must be
+# encrypted with it or `chamber exec` cannot read them. Using the CMK (not the default aws/ssm
+# key) also satisfies checkov CKV_AWS_337.
 data "aws_kms_key" "chamber" {
   count  = local.write_chamber ? 1 : 0
   key_id = "alias/parameter_store_key"
@@ -122,25 +94,8 @@ data "aws_kms_key" "chamber" {
 
 # All chamber params are SecureString under the CMK -- matches how `chamber write` stores params
 # (SecureString by default) and satisfies checkov CKV2_AWS_34/CKV_AWS_337. The app's IRSA grants
-# kms:Decrypt on this key, so `chamber exec` reads them transparently.
-resource "aws_ssm_parameter" "smtp_user" {
-  count  = local.write_chamber ? 1 : 0
-  name   = "${var.chamber_ssm_prefix}SMTP_USER"
-  type   = "SecureString"
-  key_id = data.aws_kms_key.chamber[0].id
-  value  = aws_iam_access_key.ses_smtp.id
-  tags   = var.tags
-}
-
-resource "aws_ssm_parameter" "smtp_password" {
-  count  = local.write_chamber ? 1 : 0
-  name   = "${var.chamber_ssm_prefix}SMTP_PASSWORD"
-  type   = "SecureString"
-  key_id = data.aws_kms_key.chamber[0].id
-  value  = aws_iam_access_key.ses_smtp.ses_smtp_password_v4
-  tags   = var.tags
-}
-
+# kms:Decrypt on this key, so `chamber exec` reads them transparently. No SMTP_USER/SMTP_PASSWORD
+# is written -- the app authenticates to SES with its IRSA role, not SMTP creds.
 resource "aws_ssm_parameter" "mail_from_address" {
   count  = local.write_chamber ? 1 : 0
   name   = "${var.chamber_ssm_prefix}MAIL_FROM_ADDRESS"

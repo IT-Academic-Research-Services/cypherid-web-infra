@@ -13,17 +13,6 @@ output "dkim_tokens" {
   description = "Easy-DKIM tokens (also published as CNAMEs by this module)."
 }
 
-output "smtp_user" {
-  value       = aws_iam_access_key.ses_smtp.id
-  description = "SMTP_USER for the app (SES SMTP username = the IAM access key id)."
-}
-
-output "smtp_password" {
-  value       = aws_iam_access_key.ses_smtp.ses_smtp_password_v4
-  sensitive   = true
-  description = "SMTP_PASSWORD for the app (SES SMTP password derived from the IAM secret). Set in chamber; never commit."
-}
-
 output "support_recipient_verification_pending" {
   value       = var.verify_support_recipient ? "A verification email was sent to ${var.support_inbox_email} -- it must be clicked before SES (sandbox) will deliver there." : "recipient verification disabled"
   description = "Sandbox recipient-verification reminder."
