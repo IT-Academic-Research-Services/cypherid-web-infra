@@ -37,7 +37,7 @@ autoscaling:
 ingress:
   enabled: true
   host: env-prod.seqtoid.org
-  certificateArn: REPLACE_ENVPROD_CERT
+  certificateArn: arn:aws:acm:us-west-2:283694049553:certificate/c04e8a77-a454-482d-b913-59fba7ac0401
   annotations:
     alb.ingress.kubernetes.io/subnets: REPLACE_ENVPROD_PUBLIC_SUBNETS
     # CRITICAL (plan s1.4 / s7 HIGH): the deny-by-default Web ACL is PINNED in the

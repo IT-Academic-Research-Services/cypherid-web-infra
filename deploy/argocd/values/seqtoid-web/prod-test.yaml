@@ -55,7 +55,7 @@ ingress:
   # WILDCARD cert (*.seqtoid.org), NOT a per-host cert: a per-host public cert publishes the exact random
   # hostname to Certificate Transparency logs (crt.sh) within minutes, destroying the obscurity. A wildcard
   # only ever publishes "*.seqtoid.org", so the random host stays out of CT.
-  certificateArn: arn:aws:acm:us-west-2:283694049553:certificate/REPLACE_PRODTEST_WILDCARD_CERT
+  certificateArn: arn:aws:acm:us-west-2:283694049553:certificate/c04e8a77-a454-482d-b913-59fba7ac0401
   annotations:
     alb.ingress.kubernetes.io/subnets: REPLACE_PRODTEST_PUBLIC_SUBNETS
     # THE GATE (codified, survives rebuild): deny-by-default Web ACL whose allow rule = an IP set of UCSF
