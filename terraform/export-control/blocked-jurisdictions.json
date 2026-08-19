@@ -1,9 +1,9 @@
 {
   "_README": "SINGLE SOURCE OF TRUTH for the export-control blocked-jurisdiction list (CZID-322). The authoritative, versioned list is owned by the compliance office / counsel — engineering only wires it. This ONE file is consumed by BOTH enforcement layers: the Layer-1 WAF geo rule (Terraform, via jsondecode(file(...))) and the Layer-2 edge Lambda (bundled by build.sh and read at load). 'blocked_country_codes' is the enforced authority; 'rationale' annotates it; 'staged_for_counsel' are candidates NOT yet enforced. Change the enforced set HERE only, then re-plan + rebuild the Lambda + re-run the CZID-333 harness. Governance: EXPORT-CONTROL-LIST-GOVERNANCE.md. Validate before commit: tools/validate-blocked-jurisdictions.py. The legal 'basis' notes reflect the design-doc baseline and are PENDING counsel confirmation, not legal determinations by engineering.",
   "schema_version": 1,
-  "list_version": "2026-06-26.1",
+  "list_version": "2026-08-19.1",
   "owner": "compliance office / counsel (CZID-322)",
-  "last_reviewed": "2026-06-26",
+  "last_reviewed": "2026-08-19",
 
   "blocked_country_codes": ["CU", "IR", "KP", "RU", "SY", "UA"],
 
@@ -17,8 +17,9 @@
   },
 
   "staged_for_counsel": {
-    "BY": { "basis": "program-specific sanctions", "note": "Belarus — candidate; awaiting counsel decision. NOT enforced." },
-    "VE": { "basis": "program-specific sanctions", "note": "Venezuela — candidate; awaiting counsel decision. NOT enforced." },
-    "MM": { "basis": "program-specific sanctions", "note": "Myanmar/Burma — candidate; awaiting counsel decision. NOT enforced." }
+    "CN": { "basis": "DOJ country of concern (not a comprehensive embargo)", "note": "China -- candidate; named in the SeqToID Platform Requirements (User Screening / Country Access, DOJ countries of concern). NOT enforced. A full-country block is a major over-block with significant research-collaboration impact; counsel decision required before moving to blocked_country_codes." },
+    "VE": { "basis": "DOJ country of concern / program-specific sanctions", "note": "Venezuela -- candidate; named in the SeqToID Platform Requirements (DOJ countries of concern). Awaiting counsel decision. NOT enforced." },
+    "BY": { "basis": "program-specific sanctions", "note": "Belarus -- candidate; awaiting counsel decision. NOT enforced." },
+    "MM": { "basis": "program-specific sanctions", "note": "Myanmar/Burma -- candidate; awaiting counsel decision. NOT enforced." }
   }
 }
