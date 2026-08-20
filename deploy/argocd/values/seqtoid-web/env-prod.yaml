@@ -22,7 +22,7 @@ image:
   # env-prod ECR in the prod account (no czid-* path prefix). CI advances the tag
   # to the immutable git-sha on deploy.
   repository: 283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: latest
+  tag: sha-6449130f # env-prod config build (env-prod.rb + database.yml env-prod); pin, not floating latest
 replicaCount: 2
 serviceAccount:
   roleArn: arn:aws:iam::283694049553:role/seqtoid-web-env-prod
