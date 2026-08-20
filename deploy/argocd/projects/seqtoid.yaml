@@ -36,6 +36,8 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: seqtoid-prod
     - server: https://kubernetes.default.svc
+      namespace: seqtoid-env-prod # hidden beta test env (prod acct), pre-DNS-flip
+    - server: https://kubernetes.default.svc
       namespace: argo-rollouts
     - server: https://kubernetes.default.svc
       namespace: kube-system # AWS Load Balancer Controller
