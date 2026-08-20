@@ -20,7 +20,7 @@ locals {
   env_seqtoid_org_zone_id   = data.terraform_remote_state.route53.outputs.env_seqtoid_org_zone_id
   auth_env_seqtoid_org_fqdn = "auth.${local.env_seqtoid_org_fqdn}"
   # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
-  assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
+  assets_fqdn = var.assets_fqdn != "" ? var.assets_fqdn : data.terraform_remote_state.web[0].outputs.assets_fqdn
   assets_url  = "https://${local.assets_fqdn}"
   audience    = "https://${data.auth0_tenant.env_tenant.domain}/api/v2/"
 
