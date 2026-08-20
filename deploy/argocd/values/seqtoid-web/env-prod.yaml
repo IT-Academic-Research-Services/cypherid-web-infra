@@ -6,6 +6,13 @@
 # env-prod.seqtoid.org -> seqtoid.org. Also the Visual Compliance beta test bed.
 # Account 283694049553. Cloned from staging.yaml; deltas called out inline.
 environment: env-prod
+# The main app (migrate/rollout/workers) reads CHAMBER_SERVICE from the image entrypoint, which defaults to
+# idseq-<env>-web (the chart default / legacy path). The reconstitute chamber-seed-env-prod hook seeds the
+# FRESH seqtoid chamber at /seqtoid-env-prod-web and the app IRSA role is granted SSM read on exactly
+# /seqtoid-env-prod-web/*, so point the app there explicitly (mirrors staging).
+secrets:
+  chamber:
+    service: seqtoid-env-prod-web
 image:
   # env-prod ECR in the prod account (no czid-* path prefix). CI advances the tag
   # to the immutable git-sha on deploy.
