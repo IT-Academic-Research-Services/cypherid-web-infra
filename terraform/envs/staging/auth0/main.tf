@@ -6,7 +6,7 @@ locals {
   env_seqtoid_org_fqdn     = data.terraform_remote_state.route53.outputs.env_seqtoid_org_fqdn
   env_seqtoid_org_url      = "https://${local.env_seqtoid_org_fqdn}"
   meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
-  assets_fqdn              = data.terraform_remote_state.web.outputs.assets_fqdn
+  assets_fqdn              = var.assets_fqdn != "" ? var.assets_fqdn : data.terraform_remote_state.web[0].outputs.assets_fqdn
   # Auth0 tenant (Management API) domain — mirrors the auth0 provider's own
   # `domain = "seqtoid-${var.env}.us.auth0.com"`. Was referenced as the
   # undeclared var.auth0_domain; derived here so it tracks var.env per env.
