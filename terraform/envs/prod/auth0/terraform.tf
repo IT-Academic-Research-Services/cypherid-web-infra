@@ -42,7 +42,11 @@ provider "aws" {
 provider "assert" {}
 
 provider "auth0" {
-  domain = "seqtoid-${var.env}.us.auth0.com"
+  # Tenant is decoupled from env: env-prod (the hidden beta deployment) authenticates
+  # against the real prod tenant seqtoid-prod, NOT the derived seqtoid-env-prod. Pass
+  # -var auth0_domain=seqtoid-prod.us.auth0.com. Empty falls back to the per-env
+  # derivation for envs whose tenant name does match seqtoid-<env>.
+  domain = var.auth0_domain != "" ? var.auth0_domain : "seqtoid-${var.env}.us.auth0.com"
 }
 terraform {
   backend "s3" {
