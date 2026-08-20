@@ -62,6 +62,12 @@ variable "login_base_url" {
   description = "App origin registered on the Auth0 client (callbacks/origins/logout/web_origins/initiate_login). Empty => the apex (real prod). Set https://env-prod.seqtoid.org for the env-prod hidden beta."
 }
 
+variable "auth0_domain" {
+  type        = string
+  default     = ""
+  description = "Auth0 tenant domain to authenticate against. Empty => derive seqtoid-<env>.us.auth0.com. Set seqtoid-prod.us.auth0.com for env-prod, whose tenant name (seqtoid-prod) does not match the env slug."
+}
+
 resource "auth0_custom_domain" "auth_env_seqtoid_org" {
   domain     = local.auth_env_seqtoid_org_fqdn
   type       = "auth0_managed_certs"
@@ -143,7 +149,7 @@ resource "auth0_role" "admin" {
 }
 
 resource "auth0_client" "idseq_web" {
-  name        = "idseq-web"
+  name        = "SeqtoID"
   description = "SeqtoID Web Application"
   allowed_clients = [
     # auth0_client.idseq_web_management.id
