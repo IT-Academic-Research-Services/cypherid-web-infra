@@ -43,7 +43,7 @@ locals {
   env_seqtoid_org_zone_id   = data.terraform_remote_state.route53.outputs.env_seqtoid_org_zone_id
   auth_env_seqtoid_org_fqdn = "auth.${local.env_seqtoid_org_fqdn}"
   # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
-  assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
+  assets_fqdn = var.assets_fqdn != "" ? var.assets_fqdn : data.terraform_remote_state.web[0].outputs.assets_fqdn
   assets_url  = "https://${local.assets_fqdn}"
 
   # login_base_url: the app origin registered as the client's callback/origin/logout target.
@@ -66,6 +66,12 @@ variable "auth0_domain" {
   type        = string
   default     = ""
   description = "Auth0 tenant domain to authenticate against. Empty => derive seqtoid-<env>.us.auth0.com. Set seqtoid-prod.us.auth0.com for env-prod, whose tenant name (seqtoid-prod) does not match the env slug."
+}
+
+variable "assets_fqdn" {
+  type        = string
+  default     = ""
+  description = "FQDN serving the login-page branding assets (logo/picture only -- purely cosmetic). Empty => read from the web component's remote state (real prod). env-prod has no web.tfstate (web layer is EKS/Argo), so pass the app host that serves /assets/, e.g. env-prod.seqtoid.org."
 }
 
 resource "auth0_custom_domain" "auth_env_seqtoid_org" {

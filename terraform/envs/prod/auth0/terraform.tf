@@ -170,7 +170,11 @@ data "terraform_remote_state" "route53" {
   }
 }
 
+# Only read when var.assets_fqdn is empty. env-prod has no web.tfstate (its web layer
+# is EKS/Argo, not this repo's web component), so it passes -var assets_fqdn=... and
+# this read is skipped. Real prod leaves the var empty and reads assets_fqdn here.
 data "terraform_remote_state" "web" {
+  count   = var.assets_fqdn != "" ? 0 : 1
   backend = "s3"
   config = {
     bucket  = "tfstate-283694049553"

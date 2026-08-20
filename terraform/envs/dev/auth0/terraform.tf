@@ -42,7 +42,9 @@ provider "aws" {
 provider "assert" {}
 
 provider "auth0" {
-  domain = "seqtoid-${var.env}.us.auth0.com"
+  # Empty var => derive seqtoid-<env>.us.auth0.com. Override when a deployment's tenant
+  # name differs from its env slug (e.g. env-prod, which lives in the seqtoid-prod tenant).
+  domain = var.auth0_domain != "" ? var.auth0_domain : "seqtoid-${var.env}.us.auth0.com"
 }
 terraform {
   backend "s3" {
@@ -160,7 +162,22 @@ data "terraform_remote_state" "route53" {
 
   }
 }
+variable "auth0_domain" {
+  type        = string
+  default     = ""
+  description = "Auth0 tenant domain override. Empty => derive seqtoid-<env>.us.auth0.com. Set when a deployment's tenant name != its env slug (e.g. env-prod -> seqtoid-prod)."
+}
+
+variable "assets_fqdn" {
+  type        = string
+  default     = ""
+  description = "FQDN serving login-page branding assets (cosmetic logo/picture only). Empty => read from the web component's remote state. Set for an EKS/Argo env with no web.tfstate (e.g. env-prod -> env-prod.seqtoid.org)."
+}
+
+# Read only when var.assets_fqdn is empty (envs with a TF-managed web component). An
+# EKS/Argo env with no web.tfstate sets var.assets_fqdn, so this read is skipped.
 data "terraform_remote_state" "web" {
+  count   = var.assets_fqdn != "" ? 0 : 1
   backend = "s3"
   config = {
 
