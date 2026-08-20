@@ -9,7 +9,7 @@ metadata:
   name: seqtoid-web-env-prod
   namespace: argocd
 spec:
-  project: czid
+  project: seqtoid
   sources:
     - repoURL: https://github.com/IT-Academic-Research-Services/seqtoid-web.git
       targetRevision: main
