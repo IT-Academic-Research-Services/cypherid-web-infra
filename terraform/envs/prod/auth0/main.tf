@@ -130,7 +130,9 @@ resource "auth0_tenant" "env_tenant" {
   # }
 
   flags {
-    # enable_custom_domain_in_emails         = true
+    # Mirror dev: Auth0 rejects an empty flags block ("minimum 1 property"), and this
+    # tenant uses a custom domain (auth.seqtoid.org), so route branded emails through it.
+    enable_custom_domain_in_emails = true
     # enable_dynamic_client_registration     = false
     # enable_public_signup_user_exists_error = true
   }
