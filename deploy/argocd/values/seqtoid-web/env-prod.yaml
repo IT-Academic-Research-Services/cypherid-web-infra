@@ -13,6 +13,11 @@ environment: env-prod
 secrets:
   chamber:
     service: seqtoid-env-prod-web
+extraEnv:
+  # The main app (migrate/rollout/workers) reads CHAMBER_SERVICE from the image entrypoint (defaults to
+  # idseq-<env>-web); set it explicitly to the fresh seqtoid path the IRSA role is scoped to (mirrors staging).
+  - name: CHAMBER_SERVICE
+    value: seqtoid-env-prod-web
 image:
   # env-prod ECR in the prod account (no czid-* path prefix). CI advances the tag
   # to the immutable git-sha on deploy.
