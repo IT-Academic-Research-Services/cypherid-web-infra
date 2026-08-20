@@ -1,0 +1,47 @@
+# env-prod overrides for the seqtoid-web chart.
+#
+# env-prod = the REAL prod deployment, staged behind a hidden hostname
+# (env-prod.seqtoid.org) with a deny-by-default WAF and the PROD Auth0 tenant,
+# holding real P4 data + real internal testers. At go-live the DNS flips
+# env-prod.seqtoid.org -> seqtoid.org. Also the Visual Compliance beta test bed.
+# Account 283694049553. Cloned from staging.yaml; deltas called out inline.
+environment: env-prod
+image:
+  # env-prod ECR in the prod account (no czid-* path prefix). CI advances the tag
+  # to the immutable git-sha on deploy.
+  repository: 283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
+  tag: latest
+replicaCount: 2
+serviceAccount:
+  roleArn: arn:aws:iam::283694049553:role/seqtoid-web-env-prod
+blueGreen:
+  # env-prod: MANUAL promotion gate (real prod, real data) -- NOT staging's auto-promote.
+  autoPromotionEnabled: false
+  scaleDownDelaySeconds: 60
+  analysis:
+    enabled: true
+    postPromotion: true
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+# Hidden edge for env-prod. ALB via the AWS Load Balancer Controller -> active service.
+# The host answers ONLY for env-prod.seqtoid.org, so the listener never overlaps the
+# maintenance-page CloudFront (the apex A-ALIAS is a different, untouched record).
+ingress:
+  enabled: true
+  host: env-prod.seqtoid.org
+  certificateArn: arn:aws:acm:us-west-2:283694049553:certificate/c04e8a77-a454-482d-b913-59fba7ac0401
+  annotations:
+    alb.ingress.kubernetes.io/subnets: subnet-0a0089da0e97ff68e,subnet-06782a1447900190c,subnet-0d359bd33b237007c
+    # CRITICAL (plan s1.4 / s7 HIGH): the deny-by-default Web ACL is PINNED in the
+    # ingress annotation so every ALB rebuild re-attaches it. Without this the ALB
+    # can come up publicly reachable (observed on sandbox). Empty allowlist =
+    # fail-closed. env-prod must NEVER be reachable without this gate.
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:283694049553:regional/webacl/seqtoid-env-prod-web/176e0ab9-3a2a-4ba8-8f1f-1e9487881cc5

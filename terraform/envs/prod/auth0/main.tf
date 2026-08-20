@@ -4,7 +4,15 @@
 # connection/clients rather than referencing shared objects. Fully env-driven
 # (var.env), so it resolves for prod with no dev-specific hardcodes; the actual
 # AUTH0_CLIENT_ID/SECRET etc. are provider-managed at apply time and land in the
-# idseq-prod-web chamber namespace via the auth0-ssm-params module below.
+# <project>-<env>-web chamber namespace via the auth0-ssm-params module below.
+#
+# ENV-PROD HIDDEN BETA (2026-08-19): env-prod runs THIS prod tenant, staged at a
+# hidden host that flips to the apex at go-live. Apply for env-prod with:
+#     -var 'login_base_url=https://env-prod.seqtoid.org' -var 'project=seqtoid' -var 'env=env-prod'
+# which (a) registers env-prod -- NOT the apex -- as the client callback/origin/logout
+# target (var.login_base_url; the apex is added at go-live), and (b) retargets the
+# auth0-ssm-params writer to /seqtoid-env-prod-web (project=seqtoid, env=env-prod).
+# The Auth0 CUSTOM DOMAIN (auth.seqtoid.org) is unchanged -- kept through the flip.
 #
 # PROD HARDENING vs dev: the http://localhost:3000 callback/origin/logout entries
 # (dev-only convenience) are removed here — prod must not allow localhost.
@@ -37,6 +45,21 @@ locals {
   # meta_env_seqtoid_org_url = "https://meta.${local.env_seqtoid_org_fqdn}"
   assets_fqdn = data.terraform_remote_state.web.outputs.assets_fqdn
   assets_url  = "https://${local.assets_fqdn}"
+
+  # login_base_url: the app origin registered as the client's callback/origin/logout target.
+  # Defaults to the apex (env_seqtoid_org_url = https://seqtoid.org), the eventual real-prod origin.
+  # For the env-prod HIDDEN BETA, override with var.login_base_url = https://env-prod.seqtoid.org so
+  # the apex is NOT published as a valid redirect target while the beta is up (plan s7 HIGH). At
+  # go-live "flip the domain" -- set login_base_url back to the apex (or add it alongside env-prod).
+  # The Auth0 CUSTOM DOMAIN (auth.seqtoid.org) is intentionally NOT parameterized: it is the prod
+  # auth host we keep through the flip.
+  login_base_url = var.login_base_url != "" ? var.login_base_url : local.env_seqtoid_org_url
+}
+
+variable "login_base_url" {
+  type        = string
+  default     = ""
+  description = "App origin registered on the Auth0 client (callbacks/origins/logout/web_origins/initiate_login). Empty => the apex (real prod). Set https://env-prod.seqtoid.org for the env-prod hidden beta."
 }
 
 resource "auth0_custom_domain" "auth_env_seqtoid_org" {
@@ -128,26 +151,26 @@ resource "auth0_client" "idseq_web" {
     # local.env_seqtoid_org_url
   ]
   allowed_logout_urls = [
-    local.env_seqtoid_org_url,
+    local.login_base_url,
     # local.meta_env_seqtoid_org_url,
   ]
   allowed_origins = [
-    local.env_seqtoid_org_url,
+    local.login_base_url,
     # local.meta_env_seqtoid_org_url,
   ]
   app_type = "regular_web"
   callbacks = [
     # "http://localhost:3000/auth/auth0/callback",
     # "http://127.0.0.2:4000/auth/auth0/callback",
-    "${local.env_seqtoid_org_url}/auth/auth0/callback",
-    "${local.env_seqtoid_org_url}/login",
+    "${local.login_base_url}/auth/auth0/callback",
+    "${local.login_base_url}/login",
     # "${local.meta_env_seqtoid_org_url}/auth/auth0/callback",
   ]
-  initiate_login_uri = "${local.env_seqtoid_org_url}/login"
+  initiate_login_uri = "${local.login_base_url}/login"
   logo_uri           = "${local.assets_url}/assets/logo-new.png"
   sso                = true
   web_origins = [
-    local.env_seqtoid_org_url,
+    local.login_base_url,
     # local.meta_env_seqtoid_org_url,
   ]
 
