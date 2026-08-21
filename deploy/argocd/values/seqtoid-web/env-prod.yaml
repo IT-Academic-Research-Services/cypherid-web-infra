@@ -5,6 +5,9 @@
 # holding real P4 data + real internal testers. At go-live the DNS flips
 # env-prod.seqtoid.org -> seqtoid.org. Also the Visual Compliance beta test bed.
 # Account 283694049553. Cloned from staging.yaml; deltas called out inline.
+# Rebrand this env's K8s resource names to seqtoid (was czid): fullname = <project>-<env>-seqtoid-web.
+# AWS-side names (IRSA/chamber/WAF/RDS) are already seqtoid; this only renames the in-cluster Helm resources.
+project: seqtoid
 environment: env-prod
 # The main app (migrate/rollout/workers) reads CHAMBER_SERVICE from the image entrypoint, which defaults to
 # idseq-<env>-web (the chart default / legacy path). The reconstitute chamber-seed-env-prod hook seeds the
