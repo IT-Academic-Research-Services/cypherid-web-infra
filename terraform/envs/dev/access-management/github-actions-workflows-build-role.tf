@@ -212,6 +212,47 @@ resource "aws_iam_role_policy_attachment" "workflows_build_reference_read" {
   policy_arn = aws_iam_policy.workflows_build_reference_read.arn
 }
 
+# -----------------------------------------------------------------------------
+# KMS access to the workflows artifact bucket's CMK.
+#
+# The bucket seqtoid-workflows-<env>-<account> is now SSE-KMS encrypted with the customer-managed
+# key alias/seqtoid-workflows-<env> (the "seqtoid workflows data tier" key, added by the KMS
+# rebrand). The S3 statements above are necessary but no longer sufficient: an SSE-KMS PutObject
+# also requires kms:GenerateDataKey on that key, and the publisher's idempotency check (GetObject
+# on <prefix>/manifest.json above) reads a KMS-encrypted object, which requires kms:Decrypt.
+# Without this the publish job dies on PutObject with "not authorized to perform:
+# kms:GenerateDataKey" even though every s3: action it needs is granted -- which is exactly how the
+# first post-rebrand publish failed. The key's policy delegates to the account root, so this
+# identity grant is the piece the role needs.
+#
+# Scoped to exactly this one key, resolved via its alias so the four envs stay parallel. Read+write
+# data-plane only (GenerateDataKey/Decrypt/DescribeKey); no key administration.
+data "aws_kms_key" "workflows" {
+  key_id = "alias/seqtoid-workflows-${var.env}"
+}
+
+data "aws_iam_policy_document" "workflows_build_kms" {
+  statement {
+    sid = "UseWorkflowsBucketCmk"
+    actions = [
+      "kms:GenerateDataKey",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = [data.aws_kms_key.workflows.arn]
+  }
+}
+
+resource "aws_iam_policy" "workflows_build_kms" {
+  name   = "czid-${var.env}-gh-actions-workflows-build-kms"
+  policy = data.aws_iam_policy_document.workflows_build_kms.json
+}
+
+resource "aws_iam_role_policy_attachment" "workflows_build_kms" {
+  role       = module.czid_gh_actions_workflows_build.role.name
+  policy_arn = aws_iam_policy.workflows_build_kms.arn
+}
+
 output "workflows_build_role_arn" {
   description = "ARN of czid-dev-gh-actions-workflows-build (seqtoid-workflows wdl-ci assumes this to push WDL workflow images to dev ECR)."
   value       = module.czid_gh_actions_workflows_build.role.arn
