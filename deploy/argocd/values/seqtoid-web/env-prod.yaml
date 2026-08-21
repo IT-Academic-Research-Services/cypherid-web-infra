@@ -22,7 +22,7 @@ image:
   # env-prod ECR in the prod account (no czid-* path prefix). CI advances the tag
   # to the immutable git-sha on deploy.
   repository: 283694049553.dkr.ecr.us-west-2.amazonaws.com/seqtoid-web
-  tag: sha-6449130f # env-prod config build (env-prod.rb + database.yml env-prod); pin, not floating latest
+  tag: sha-ed65b7ac # main @ ed65b7ac -- includes the standalone screening service (Option A: #447-#453); copied dev->env-prod ECR
 replicaCount: 2
 serviceAccount:
   roleArn: arn:aws:iam::283694049553:role/seqtoid-web-env-prod
@@ -57,3 +57,19 @@ ingress:
     # can come up publicly reachable (observed on sandbox). Empty allowlist =
     # fail-closed. env-prod must NEVER be reachable without this gate.
     alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:283694049553:regional/webacl/seqtoid-env-prod-web/176e0ab9-3a2a-4ba8-8f1f-1e9487881cc5
+# Standalone export-control SCREENING service (Option A). Same seqtoid-web image, its OWN deployment +
+# worker, reading the /seqtoid-env-prod-screening chamber (its isolated screening Aurora + the DESCARTES_RPS_*
+# VC creds + the shared HMAC signing secret + the AR-encryption keys). The screening-migrate initContainer
+# builds the isolated schema in the screening cluster (PRIMARY_DB_TASKS=false -> never touches the app DB).
+# The web pods do NOT screen in-request; they delegate to this over HTTP -- and only once
+# EXPORT_CONTROL_SCREENING_PROVIDER=screening_service + the export-control flags are flipped (still off).
+screening:
+  enabled: true
+  chamberService: seqtoid-env-prod-screening
+# The screening service's Resque worker: processes the async screen (process_screening) + the Descartes
+# resolution poller (resolve_screening_holds), reading the same /seqtoid-env-prod-screening chamber. Without
+# it the API would enqueue screenings that nothing processes.
+workers:
+  screening-worker:
+    enabled: true
+    chamberService: seqtoid-env-prod-screening
