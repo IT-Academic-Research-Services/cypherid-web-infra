@@ -14,10 +14,13 @@ resource "aws_s3_bucket" "maintenance_bucket" {
 
 # Inline `acl` and `website` were deprecated in AWS provider v4 and moved to
 # dedicated `aws_s3_bucket_*` resources (#475). Apply-safe: no bucket recreation.
-resource "aws_s3_bucket_acl" "maintenance_bucket" {
-  bucket = aws_s3_bucket.maintenance_bucket.id
-  acl    = "private"
-}
+#
+# The aws_s3_bucket_acl "private" resource was REMOVED: S3 disables ACLs by default
+# (ObjectOwnership = BucketOwnerEnforced) since April 2023, so PutBucketAcl now fails
+# outright (400 InvalidArgument) and would take the whole maintenance stack's apply down.
+# A "private" canned ACL was always a no-op here anyway -- the bucket is private by
+# default and read access is granted solely by the CloudFront OAC bucket policy below.
+# Same fix as ecs/aegea-ecs-execute and db/samples. See #687.
 
 resource "aws_s3_bucket_website_configuration" "maintenance_bucket" {
   bucket = aws_s3_bucket.maintenance_bucket.id

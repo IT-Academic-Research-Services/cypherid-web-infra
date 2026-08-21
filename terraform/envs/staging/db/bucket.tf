@@ -41,15 +41,11 @@ resource "aws_s3_bucket" "samples_v1" {
   }
 }
 
-resource "aws_s3_bucket_acl" "samples" {
-  bucket = aws_s3_bucket.samples.id
-  acl    = "private"
-}
-
-resource "aws_s3_bucket_acl" "samples_v1" {
-  bucket = aws_s3_bucket.samples_v1.id
-  acl    = "private"
-}
+# The aws_s3_bucket_acl "private" resources for samples / samples_v1 were REMOVED: S3 disables
+# ACLs by default (ObjectOwnership = BucketOwnerEnforced) since April 2023, so PutBucketAcl now
+# fails outright (400 InvalidArgument) and took the whole db stack's apply down. A "private"
+# canned ACL was always a no-op on these buckets -- they are private by default and access is
+# governed by the bucket policy / IAM. Same fix as ecs/aegea-ecs-execute. See #687.
 
 resource "aws_s3_bucket_accelerate_configuration" "samples" {
   bucket = aws_s3_bucket.samples.id
