@@ -1,7 +1,12 @@
 locals {
-  # CZI staging account (732052188396) cross-account role that writes transferred data
-  # into this bucket. Used by CZI and collaborator Tiago as a data-transfer destination.
-  czi_writer_role_arn = "arn:aws:iam::732052188396:role/idseq-staging-batch-job"
+  # CZI staging account (732052188396) cross-account roles that write transferred data
+  # into this bucket. Used by CZI and collaborator Tiago as a data-transfer destination:
+  #   - idseq-staging-batch-job: the pipeline Batch job role that performs the transfers
+  #   - poweruser: the operator role CZI uses for manual/interactive transfer + verification
+  czi_writer_role_arns = [
+    "arn:aws:iam::732052188396:role/idseq-staging-batch-job",
+    "arn:aws:iam::732052188396:role/poweruser",
+  ]
 }
 
 # Bucket policy granting the CZI staging cross-account role scoped access.
@@ -17,7 +22,7 @@ data "aws_iam_policy_document" "czi_data_transfer_bucket_policy" {
 
     principals {
       type        = "AWS"
-      identifiers = [local.czi_writer_role_arn]
+      identifiers = local.czi_writer_role_arns
     }
 
     actions = [
@@ -39,7 +44,7 @@ data "aws_iam_policy_document" "czi_data_transfer_bucket_policy" {
 
     principals {
       type        = "AWS"
-      identifiers = [local.czi_writer_role_arn]
+      identifiers = local.czi_writer_role_arns
     }
 
     actions = [
