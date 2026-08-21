@@ -2318,6 +2318,21 @@
                         "CKV_AWS_144",
                         "CKV_AWS_145"
                     ]
+                },
+                {
+                    "resource": "module.czi-data-transfer-bucket.aws_kms_key.bucket_kms_key[0]",
+                    "check_ids": [
+                        "CKV2_AWS_64",
+                        "CKV_AWS_7"
+                    ]
+                },
+                {
+                    "resource": "module.czi-data-transfer-bucket.aws_s3_bucket.bucket",
+                    "check_ids": [
+                        "CKV2_AWS_62",
+                        "CKV_AWS_144",
+                        "CKV_AWS_145"
+                    ]
                 }
             ]
         },
@@ -2923,6 +2938,17 @@
                     "resource": "aws_ecr_repository.seqtoid-web-repository",
                     "check_ids": [
                         "CKV_AWS_136"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/envs/dev/czi-data-transfer/main.tf",
+            "findings": [
+                {
+                    "resource": "czi-data-transfer-bucket",
+                    "check_ids": [
+                        "CKV_TF_1"
                     ]
                 }
             ]
